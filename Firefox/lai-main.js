@@ -1,5 +1,5 @@
-const laiWordEndings = /(?:\w+'(?:m|re|ll|s|d|ve|t))\s/;  // 'm, 're, 's, 'd, 'll, 've, 't
-const laiWordFormations = /(?:'(?:clock|til|bout|cause|em))/; // 'clock, 'til, 'bout, 'cause, 'em
+// const laiWordEndings = /(?:\w+'(?:m|re|ll|s|d|ve|t))\s/;  // 'm, 're, 's, 'd, 'll, 've, 't
+// const laiWordFormations = /(?:'(?:clock|til|bout|cause|em))/; // 'clock, 'til, 'bout, 'cause, 'em
 
 function laiInitSidebar() {
     const shadowRoot = document.getElementById('localAI').shadowRoot;
@@ -8,7 +8,7 @@ function laiInitSidebar() {
     userInput.addEventListener('input', laiHandleUserInput);
 
     shadowRoot.querySelector('.lai-cog-menu-button')?.addEventListener('click', function (e) {
-        chrome.runtime.sendMessage({action: "openOptionsPage"});
+        browser.runtime.sendMessage({action: "openOptionsPage"});
         shadowRoot.getElementById('laiUserInput')?.focus();
     });
 
@@ -215,7 +215,7 @@ function laiUpdateChatHistoryWithUserInput(inputText, type, index=-1){
     const lastChatText = transformTextInHtml(inputText);
     let buttons = '<span class="lai-delete-chat-item-action" data-type="delete"></span><span class="lai-copy-chat-item-action" data-type="copy"></span>';
     if(type !== 'ai' && index > -1){
-        buttons += `<span class="lai-edit-item-action" data-type="edit" data-index=${index}><img src="${chrome.runtime.getURL('img/edit.svg')}"></span>`;
+        buttons += `<span class="lai-edit-item-action" data-type="edit" data-index=${index}><img src="${browser.runtime.getURL('img/edit.svg')}"></span>`;
     }
     const actionIconsDiv = Object.assign(document.createElement('div'), {
         // id: `${type === 'ai' ? 'laiActiveAiInput' : ''}`,
@@ -384,7 +384,7 @@ function laiOnRibbonButtonClick(e) {
 }
 
 function laiAbortRequest(e) {
-    chrome.runtime.sendMessage({action: "abortFetch"}, () => {
+    browser.runtime.sendMessage({action: "abortFetch"}, () => {
         console.log("Abort message sent");
     });
 }
@@ -404,7 +404,7 @@ function laiQueryAI(inputText) {
         }
     };
 
-    chrome.runtime.sendMessage(requestData, (response) => {
+    browser.runtime.sendMessage(requestData, (response) => {
         if (response?.error) {
             console.error("Fetch error:", response.error);
         // } else {
@@ -448,7 +448,7 @@ function laiExtractDataFromResponse(response){
     return (data?.choices?.[0]?.delta?.content || '');
 }
 
-chrome.runtime.onMessage.addListener((response) => {
+browser.runtime.onMessage.addListener((response) => {
     const shadowRoot = document.getElementById('localAI').shadowRoot;
     let recipient = shadowRoot.getElementById('laiActiveAiInput');
     if(!recipient){

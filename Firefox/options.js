@@ -19,13 +19,13 @@ function saveSettings(e) {
         optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
     }
 
-    chrome.storage.sync.set({'laiOptions': optionsData}, function() {
+    browser.storage.sync.set({'laiOptions': optionsData}, function() {
         showMessage('Settings saved', 'success');
     });
 }
 
 function loadSettings() {
-    chrome.storage.sync.get('laiOptions', function(obj) {
+    browser.storage.sync.get('laiOptions', function(obj) {
         const formData = obj.laiOptions || {};
         Object.keys(formData).forEach(key => {
             const element = document.getElementById(key);

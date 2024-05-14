@@ -119,7 +119,7 @@ function laiBuildMainButton(){
   });
 
   const img = document.createElement('img');
-  img.src = chrome.runtime.getURL('img/icon128.svg');
+  img.src = browser.runtime.getURL('img/icon128.svg');
   img.classList.add('img-btn');
   theMainButton.appendChild(img);
 
@@ -142,7 +142,7 @@ function laiMainButtonClicked(e){
 }
 
 function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
-  fetch(chrome.runtime.getURL('sidebar.html'))
+  fetch(browser.runtime.getURL('sidebar.html'))
     .then(response => response.text())
     .then(data => {
       var theSideBar = Object.assign(document.createElement('div'), {
@@ -165,7 +165,7 @@ function laiFetchStyles(cssNames) {
   if (!Array.isArray(cssNames)) { cssNames = [cssNames]; }
 
   return cssNames.map(cssName =>
-    fetch(chrome.runtime.getURL(cssName))
+    fetch(browser.runtime.getURL(cssName))
       .then(response => response.text())
       .then(data => {
         const shadowRoot = document.getElementById('localAI').shadowRoot;
@@ -181,7 +181,7 @@ function laiFetchStyles(cssNames) {
 function laiSetImg(el) {
   const name = el?.getAttribute('data-type')?.toLowerCase();
   if (name) {
-    el.src = chrome.runtime.getURL(`img/${name}.svg`);
+    el.src = browser.runtime.getURL(`img/${name}.svg`);
   }
 }
 
@@ -219,9 +219,9 @@ function getLaiOptions() {
       "systemInstructions": '',
       "personalInfo": ''
     };
-    chrome.storage.sync.get('laiOptions', function (obj) {
-      if (chrome.runtime.lastError) {
-        return reject(chrome.runtime.lastError);
+    browser.storage.sync.get('laiOptions', function (obj) {
+      if (browser.runtime.lastError) {
+        return reject(browser.runtime.lastError);
       }
 
       const laiOptions = Object.assign({}, defaults, obj.laiOptions);
@@ -233,7 +233,7 @@ function getLaiOptions() {
   });
 }
 
-chrome.storage.onChanged.addListener(function (changes, namespace) {
+browser.storage.onChanged.addListener(function (changes, namespace) {
   for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
     if (key === 'laiOptions') {
       laiOptions = newValue;

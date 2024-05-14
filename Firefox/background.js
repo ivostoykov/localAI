@@ -2,7 +2,7 @@ var controller;
 var shouldAbort = false;
 var laiOptions;
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
     if(tab.url && !tab.url.startsWith('http')) {  return;  }
 
@@ -12,13 +12,16 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 
-chrome.action.onClicked.addListener((tab) => {
+/* browser.browserAction.onClicked.addListener((tab) => {
     if(tab.url.startsWith('http')) {
-        chrome.tabs.sendMessage(tab.id, { action: "toggleSidebar" });
+        browser.tabs.sendMessage(tab.id, { action: "toggleSidebar" });
     }
+}); */
+browser.browserAction.onClicked.addListener((tab) => {
+    console.log(tab.url);
 });
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!controller) {
         controller = new AbortController();
     }
@@ -31,7 +34,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             shouldAbort = true;
             break;
         case "openOptionsPage":
-            chrome.tabs.create({url: chrome.runtime.getURL('options.html')});
+            browser.tabs.create({url: browser.runtime.getURL('options.html')});
             break;
         default:
             console.error('Unrecognized action:', request?.action);
@@ -39,28 +42,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
+browser.runtime.onInstalled.addListener(() => {
+    browser.contextMenus.create({
         id: "sendToLocalAi",
         title: "Local AI",
         contexts: ["all"]
     });
 
-    chrome.contextMenus.create({
+    browser.contextMenus.create({
         id: "selectElement",
         title: "Select and Send Element",
         parentId: "sendToLocalAi",
         contexts: ["all"]
     });
 
-    chrome.contextMenus.create({
+    browser.contextMenus.create({
         id: "sendSelectedText",
         title: "Send Selected",
         parentId: "sendToLocalAi",
         contexts: ["selection"]
     });
 
-    chrome.contextMenus.create({
+    browser.contextMenus.create({
         id: "sendPageContent",
         title: "Entire Page",
         parentId: "sendToLocalAi",
@@ -68,25 +71,25 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+browser.contextMenus.onClicked.addListener((info, tab) => {
     switch (info.menuItemId) {
         case "sendSelectedText":
             if (!info.selectionText.length) { return; }
             if (!tab.id) {  return;  }
-            chrome.tabs.sendMessage(tab.id, {
+            browser.tabs.sendMessage(tab.id, {
                 action: "activePageSelection",
                 selection: info.selectionText
             });
             break;
         case "sendPageContent":
             if(tab.id){
-                chrome.scripting.executeScript({
+                browser.scripting.executeScript({
                     target: {tabId: tab.id},
                     function: extractEnhancedContent
                 }, (response) => {
                     const pageContent = response?.[0]?.result ?? '';
                     if (!pageContent) {  return;  }
-                        chrome.tabs.sendMessage(tab.id, {
+                        browser.tabs.sendMessage(tab.id, {
                             action: "activePageContent",
                             selection: pageContent
                         });
@@ -95,7 +98,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             break;
         case "selectElement":
             if (!tab.id) {  return;  }
-            chrome.tabs.sendMessage(tab.id, {
+            browser.tabs.sendMessage(tab.id, {
                 action: "toggleSelectElement",
                 selection: true
             });
@@ -109,12 +112,12 @@ function fetchUserCommandResult(command, sender) {
     return new Promise((resolve, reject) => {
         switch (command) {
             case 'page':
-                chrome.scripting.executeScript({
+                browser.scripting.executeScript({
                     target: {tabId: sender.tab.id},
                     function: extractEnhancedContent
                 }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
+                    if (browser.runtime.lastError) {
+                        reject(new Error(browser.runtime.lastError.message));
                         return;
                     }
                     resolve(response?.[0]?.result ?? '');
@@ -169,20 +172,20 @@ function handleStreamingResponse(reader, senderTabId) {
     const read = () => {
         if(shouldAbort) {
             reader.cancel();
-            chrome.tabs.sendMessage(senderTabId, { action: "streamAbort" });
+            browser.tabs.sendMessage(senderTabId, { action: "streamAbort" });
             return;
         }
         reader.read().then(({ done, value }) => {
             if (done) {
-                chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" });
+                browser.tabs.sendMessage(senderTabId, { action: "streamEnd" });
                 return;
             }
             const textChunk = new TextDecoder().decode(value);
-            chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: textChunk});
+            browser.tabs.sendMessage(senderTabId, { action: "streamData", data: textChunk});
             read();
         }).catch(error => {
             if (!shouldAbort) {
-                chrome.tabs.sendMessage(senderTabId, { action: "streamError", error: error.toString() });
+                browser.tabs.sendMessage(senderTabId, { action: "streamError", error: error.toString() });
             }
         });
     };
@@ -230,16 +233,16 @@ async function fetchDataAction(request, sender) {
     .then(response => {
         if(shouldAbort && controller){
             controller.abort();
-            chrome.tabs.sendMessage(senderTabId, { action: "streamAbort" });
+            browser.tabs.sendMessage(senderTabId, { action: "streamAbort" });
             return;
         }
         handleStreamingResponse(response?.body?.getReader(), sender.tab.id);
     })
     .catch(error => {
         if (error.name === 'AbortError') {
-            chrome.tabs.sendMessage(sender.tab.id, { action: "streamAbort"});
+            browser.tabs.sendMessage(sender.tab.id, { action: "streamAbort"});
         } else {
-            chrome.tabs.sendMessage(sender.tab.id, { action: "streamError", error: error.toString()});
+            browser.tabs.sendMessage(sender.tab.id, { action: "streamError", error: error.toString()});
         }
         delete controller;
     });
@@ -315,9 +318,9 @@ function getOptions() {
         "systemInstructions": '',
         "personalInfo": ''
       };
-      chrome.storage.sync.get('laiOptions', function (obj) {
-        if (chrome.runtime.lastError) {
-          return reject(chrome.runtime.lastError);
+      browser.storage.sync.get('laiOptions', function (obj) {
+        if (browser.runtime.lastError) {
+          return reject(browser.runtime.lastError);
         }
 
         const laiOptions = Object.assign({}, defaults, obj.laiOptions);
