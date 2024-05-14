@@ -18,7 +18,9 @@
     "tabs",
     "contextMenus",
     "scripting",
-    "http://localhost/*"
+    "http://localhost/*",
+    "http://*/*",
+    "https://*/*"
   ],
   "browser_action": {
     "default_icon": {

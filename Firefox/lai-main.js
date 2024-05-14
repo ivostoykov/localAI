@@ -1,5 +1,6 @@
-// const laiWordEndings = /(?:\w+'(?:m|re|ll|s|d|ve|t))\s/;  // 'm, 're, 's, 'd, 'll, 've, 't
-// const laiWordFormations = /(?:'(?:clock|til|bout|cause|em))/; // 'clock, 'til, 'bout, 'cause, 'em
+
+var laiWordEndings = /(?:\w+'(?:m|re|ll|s|d|ve|t))\s/;  // 'm, 're, 's, 'd, 'll, 've, 't
+var laiWordFormations = /(?:'(?:clock|til|bout|cause|em))/; // 'clock, 'til, 'bout, 'cause, 'em
 
 function laiInitSidebar() {
     const shadowRoot = document.getElementById('localAI').shadowRoot;
@@ -387,6 +388,9 @@ function laiAbortRequest(e) {
     browser.runtime.sendMessage({action: "abortFetch"}, () => {
         console.log("Abort message sent");
     });
+    const shadowRoot = document.getElementById('localAI').shadowRoot;
+    shadowRoot?.getElementById('laiAbort')?.classList.add('lai-invisible');
+    shadowRoot?.getElementById('laiUserInput')?.classList.remove('lai-invisible');
 }
 
 
@@ -487,10 +491,10 @@ browser.runtime.onMessage.addListener((response) => {
             laiSwapSidebarWithButton(true);
             break;
         case "activePageSelection":
-            laiAppendSelectionToUserImput(response.selection);
+            laiAppendSelectionToUserInput(response.selection);
             break;
         case "activePageContent":
-            laiAppendSelectionToUserImput(response.selection.replace(/\s{1,}/gm, ' '));
+            laiAppendSelectionToUserInput(response.selection.replace(/\s{1,}/gm, ' '));
             break;
         case "toggleSelectElement":
             isElementSelectionActive = response.selection;
@@ -549,7 +553,7 @@ function laiGetRecipient(){
     return recipient;
 }
 
-function laiAppendSelectionToUserImput(text){
+function laiAppendSelectionToUserInput(text){
     const shadowRoot = document.getElementById('localAI').shadowRoot;
     const sideBar = shadowRoot.getElementById('laiSidebar');
     if(!sideBar){

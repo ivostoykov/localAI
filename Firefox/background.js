@@ -12,13 +12,8 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 
-/* browser.browserAction.onClicked.addListener((tab) => {
-    if(tab.url.startsWith('http')) {
-        browser.tabs.sendMessage(tab.id, { action: "toggleSidebar" });
-    }
-}); */
 browser.browserAction.onClicked.addListener((tab) => {
-    console.log(tab.url);
+    browser.tabs.sendMessage(tab.id, { action: "toggleSidebar" });
 });
 
 browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -113,14 +108,18 @@ function fetchUserCommandResult(command, sender) {
         switch (command) {
             case 'page':
                 browser.scripting.executeScript({
-                    target: {tabId: sender.tab.id},
-                    function: extractEnhancedContent
-                }, (response) => {
-                    if (browser.runtime.lastError) {
-                        reject(new Error(browser.runtime.lastError.message));
-                        return;
+                    target: { tabId: sender.tab.id },
+                    func: extractEnhancedContent
+                })
+                .then((results) => {
+                    if (results && results.length > 0) {
+                        resolve(results[0].result);
+                    } else {
+                        resolve('');
                     }
-                    resolve(response?.[0]?.result ?? '');
+                })
+                .catch((error) => {
+                    reject(new Error(error.message));
                 });
                 break;
             case 'url':

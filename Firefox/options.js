@@ -25,8 +25,20 @@ function saveSettings(e) {
 }
 
 function loadSettings() {
+    const defaults = {
+        "openPanelOnLoad": false,
+        "localPort": "1234",
+        "chatHistory": 25,
+        "closeOnClickOut": true,
+        "closeOnCopy": false,
+        "closeOnSendTo": true,
+        "showEmbeddedButton": false,
+        "systemInstructions": '',
+        "personalInfo": ''
+    };
+
     browser.storage.sync.get('laiOptions', function(obj) {
-        const formData = obj.laiOptions || {};
+        const formData = Object.assign({}, defaults, obj.laiOptions);
         Object.keys(formData).forEach(key => {
             const element = document.getElementById(key);
             if (element) {
