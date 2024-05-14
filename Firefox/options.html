@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPT Sidebar Options</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+    <div class="form-container">
+        <form id="laiOptionsForm">
+            <div class="el-holder">
+                <input type="checkbox" name="showEmbeddedButton" id="showEmbeddedButton" />
+                <label for="showEmbeddedButton">Show embedded button</label>
+                <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon" title="Embedded button icon">
+            </div>
+            <div class="el-holder">
+                <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
+                <label for="openPanelOnLoad">Open panel on load</label>
+            </div>
+            <div class="el-holder">
+                <input type="checkbox" name="closeOnClickOut" id="closeOnClickOut" />
+                <label for="closeOnClickOut">Close Sidebar when click outside</label>
+            </div>
+            <div class="el-holder">
+                <input type="checkbox" name="closeOnSendTo" id="closeOnSendTo" />
+                <label for="closeOnSendTo">Close adter Send To</label>
+            </div>
+            <div class="el-holder">
+                <input type="checkbox" name="closeOnCopy" id="closeOnCopy" />
+                <label for="closeOnCopy">Close Sidebar after copy</label>
+            </div>
+            <div class="el-holder">
+                <label for="localPort">Local Server Port:</label>
+                <input type="number" id="localPort" name="localPort" value="1234">
+            </div>
+            <div class="el-holder">
+                <label for="chatHistory">Chat History length:</label>
+                <input type="number" id="chatHistory" name="chatHistory" value="25">
+            </div>
+            <div class="el-holder">
+                <label for="localPort">System Instructions:</label>
+                <div class="tooltip">
+                    <span class="info-circle">&#9432;</span>
+                    <span class="tooltip-text">Enter any specific instructions for the session.</span>
+                </div>
+                <textarea id="systemInstructions" name="systemInstructions" rows="8"></textarea>
+            </div>
+            <div class="el-holder">
+                <label for="personalInfo">System Instructions:</label>
+                <div class="tooltip">
+                    <span class="info-circle">&#9432;</span>
+                    <span class="tooltip-text">
+                        Enter key/value pairs separated by semicolumn (";") or new line. Example: <br>
+                        name=John Dow<br>
+                        name: Jane Dow
+                    </span>
+                </div>
+                <textarea id="personalInfo" name="personalInfo" rows="8"></textarea>
+            </div>
+            <button type="submit">Save</button>
+            <button type="button" id="cancelButton">Cancel</button>
+        </form>
+        <div id="message" class="message-box invisible"></div>
+    </div>
+    <script src="options.js"></script>
+</body>
+</html>
