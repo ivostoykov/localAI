@@ -1,0 +1,28 @@
+<header class="lai-header">
+    <div class="lai-ribbon">
+        <div id="laiModelName" class="lai-model"></div>
+        <div class="lai-cog-menu-button lai-ribbon-button">&#x2699;</div>
+        <div id="laiSysIntruct" class="lai-wrench-menu-button lai-ribbon-button">
+            <img src="" alt="System Instructions" title="System Instructions" class="ai-wrench-button-img" data-type="wrench">
+        </div>
+        <div class="lai-ribbon-controls">
+            <div id="laiPinned" class="lai-ribbon-pin-button">
+                <img src="" alt="Unpin in" title="Unpin it" class="ai-pin-button-img" data-type="pushpin">
+                <img src="" alt="Pin in" title="Pin it" class="ai-pin-button-img lai-invisible" data-type="black_pushpin">
+            </div>
+            <div id="laiRecycleAll" class="lai-ribbon-button" title="Delete chat history">&#9851</div>
+            <div class="lai-close-button" title="Close">&#x2716</div>
+        </div>
+</header>
+
+<div id="laiSysIntructContainer" class="lsi-sys-instruction-container">
+    <textarea id="laiSysIntructInput"  placeholder="Write up to 32768 chars assistant instructions"></textarea>
+</div>
+<div id="laiChatMessageList" class="lai-chat-message-list"></div>
+<div class="lai-user-area">
+    <textarea id="laiUserInput" placeholder="Type your message here... (Hit Enter to send; Shift+Enter or Numpad Enter for a new line)" rows="5"></textarea>
+    <div id="laiSuggestionBox" class="lai-invisible lai-suggestion-box"></div>
+    <button id="laiAbort" class="lai-button-abort lai-invisible">Abort</button>
+</div>
+<div id="laiCopyHint" class="lai-copy-hint lai-invisible">Copied!</div>
+<div class="lai-resize-handle"><img src="" alt="resize" data-type="resize"></div>

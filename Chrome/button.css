@@ -1,0 +1,36 @@
+.lai-semi-sphere-button {
+  position: fixed;
+  bottom: -40px;
+  right: -45px;
+  z-index: 1000;
+  cursor: pointer;
+  height: 60px;
+  width: 100px;
+  border-radius: 30px 0 0 30px;
+  color: white;
+  border: none;
+  text-align: left;
+  line-height: 60px;
+  padding-left: 15px;
+  transition: transform 0.6s ease-in-out, background-color 0.6s ease-in-out, padding-left 0.6s ease-in-out, bottom 0.6s ease-in-out, right 0.6s ease-in-out;
+  transform: rotate(-55deg);
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+}
+
+.lai-semi-sphere-button:hover {
+  transform: rotate(0deg);
+  padding-left: 25px;
+  bottom: 50px;
+  right: 2px;
+}
+
+.close-semi-sphere-button{
+  position: absolute;
+  right: 95px;
+  bottom: -35px;
+  line-height: 15px;
+  vertical-align: bottom;
+  justify-items: flex-end;
+  margin: auto;
+  color: red;
+}
