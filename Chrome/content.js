@@ -1,18 +1,26 @@
 var laiOptions = {};
+var aiSessions = [];
+var aiUserCommands = [];
+var userCmdItemBtns = {'edit':null, 'execute': null, 'paste': null, 'delete': null};
+var activeSessionIndex = 0;
 var messages = [];
-var currentStreamData = '';
+var attachments = [];
 var userScrolled = false;
 var isElementSelectionActive = false;
 var dumpStream = false;
-var availableCommands = ['@{{page}}', '@{{dump}}', '@{{help}}'];
-const commands = {
+var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
+const commandPlacehoders = {
   "@{{page}}": "Include page into the prompt",
-  "@{{dump}}": "Dump LLM response into the console"
+  "@{{dump}}": "Dump LLM response into the console",
+  "@{{now}}": "Include current date and time",
+  "@{{today}}": "Include cuddent date without the time",
+  "@{{time}}": "Include current time without the date"
 };
 
 document.addEventListener('DOMContentLoaded', async function (e) {
 
   document.addEventListener('click', function (event) {
+    hideSessionHistoryMenu();
     if(isElementSelectionActive) {  laiGetClickedSelectedElement(event);  }
 
     const localAI = document.getElementById('localAI');
@@ -55,6 +63,8 @@ document.addEventListener('DOMContentLoaded', async function (e) {
 
   try {
     laiOptions = await getLaiOptions();
+    await getAiSessions();
+    await getAiUserCommands();
   } catch (err) {
     console.error(err);
     return;
@@ -72,9 +82,8 @@ document.addEventListener('DOMContentLoaded', async function (e) {
 });
 
 function init() {
-  const localAI = Object.assign(document.createElement('div'), {
-    id: "localAI",
-    className: "js-local-ai"
+  const localAI = Object.assign(document.createElement('local-ai'), {
+    id: "localAI"
   });
 
   document?.body?.appendChild(localAI);
@@ -95,7 +104,8 @@ function laiGetClickedSelectedElement(event){
 
 function laiBuiltMainButton() {
   var theMainButton = laiBuildMainButton();
-  const shadowRoot = document.getElementById('localAI').shadowRoot;
+  const shadowRoot = getShadowRoot();
+if(!shadowRoot) {  return;  }
   shadowRoot.appendChild(theMainButton);
   theMainButton.addEventListener('click', laiMainButtonClicked);
   theMainButton.querySelector('div.close-semi-sphere-button')?.addEventListener('click', (e) => {
@@ -150,7 +160,9 @@ function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
         className: "lai-fixed-parent",
         innerHTML: data
       });
-      const shadowRoot = document.getElementById('localAI').shadowRoot;
+      const shadowRoot = getShadowRoot();
+      if(!shadowRoot) {  return;  }
+
       shadowRoot.appendChild(theSideBar);
 
       if (typeof (sidebarLoadedCallback) === 'function') {
@@ -168,7 +180,8 @@ function laiFetchStyles(cssNames) {
     fetch(chrome.runtime.getURL(cssName))
       .then(response => response.text())
       .then(data => {
-        const shadowRoot = document.getElementById('localAI').shadowRoot;
+        const shadowRoot = getShadowRoot();
+        if(!shadowRoot) {  return;  }
         const styleElement = document.createElement('style');
         styleElement.innerHTML = data;
         styleElement.id = cssName.split('.')[0];
@@ -186,23 +199,24 @@ function laiSetImg(el) {
 }
 
 function laiShowMessage(message, type) {
-  const shadowRoot = document.getElementById('localAI').shadowRoot;
-  let msg = shadowRoot.getElementById('laiFeedbackMessage');
-  if ((type || 'lai-info')?.indexOf('lai-') !== 0) {
-    type = `lai-${type}`;
-  }
+  const shadowRoot = getShadowRoot();
+  if(!shadowRoot) {  return;  }
+  let msg = shadowRoot.querySelector('#feedbackMessage');
 
-  if (msg.classList.contains('lai-feedback-message-slide')) {
-    msg.classList.remove('lai-feedback-message-slide');
+  const types = ['success', 'error', 'info', 'warning'];
+  type = types.find(el => el===type) || 'info';
+
+  if (msg.classList.contains('feedback-message-active')) {
+    msg.classList.remove('feedback-message-active');
     setTimeout(() => { laiShowMessage(message, type); }, 250);
     return;
   }
 
   msg.innerHTML = message;
-  msg.classList.remove('lai-success', 'lai-error', 'lai-info', 'lai-warning');
-  msg.classList.add('lai-feedback-message-slide', type || 'lai-info');
+  msg.classList.remove('success', 'error', 'info', 'warning');
+  msg.classList.add('feedback-message-active', type || 'info');
   setTimeout(() => {
-    msg.classList.remove('lai-feedback-message-slide');
+    msg.classList.remove('feedback-message-active');
   }, 3000);
 }
 
@@ -211,12 +225,13 @@ function getLaiOptions() {
     const defaults = {
       "openPanelOnLoad": false,
       "localPort": "1234",
-      "chatHistory": 25,
+      "chatHistory": 5,
       "closeOnClickOut": true,
       "closeOnCopy": false,
       "closeOnSendTo": true,
       "showEmbeddedButton": false,
-      "systemInstructions": '',
+      "loadHistoryOnStart": false,
+      "systemInstructions": 'You are a helpful assistant.',
       "personalInfo": ''
     };
     chrome.storage.sync.get('laiOptions', function (obj) {
@@ -233,6 +248,26 @@ function getLaiOptions() {
   });
 }
 
+async function getAiSessions(){
+  const sessions = await chrome.storage.local.get(['aiSessions']);
+  aiSessions = sessions.aiSessions || [];
+  if(aiSessions.length < 1){  aiSessions[0] = [];  }
+  activeSessionIndex = aiSessions.length - 1;
+}
+
+async function setAiSessions(){
+  await chrome.storage.local.set({['aiSessions']: aiSessions});
+}
+
+async function getAiUserCommands(){
+  const commands = await chrome.storage.local.get(['aiUserCommands']);
+  aiUserCommands = commands.aiUserCommands || [];
+}
+
+async function setAiUserCommands(){
+  await chrome.storage.local.set({['aiUserCommands']: aiUserCommands});
+}
+
 chrome.storage.onChanged.addListener(function (changes, namespace) {
   for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
     if (key === 'laiOptions') {
@@ -241,7 +276,8 @@ chrome.storage.onChanged.addListener(function (changes, namespace) {
         laiUpdateMainButtonStyles();
       }
       if (oldValue.systemInstructions !== newValue.systemInstructions) {
-        const shadowRoot = document.getElementById('localAI').shadowRoot;
+        const shadowRoot = getShadowRoot();
+        if(!shadowRoot) {  return;  }
         const sysIntruct = shadowRoot.getElementById('laiSysIntructInput');
         const currentValue = sysIntruct.value.indexOf(oldValue.systemInstructions) < 0
           ? `${newValue.systemInstructions}\n${sysIntruct.value}`

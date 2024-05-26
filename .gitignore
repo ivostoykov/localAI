@@ -1,2 +1,4 @@
 *.zip
+*.bak
+*.back
 .vscode/

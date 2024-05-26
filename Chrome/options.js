@@ -4,6 +4,12 @@ document.addEventListener('DOMContentLoaded', e => {
 });
 document.getElementById('laiOptionsForm').addEventListener('submit', saveSettings);
 document.getElementById('cancelButton').addEventListener('click', cancelOptions);
+document.getElementById('deleteAllSessions').addEventListener('click', deleteAllAiSessions);
+document.getElementById('exportSessions').addEventListener('click', exportAsFile);
+document.getElementById('importUserCmd').addEventListener('click', importUserCommand);
+document.getElementById('exportUserCmd').addEventListener('click', exportAsFile);
+document.getElementById('cleartUserCmd').addEventListener('click', deleteUserCommands);
+document.getElementById('fileInput').addEventListener('change', importFromFile);
 
 function saveSettings(e) {
     e.preventDefault();
@@ -66,3 +72,70 @@ function showMessage(message, type){
 function cancelOptions() {
     window.close(); // Closes the options page
 }
+
+function deleteAllAiSessions(e){
+   chrome.storage.local.remove(['aiSessions']).then(() =>{
+    showMessage('All sessions have been deleted.', 'success');
+   }).catch(e => {
+    console.error('>>>', e)
+   });
+}
+
+function deleteUserCommands(e){
+    chrome.storage.local.remove(['aiUserCommands']).then(() =>{
+        showMessage('All User commands have been deleted.', 'success');
+    }).catch(e => {
+        console.error('>>>', e)
+    });
+}
+
+async function exportAsFile(e) {
+    let storageKey;
+    let fileName = 'export';
+    switch (e.target.id) {
+        case 'exportSessions':
+            storageKey = 'aiSessions';
+            fileName = `session_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
+            break;
+        case 'exportUserCmd':
+            storageKey = 'aiUserCommands';
+            fileName = `user_commands_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
+            break;
+        default:
+            break;
+    }
+
+    if(!storageKey){  return;  }
+
+    const obj = await chrome.storage.local.get([storageKey]);
+    const json = obj[storageKey] || [];
+    var blob = new Blob([JSON.stringify(json, null, 4)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = `${fileName}.json`;
+    link.click();
+}
+
+function importUserCommand(e) {
+    const fileInput = document.getElementById('fileInput')
+    fileInput.click();
+}
+
+function importFromFile(e){
+    const file = e.target.files[0];
+    var reader = new FileReader();
+    reader.onloadend = function() {
+        try {
+            var json = JSON.parse(reader.result);
+            chrome.storage.local.set({['aiUserCommands']: json})
+            .then(() => showMessage('User Commands imported successfully.', 'success'))
+            .catch(e => console.error('>>>', e));
+        } catch (err) {
+            console.error('>>>', err);
+        }
+    };
+
+    reader.readAsText(file);
+}
+

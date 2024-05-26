@@ -218,7 +218,7 @@ async function fetchDataAction(request, sender) {
     const controller = new AbortController();
     let messages = request?.data?.messages || [];
     let data = messages.slice(-1)[0]?.content || '';
-    data = await laiComposeUerImput(data, sender);
+    data = await laiComposeUerInput(data, sender);
     request.data.messages.splice(-1, 1, { "role": "user", "content": data});
     messages = updateSystemMessageDate(messages);
 
@@ -247,7 +247,7 @@ async function fetchDataAction(request, sender) {
     });
 }
 
-async function laiComposeUerImput(userInputText, sender) {
+async function laiComposeUerInput(userInputText, sender) {
     if (!userInputText) return '';
 
     var combinedResult = [];

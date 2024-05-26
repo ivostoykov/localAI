@@ -1,14 +1,17 @@
-
+var theShadowRoot;
 var laiOptions = {};
 var messages = [];
 var currentStreamData = '';
 var userScrolled = false;
 var isElementSelectionActive = false;
 var dumpStream = false;
-var availableCommands = ['@{{page}}', '@{{dump}}', '@{{help}}'];
+var availableCommands = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
 const commands = {
   "@{{page}}": "Include page into the prompt",
-  "@{{dump}}": "Dump LLM response into the console"
+  "@{{dump}}": "Dump LLM response into the console",
+  "@{{now}}": "Include current date and time",
+  "@{{today}}": "Include cuddent date without the time",
+  "@{{time}}": "Include current time without the date"
 };
 
 document.addEventListener('DOMContentLoaded', async function (e) {
@@ -18,7 +21,7 @@ document.addEventListener('DOMContentLoaded', async function (e) {
 
     const localAI = document.getElementById('localAI');
     if(localAI === event.target){  return;  }
-    const laiShadowRoot = localAI?.shadowRoot
+    const laiShadowRoot = localAI?.theShadowRoot
     if(!laiShadowRoot){  return;  }
     const pluginContainer = laiShadowRoot.getElementById('laiSidebar');
 
@@ -35,7 +38,7 @@ document.addEventListener('DOMContentLoaded', async function (e) {
     if (e.key !== "Escape") { return; }
     if (!laiOptions.closeOnClickOut) { return; }
 
-    const pluginContainer = document.getElementById('localAI')?.shadowRoot?.getElementById('laiSidebar');
+    const pluginContainer = document.getElementById('localAI')?.theShadowRoot?.getElementById('laiSidebar');
 
     if (window.innerWidth - pluginContainer.getBoundingClientRect().right < 0) {
       return;
@@ -64,8 +67,8 @@ document.addEventListener('DOMContentLoaded', async function (e) {
   init();
   Promise.all(laiFetchStyles(['button.css', 'sidebar.css']))
     .then(res => {
-      laiFetchAndBuildSidebarContent(laiInitSidebar);
-      laiBuiltMainButton();
+      laiFetchAndBuildSidebarContent(initSidebar);
+      builtMainButton();
     })
     .catch(error => {
       console.error('Error loading one or more styles:', error);
@@ -94,10 +97,10 @@ function laiGetClickedSelectedElement(event){
   laiAppendSelectionToUserInput(event.target.textContent.trim().replace(/\s{1,}/g, ' ') || 'No content found');
 }
 
-function laiBuiltMainButton() {
-  var theMainButton = laiBuildMainButton();
-  const shadowRoot = document.getElementById('localAI').shadowRoot;
-  shadowRoot.appendChild(theMainButton);
+function builtMainButton() {
+//   var theMainButton = laiBuildMainButton();
+  // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
+  theShadowRoot.appendChild(theMainButton);
   theMainButton.addEventListener('click', laiMainButtonClicked);
   theMainButton.querySelector('div.close-semi-sphere-button')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -112,8 +115,8 @@ function laiBuiltMainButton() {
   });
 }
 
-function laiBuildMainButton(){
-  var theMainButton = Object.assign(document.createElement('div'), {
+function buildMainButton(){
+//   var theMainButton = Object.assign(document.createElement('div'), {
     id: "laiMainButton",
     className: `lai-semi-sphere-button ${laiOptions.showEmbeddedButton ? '' : 'lai-invisible'}`,
     title: "Click to open the panel.",
@@ -146,13 +149,13 @@ function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
   fetch(browser.runtime.getURL('sidebar.html'))
     .then(response => response.text())
     .then(data => {
-      var theSideBar = Object.assign(document.createElement('div'), {
+      // var theSideBar = Object.assign(document.createElement('div'), {
         id: "laiSidebar",
         className: "lai-fixed-parent",
         innerHTML: data
       });
-      const shadowRoot = document.getElementById('localAI').shadowRoot;
-      shadowRoot.appendChild(theSideBar);
+      // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
+      theShadowRoot.appendChild(theSideBar);
 
       if (typeof (sidebarLoadedCallback) === 'function') {
         return sidebarLoadedCallback();
@@ -169,11 +172,11 @@ function laiFetchStyles(cssNames) {
     fetch(browser.runtime.getURL(cssName))
       .then(response => response.text())
       .then(data => {
-        const shadowRoot = document.getElementById('localAI').shadowRoot;
+        // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
         const styleElement = document.createElement('style');
         styleElement.innerHTML = data;
         styleElement.id = cssName.split('.')[0];
-        shadowRoot.appendChild(styleElement);
+        theShadowRoot.appendChild(styleElement);
         return true;
       })
   );
@@ -187,8 +190,8 @@ function laiSetImg(el) {
 }
 
 function laiShowMessage(message, type) {
-  const shadowRoot = document.getElementById('localAI').shadowRoot;
-  let msg = shadowRoot.getElementById('laiFeedbackMessage');
+  // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
+  let msg = theShadowRoot.querySelector('#laiFeedbackMessage');
   if ((type || 'lai-info')?.indexOf('lai-') !== 0) {
     type = `lai-${type}`;
   }
@@ -242,8 +245,8 @@ browser.storage.onChanged.addListener(function (changes, namespace) {
         laiUpdateMainButtonStyles();
       }
       if (oldValue.systemInstructions !== newValue.systemInstructions) {
-        const shadowRoot = document.getElementById('localAI').shadowRoot;
-        const sysIntruct = shadowRoot.getElementById('laiSysIntructInput');
+        // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
+        const sysIntruct = theShadowRoot.querySelector('#laiSysIntructInput');
         const currentValue = sysIntruct.value.indexOf(oldValue.systemInstructions) < 0
           ? `${newValue.systemInstructions}\n${sysIntruct.value}`
           : sysIntruct.value.replace(oldValue.systemInstructions, newValue.systemInstructions);

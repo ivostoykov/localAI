@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Local AI helper",
-  "version": "1.1.67",
+  "version": "1.1.89",
   "description": "Use local AI resources.",
   "icons": {
     "16": "img/icon16.png",
@@ -47,7 +47,7 @@
         "content.js",
         "lai-main.js"
       ],
-      "css":[
+      "css": [
         "sidebar.css",
         "button.css"
       ],

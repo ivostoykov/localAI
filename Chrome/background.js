@@ -120,6 +120,15 @@ function fetchUserCommandResult(command, sender) {
                     resolve(response?.[0]?.result ?? '');
                 });
                 break;
+            case 'now':
+                resolve((new Date()).toISOString());
+                break
+            case 'today':
+                resolve((new Date()).toISOString().split('T')[0]);
+                break
+            case 'time':
+                resolve((new Date()).toISOString().split('T')[1]);
+                break
             case 'url':
                 resolve(sender.url);
             default:
@@ -136,7 +145,7 @@ function extractEnhancedContent() {
         'script', 'style', 'code', 'header', 'footer', 'nav', 'aside',
         'form', 'iframe', 'video', '[id*="ad"]',
         '[class*="sidebar"]', '[class*="ad"]', '[class*="side-nav"]',
-        '.sidebar', '.widget'
+        '.sidebar', '.widget', 'button'
     ];
 
     // Remove elements based on the selectors
@@ -190,7 +199,8 @@ function handleStreamingResponse(reader, senderTabId) {
     read();
 }
 
-function updateSystemMessageDate(messages){
+// depreciated
+/* function updateSystemMessageDate(messages){
     let idx = messages.findIndex(el => el.role === "system");
     const sysIntruct = laiOptions?.systemInstructions || '';
     if(idx < 0){
@@ -198,19 +208,19 @@ function updateSystemMessageDate(messages){
         idx = 0;
     }
 
-    const currentDate = `[local date and time: ${( new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString())}]`;
+    // const currentDate = `[local date and time: ${( new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString())}]`;
 
-    if(!messages[idx].content){
-        messages[idx].content = `${sysIntruct} ${currentDate}`;
-    } else if(messages[idx].content.indexOf('[local date and time: ') < 0){
-        messages[idx].content += ` ${currentDate}`;
-    } else {
-        messages[idx].content = messages[idx].content.replace(/\[local date and time: \d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{1,2}:\d{1,2}\.\d{1,3}Z\]/gm, currentDate);
-    }
+    // if(!messages[idx].content){
+    //     messages[idx].content = `${sysIntruct} ${currentDate}`;
+    // } else if(messages[idx].content.indexOf('[local date and time: ') < 0){
+    //     messages[idx].content += ` ${currentDate}`;
+    // } else {
+    //     messages[idx].content = messages[idx].content.replace(/\[local date and time: \d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{1,2}:\d{1,2}\.\d{1,3}Z\]/gm, currentDate);
+    // }
 
     messages[idx].content = addPersonalInfoToSystemMessage(messages[idx].content);
     return messages;
-}
+} */
 
 async function fetchDataAction(request, sender) {
     const controller = new AbortController();
@@ -218,7 +228,8 @@ async function fetchDataAction(request, sender) {
     let data = messages.slice(-1)[0]?.content || '';
     data = await laiComposeUerImput(data, sender);
     request.data.messages.splice(-1, 1, { "role": "user", "content": data});
-    messages = updateSystemMessageDate(messages);
+    request.data.messages = request.data.messages.filter(msg => msg.content.trim());
+    // messages = updateSystemMessageDate(messages);
 
     const url = `http://localhost:${request.port}${request.path}`;
     fetch(url, {
@@ -249,14 +260,26 @@ async function laiComposeUerImput(userInputText, sender) {
     if (!userInputText) return '';
 
     var combinedResult = [];
-    const userCommands = [...userInputText.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
+    let userCommands = [];
+    if (Array.isArray(userInputText)) {
+        userInputText.forEach(txt => {
+            txt = txt.replace("📃", '');
+            userCommands = [...txt.matchAll(/@\{\{([\s\S]+?)\}\}/gm)]
+        });
+    } else {
+        userInputText = userInputText.replace("📃", '');
+        userCommands = [...userInputText.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
+    }
 
     if (userCommands.length < 1) return userInputText;
 
     for (const cmd of userCommands) {
         if (cmd && cmd.length > 1 && cmd[1]) {
-            const additionalInfo = await fetchUserCommandResult(cmd[1], sender);
-            combinedResult.push(`This is the content of the >${cmd[1]}<:\n${additionalInfo}`);
+            let additionalInfo = await fetchUserCommandResult(cmd[1], sender);
+            if(cmd[1] && cmd[1] === 'page'){
+                additionalInfo = `This is the content of the ${cmd[1]}:\n${additionalInfo}`
+            }
+            combinedResult.push(additionalInfo);
             userInputText = userInputText.replace(`@{{${cmd[1]}}}`, ``);
         }
     }
@@ -312,6 +335,7 @@ function getOptions() {
         "closeOnCopy": false,
         "closeOnSendTo": true,
         "showEmbeddedButton": false,
+        "loadHistoryOnStart": false,
         "systemInstructions": '',
         "personalInfo": ''
       };
