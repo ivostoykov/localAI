@@ -1,12 +1,15 @@
-var theShadowRoot;
 var laiOptions = {};
+var aiSessions = [];
+var aiUserCommands = [];
+var userCmdItemBtns = {'edit':null, 'execute': null, 'paste': null, 'delete': null};
+var activeSessionIndex = 0;
 var messages = [];
-var currentStreamData = '';
+var attachments = [];
 var userScrolled = false;
 var isElementSelectionActive = false;
 var dumpStream = false;
-var availableCommands = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
-const commands = {
+var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
+const commandPlacehoders = {
   "@{{page}}": "Include page into the prompt",
   "@{{dump}}": "Dump LLM response into the console",
   "@{{now}}": "Include current date and time",
@@ -17,11 +20,12 @@ const commands = {
 document.addEventListener('DOMContentLoaded', async function (e) {
 
   document.addEventListener('click', function (event) {
+    hideSessionHistoryMenu();
     if(isElementSelectionActive) {  laiGetClickedSelectedElement(event);  }
 
     const localAI = document.getElementById('localAI');
     if(localAI === event.target){  return;  }
-    const laiShadowRoot = localAI?.theShadowRoot
+    const laiShadowRoot = localAI?.shadowRoot
     if(!laiShadowRoot){  return;  }
     const pluginContainer = laiShadowRoot.getElementById('laiSidebar');
 
@@ -38,7 +42,7 @@ document.addEventListener('DOMContentLoaded', async function (e) {
     if (e.key !== "Escape") { return; }
     if (!laiOptions.closeOnClickOut) { return; }
 
-    const pluginContainer = document.getElementById('localAI')?.theShadowRoot?.getElementById('laiSidebar');
+    const pluginContainer = document.getElementById('localAI')?.shadowRoot?.getElementById('laiSidebar');
 
     if (window.innerWidth - pluginContainer.getBoundingClientRect().right < 0) {
       return;
@@ -59,6 +63,8 @@ document.addEventListener('DOMContentLoaded', async function (e) {
 
   try {
     laiOptions = await getLaiOptions();
+    await getAiSessions();
+    await getAiUserCommands();
   } catch (err) {
     console.error(err);
     return;
@@ -67,8 +73,8 @@ document.addEventListener('DOMContentLoaded', async function (e) {
   init();
   Promise.all(laiFetchStyles(['button.css', 'sidebar.css']))
     .then(res => {
-      laiFetchAndBuildSidebarContent(initSidebar);
-      builtMainButton();
+      laiFetchAndBuildSidebarContent(laiInitSidebar);
+      laiBuiltMainButton();
     })
     .catch(error => {
       console.error('Error loading one or more styles:', error);
@@ -76,9 +82,8 @@ document.addEventListener('DOMContentLoaded', async function (e) {
 });
 
 function init() {
-  const localAI = Object.assign(document.createElement('div'), {
-    id: "localAI",
-    className: "js-local-ai"
+  const localAI = Object.assign(document.createElement('local-ai'), {
+    id: "localAI"
   });
 
   document?.body?.appendChild(localAI);
@@ -94,13 +99,14 @@ function laiClearElementOver(e){
 function laiGetClickedSelectedElement(event){
   isElementSelectionActive = false;
   laiClearElementOver(event);
-  laiAppendSelectionToUserInput(event.target.textContent.trim().replace(/\s{1,}/g, ' ') || 'No content found');
+  laiAppendSelectionToUserImput(event.target.textContent.trim().replace(/\s{1,}/g, ' ') || 'No content found');
 }
 
-function builtMainButton() {
-//   var theMainButton = laiBuildMainButton();
-  // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
-  theShadowRoot.appendChild(theMainButton);
+function laiBuiltMainButton() {
+  var theMainButton = laiBuildMainButton();
+  const shadowRoot = getShadowRoot();
+if(!shadowRoot) {  return;  }
+  shadowRoot.appendChild(theMainButton);
   theMainButton.addEventListener('click', laiMainButtonClicked);
   theMainButton.querySelector('div.close-semi-sphere-button')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -115,8 +121,8 @@ function builtMainButton() {
   });
 }
 
-function buildMainButton(){
-//   var theMainButton = Object.assign(document.createElement('div'), {
+function laiBuildMainButton(){
+  var theMainButton = Object.assign(document.createElement('div'), {
     id: "laiMainButton",
     className: `lai-semi-sphere-button ${laiOptions.showEmbeddedButton ? '' : 'lai-invisible'}`,
     title: "Click to open the panel.",
@@ -149,13 +155,15 @@ function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
   fetch(browser.runtime.getURL('sidebar.html'))
     .then(response => response.text())
     .then(data => {
-      // var theSideBar = Object.assign(document.createElement('div'), {
+      var theSideBar = Object.assign(document.createElement('div'), {
         id: "laiSidebar",
         className: "lai-fixed-parent",
         innerHTML: data
       });
-      // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
-      theShadowRoot.appendChild(theSideBar);
+      const shadowRoot = getShadowRoot();
+      if(!shadowRoot) {  return;  }
+
+      shadowRoot.appendChild(theSideBar);
 
       if (typeof (sidebarLoadedCallback) === 'function') {
         return sidebarLoadedCallback();
@@ -172,11 +180,12 @@ function laiFetchStyles(cssNames) {
     fetch(browser.runtime.getURL(cssName))
       .then(response => response.text())
       .then(data => {
-        // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
+        const shadowRoot = getShadowRoot();
+        if(!shadowRoot) {  return;  }
         const styleElement = document.createElement('style');
         styleElement.innerHTML = data;
         styleElement.id = cssName.split('.')[0];
-        theShadowRoot.appendChild(styleElement);
+        shadowRoot.appendChild(styleElement);
         return true;
       })
   );
@@ -190,23 +199,24 @@ function laiSetImg(el) {
 }
 
 function laiShowMessage(message, type) {
-  // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
-  let msg = theShadowRoot.querySelector('#laiFeedbackMessage');
-  if ((type || 'lai-info')?.indexOf('lai-') !== 0) {
-    type = `lai-${type}`;
-  }
+  const shadowRoot = getShadowRoot();
+  if(!shadowRoot) {  return;  }
+  let msg = shadowRoot.querySelector('#feedbackMessage');
 
-  if (msg.classList.contains('lai-feedback-message-slide')) {
-    msg.classList.remove('lai-feedback-message-slide');
+  const types = ['success', 'error', 'info', 'warning'];
+  type = types.find(el => el===type) || 'info';
+
+  if (msg.classList.contains('feedback-message-active')) {
+    msg.classList.remove('feedback-message-active');
     setTimeout(() => { laiShowMessage(message, type); }, 250);
     return;
   }
 
   msg.innerHTML = message;
-  msg.classList.remove('lai-success', 'lai-error', 'lai-info', 'lai-warning');
-  msg.classList.add('lai-feedback-message-slide', type || 'lai-info');
+  msg.classList.remove('success', 'error', 'info', 'warning');
+  msg.classList.add('feedback-message-active', type || 'info');
   setTimeout(() => {
-    msg.classList.remove('lai-feedback-message-slide');
+    msg.classList.remove('feedback-message-active');
   }, 3000);
 }
 
@@ -215,12 +225,13 @@ function getLaiOptions() {
     const defaults = {
       "openPanelOnLoad": false,
       "localPort": "1234",
-      "chatHistory": 25,
+      "chatHistory": 5,
       "closeOnClickOut": true,
       "closeOnCopy": false,
       "closeOnSendTo": true,
       "showEmbeddedButton": false,
-      "systemInstructions": '',
+      "loadHistoryOnStart": false,
+      "systemInstructions": 'You are a helpful assistant.',
       "personalInfo": ''
     };
     browser.storage.sync.get('laiOptions', function (obj) {
@@ -237,6 +248,26 @@ function getLaiOptions() {
   });
 }
 
+async function getAiSessions(){
+  const sessions = await browser.storage.local.get(['aiSessions']);
+  aiSessions = sessions.aiSessions || [];
+  if(aiSessions.length < 1){  aiSessions[0] = [];  }
+  activeSessionIndex = aiSessions.length - 1;
+}
+
+async function setAiSessions(){
+  await browser.storage.local.set({['aiSessions']: aiSessions});
+}
+
+async function getAiUserCommands(){
+  const commands = await browser.storage.local.get(['aiUserCommands']);
+  aiUserCommands = commands.aiUserCommands || [];
+}
+
+async function setAiUserCommands(){
+  await browser.storage.local.set({['aiUserCommands']: aiUserCommands});
+}
+
 browser.storage.onChanged.addListener(function (changes, namespace) {
   for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
     if (key === 'laiOptions') {
@@ -245,8 +276,9 @@ browser.storage.onChanged.addListener(function (changes, namespace) {
         laiUpdateMainButtonStyles();
       }
       if (oldValue.systemInstructions !== newValue.systemInstructions) {
-        // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
-        const sysIntruct = theShadowRoot.querySelector('#laiSysIntructInput');
+        const shadowRoot = getShadowRoot();
+        if(!shadowRoot) {  return;  }
+        const sysIntruct = shadowRoot.getElementById('laiSysIntructInput');
         const currentValue = sysIntruct.value.indexOf(oldValue.systemInstructions) < 0
           ? `${newValue.systemInstructions}\n${sysIntruct.value}`
           : sysIntruct.value.replace(oldValue.systemInstructions, newValue.systemInstructions);

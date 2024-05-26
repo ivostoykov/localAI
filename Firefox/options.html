@@ -31,13 +31,17 @@
                 <label for="closeOnCopy">Close Sidebar after copy</label>
             </div>
             <div class="el-holder">
+                <input type="checkbox" name="loadHistoryOnStart" id="loadHistoryOnStart" />
+                <label for="loadHistoryOnStart">Load last history session on start</label>
+            </div>
+            <div class="el-holder">
                 <label for="localPort">Local Server Port:</label>
                 <input type="number" id="localPort" name="localPort" value="1234">
             </div>
-            <div class="el-holder">
+            <!-- <div class="el-holder">
                 <label for="chatHistory">Chat History length:</label>
                 <input type="number" id="chatHistory" name="chatHistory" value="25">
-            </div>
+            </div> -->
             <div class="el-holder">
                 <label for="localPort">System Instructions:</label>
                 <div class="tooltip">
@@ -47,7 +51,7 @@
                 <textarea id="systemInstructions" name="systemInstructions" rows="8"></textarea>
             </div>
             <div class="el-holder">
-                <label for="personalInfo">System Instructions:</label>
+                <label for="personalInfo">Personal Information:</label>
                 <div class="tooltip">
                     <span class="info-circle">&#9432;</span>
                     <span class="tooltip-text">
@@ -58,11 +62,21 @@
                 </div>
                 <textarea id="personalInfo" name="personalInfo" rows="8"></textarea>
             </div>
+
+            <div class="ext-container">
+                <button id="deleteAllSessions" type="button">Delete all previous sessions</button>
+                <button id="exportSessions" type="button">Export sessions</button>
+                <button id="importUserCmd" type="button">Import User Commands</button>
+                <button id="exportUserCmd" type="button">Export User Commands</button>
+                <button id="cleartUserCmd" type="button">Delete All User Commands</button>
+            </div>
+
             <button type="submit">Save</button>
             <button type="button" id="cancelButton">Cancel</button>
         </form>
         <div id="message" class="message-box invisible"></div>
     </div>
+    <input id="fileInput" type="file" class="invisible">
     <script src="options.js"></script>
 </body>
 </html>

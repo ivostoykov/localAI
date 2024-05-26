@@ -1,64 +1,51 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "Local AI helper",
-  "version": "1.1.89",
-  "description": "Use local AI resources.",
+  "version": "1.7.59",
+  "options_page": "options.html",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "jslib/stream_processor.min.js",
+        "lai-main.js",
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {},
   "icons": {
     "16": "img/icon16.png",
     "48": "img/icon48.png",
     "128": "img/icon128.png"
   },
-  "options_ui": {
-    "page": "options.html",
-    "open_in_tab": true
-  },
-  "permissions": [
-    "activeTab",
-    "storage",
-    "tabs",
-    "contextMenus",
-    "scripting",
-    "http://localhost/*",
-    "http://*/*",
-    "https://*/*"
-  ],
-  "browser_action": {
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    },
-    "default_title": "Click me"
-  },
-  "background": {
-    "scripts": [
-      "background.js"
-    ],
-    "persistent": false
-  },
-  "content_scripts": [
+  "web_accessible_resources": [
     {
-      "matches": [
-        "*://*/*"
-      ],
-      "js": [
-        "jslib/stream_processor.js",
-        "lai-main.js",
-        "content.js",
-        "lai-main.js"
-      ],
-      "css": [
+      "resources": [
+        "sidebar.html",
+        "button.css",
         "sidebar.css",
-        "button.css"
+        "lai-main.js",
+        "img/*.svg"
       ],
-      "run_at": "document_start",
-      "all_frames": true
+      "matches": [
+        "<all_urls>"
+      ]
     }
-  ],
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "{9f6b4f8c-a2fe-46ba-b5f1-2a73aef9e4f5}",
-      "strict_min_version": "89.0"
-    }
-  }
+  ]
 }

@@ -1,18 +1,34 @@
+<div id="dropzone" class="dropzone lai-invisible">Drop Here</div>
+
 <header class="lai-header">
     <div class="lai-ribbon">
-        <div id="laiModelName" class="lai-model"></div>
-        <div class="lai-cog-menu-button lai-ribbon-button">&#x2699;</div>
-        <div id="laiSysIntruct" class="lai-wrench-menu-button lai-ribbon-button">
-            <img src="" alt="System Instructions" title="System Instructions" class="ai-wrench-button-img" data-type="wrench">
-        </div>
-        <div class="lai-ribbon-controls">
-            <div id="laiPinned" class="lai-ribbon-pin-button">
-                <img src="" alt="Unpin in" title="Unpin it" class="ai-pin-button-img" data-type="pushpin">
-                <img src="" alt="Pin in" title="Pin it" class="ai-pin-button-img lai-invisible" data-type="black_pushpin">
+        <div id="laiModelName" class="lai-model ribbon-label"></div>
+        <div id="version" class="version ribbon-label lai-invisible "></div>
+        <div class="ribbon-sections">
+            <div class="rib-section left">
+                <img src="" id="cogBtn" alt="Options" title="Options" data-type="cog"/>
             </div>
-            <div id="laiRecycleAll" class="lai-ribbon-button" title="Delete chat history">&#9851</div>
-            <div class="lai-close-button" title="Close">&#x2716</div>
+
+            <div id="laiSessionHistryMenu" class="rib-section center" title="Session history">
+                <img src="" id="newSession" alt="New Session" title="New Session" data-type="plus">
+                <img src="" id="sessionHistry" alt="Session history" title="System Instructions" data-type="history">
+                <img src="" id="laiRecycleAll" alt="Delete Session" title="Delete Session" data-type="recycle" />
+            </div>
+
+            <div id="laiSysIntruct" class="rib-section center">
+                <img src="" id="systemIntructions" alt="System Instructions" title="System Instructions" class="ai-wrench-button-img"
+                    data-type="wrench">
+            </div>
+
+            <div class="rib-section right">
+                <div id="laiPinned" class="lai-ribbon-pin-button">
+                    <img src="" alt="Pin Panel" title="Pin Panel" data-type="pushpin">
+                    <img src="" alt="Unpin Panel" title="Unpin Panel" class="lai-invisible" data-type="black_pushpin">
+                </div>
+                <img src="" id="closeSidebarBtn" alt="Close" title="Close" data-type="close">
+            </div>
         </div>
+    </div>
 </header>
 
 <div id="laiSysIntructContainer" class="lsi-sys-instruction-container">
@@ -20,9 +36,48 @@
 </div>
 <div id="laiChatMessageList" class="lai-chat-message-list"></div>
 <div class="lai-user-area">
+    <div id="attachContainer" class="attachment-container"></div>
     <textarea id="laiUserInput" placeholder="Type your message here... (Hit Enter to send; Shift+Enter or Numpad Enter for a new line)" rows="5"></textarea>
     <div id="laiSuggestionBox" class="lai-invisible lai-suggestion-box"></div>
     <button id="laiAbort" class="lai-button-abort lai-invisible">Abort</button>
 </div>
+<div id="feedbackMessage" class="feedback-message">&nbsp;</div>
 <div id="laiCopyHint" class="lai-copy-hint lai-invisible">Copied!</div>
 <div class="lai-resize-handle"><img src="" alt="resize" data-type="resize"></div>
+<div id="commandListContainer" class="lai-invisible user-command-list">
+    <div class="lai-close-button help-close-btn" title="Close">✖</div>
+    <div class="user-command-block"></div>
+</div>
+
+<template id="helpTemplate">
+    <div id="helpPopup">
+        <div class="lai-close-button help-close-btn" title="Close">✖</div>
+        <h3>Available Placeholder Commands</h3>
+        <ul id="placeholderCommandList">
+            <!-- Command items will be inserted here -->
+        </ul>
+    </div>
+</template>
+
+<template id="histMenuTemplate">
+    <div></div>
+</template>
+
+<template id="editorTemplate">
+    <div id="userCommandEditor" class="user-command-editor">
+        <div class="lai-close-button help-close-btn" title="Close">✖</div>
+        <div class="row">
+            <label for="commandName">Command Name:</label>
+            <input type="text" id="commandName" placeholder="Enter command without spaces...">
+        </div>
+        <div class="row">
+            <label for="commandDescription">Command Description:</label>
+            <input type="text" id="commandDescription" placeholder="Optional">
+        </div>
+        <div class="command-row">
+            <label for="commandBody">Prompt Body:</label>
+            <textarea id="commandBody" placeholder="Enter Prompt..."></textarea>
+        </div>
+        <button>Save</button>
+    </div>
+</template>
