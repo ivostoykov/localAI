@@ -12,7 +12,7 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 
-browser.action.onClicked.addListener((tab) => {
+browser.browserAction.onClicked.addListener((tab) => {
     if(tab.url.startsWith('http')) {
         browser.tabs.sendMessage(tab.id, { action: "toggleSidebar" });
     }

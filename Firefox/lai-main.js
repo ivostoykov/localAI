@@ -895,6 +895,7 @@ function popUserCommandEditor(idx = -1){
 
         addToUserCommands(cmdData);
         closeBtn?.click();
+        editor.focus();
     })
 
     editor = loadUserCommandIntoEditor(idx, editor);
@@ -1049,7 +1050,7 @@ function popUserCommandList(e){
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const cmdList = shadowRoot.querySelector('#commandListContainer');
-    const closeBtn = cmdList.querySelector('div.lai-close-button')
+    const closeBtn = cmdList.querySelector('div.help-close-btn')
     closeBtn.addEventListener('click', e => cmdList.classList.add('lai-invisible'));
     const container = cmdList.querySelector('div.user-command-block')
 
@@ -1087,6 +1088,7 @@ function popUserCommandList(e){
     }
 
     cmdList.classList.remove('lai-invisible');
+    cmdList.focus();
 }
 
 function addCmdItemButtons(item, index){
@@ -1118,11 +1120,11 @@ function userCmdItemBtnClicked(e){
 
     switch (action) {
         case 'edit':
-            e.target.closest('#commandListContainer').querySelector('div.lai-close-button').click()
+            e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click()
             popUserCommandEditor(index);
             break;
         case 'execute':
-            e.target.closest('#commandListContainer').querySelector('div.lai-close-button').click()
+            e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click()
             userInput.value += aiUserCommands[index].commandBody;
             const enterEvent = new KeyboardEvent('keydown', {
                 bubbles: true,
@@ -1137,12 +1139,10 @@ function userCmdItemBtnClicked(e){
         case 'delete':
             aiUserCommands.splice(index, 1);
             setAiUserCommands()
-            .then(() => e.target.closest('#commandListContainer').querySelector('div.lai-close-button').click())
+            .then(() => e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click())
             .catch(e => console.error('>>>', e));
             break;
         default:
             console.warn(`Unknown action - ${action}`);
     }
-
-    console.log(`>>> clicked #${e.target.getAttribute('data-index')}`, e.target);
 }

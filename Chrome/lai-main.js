@@ -675,7 +675,7 @@ chrome.runtime.onMessage.addListener((response) => {
         recipient = Array.from(shadowRoot.querySelectorAll('.lai-ai-input .lai-input-text')).pop();
         recipient?.setAttribute("id", "laiActiveAiInput");
     }
-    if (!recipient && ['toggleSidebar', 'activePageSelection', 'activePageContent', 'toggleSelectElement'].indexOf(response.action) < 0) {
+    if (!recipient && ['toggleSidebar', 'activePageSelection', 'activePageContent', 'toggleSelectElement', 'explainSelection'].indexOf(response.action) < 0) {
         console.log("no recipient");
         return;
     }
@@ -706,10 +706,13 @@ chrome.runtime.onMessage.addListener((response) => {
             laiSwapSidebarWithButton(true);
             break;
         case "activePageSelection":
-            laiAppendSelectionToUserImput(response.selection);
+            laiAppendSelectionToUserInput(response.selection);
             break;
         case "activePageContent":
-            laiAppendSelectionToUserImput(response.selection.replace(/\s{1,}/gm, ' '));
+            laiAppendSelectionToUserInput(response.selection.replace(/\s{1,}/gm, ' '));
+            break;
+        case 'explainSelection':
+            ask2ExplainSelection(response);
             break;
         case "toggleSelectElement":
             isElementSelectionActive = response.selection;
@@ -770,10 +773,11 @@ function laiGetRecipient() {
     return recipient;
 }
 
-function laiAppendSelectionToUserImput(text) {
-    const currentSelection = window.getSelection().toString() || text;
+function laiAppendSelectionToUserInput(text) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
+
+    const currentSelection = window.getSelection().toString() || text;
     const sideBar = shadowRoot.getElementById('laiSidebar');
     if (!sideBar) {
         console.err('Sidebar not found!');
@@ -786,6 +790,41 @@ function laiAppendSelectionToUserImput(text) {
     const userInput = sideBar.querySelector('#laiUserInput');
     userInput.value += `${currentSelection}`;
     // userInput.value += `\n\n===========\n${text}`;
+}
+
+function ask2ExplainSelection(response){
+    if(!response){
+        laiShowMessage('Nothing received to explain!', 'warning');
+        return;
+    }
+
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) { return; }
+
+    const sideBar = shadowRoot.getElementById('laiSidebar');
+    if (!sideBar) {
+        console.err('Sidebar not found!');
+        return;
+    }
+
+    const userInput = shadowRoot.getElementById('laiUserInput');
+    if(!userInput) {  return;  }
+
+    const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
+    attachments.push(`Here is the snippet context:\n${response.page.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n')}`);
+
+    const enterEvent = new KeyboardEvent('keydown', {
+        bubbles: true,
+        cancelable: true,
+        key: 'Enter'
+    });
+
+    if (!sideBar.classList.contains('active')) {
+        laiSwapSidebarWithButton();
+    }
+
+    userInput.value = `Explain what does this mean, please:\n${selection}`;
+    userInput.dispatchEvent( enterEvent );
 }
 
 function laiResizeContainer(e) {
@@ -861,7 +900,7 @@ function checkCommandHandler(e){
                 break;
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
-                userInput.value = `${userInput.value}${userInput.value.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx].commandBody}`;
+                userInput.value = `${userInput.value}${userInput.value.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx]?.commandBody}`;
                 res = false;
                 break;
         }
@@ -899,6 +938,7 @@ function popUserCommandEditor(idx = -1){
 
     editor = loadUserCommandIntoEditor(idx, editor);
     theSidebar.appendChild(editor);
+    editor.focus();
 }
 
 function loadUserCommandIntoEditor(idx = -1, editor){
@@ -1021,6 +1061,7 @@ function showSessionHistoryMenu(e) {
                     aiSessions = [];
                     setAiSessions().then().catch(e => console.error('>>>', e));
                     e.target.closest('div#sessionHistMenu').remove();
+                    laiShowMessage('All sessions deleted.');
                 });
             } else {
                 menuItem.addEventListener('click', (e) => {
@@ -1049,7 +1090,7 @@ function popUserCommandList(e){
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const cmdList = shadowRoot.querySelector('#commandListContainer');
-    const closeBtn = cmdList.querySelector('div.lai-close-button')
+    const closeBtn = cmdList.querySelector('div.help-close-btn')
     closeBtn.addEventListener('click', e => cmdList.classList.add('lai-invisible'));
     const container = cmdList.querySelector('div.user-command-block')
 
@@ -1070,7 +1111,7 @@ function popUserCommandList(e){
         const cmd = aiUserCommands[i];
         const el = document.createElement('div');
         el.setAttribute('data-index', i.toString());
-        // let cmdItemButtons = document.createElement('div');
+
         const cmdItemButtons = addCmdItemButtons(document.createElement('div'), i);
         const cmdItem = document.createElement('div');
         cmdItem.classList.add('user-cmd-item-command');
@@ -1081,12 +1122,10 @@ function popUserCommandList(e){
 
         container.appendChild(el);
         el.classList.add('user-command-item');
-/*         el.addEventListener('click', e => {
-            userInput.value = cmd.commandBody;
-        }); */
     }
 
     cmdList.classList.remove('lai-invisible');
+    cmdList.focus();
 }
 
 function addCmdItemButtons(item, index){
@@ -1118,12 +1157,12 @@ function userCmdItemBtnClicked(e){
 
     switch (action) {
         case 'edit':
-            e.target.closest('#commandListContainer').querySelector('div.lai-close-button').click()
+            e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click()
             popUserCommandEditor(index);
             break;
         case 'execute':
-            e.target.closest('#commandListContainer').querySelector('div.lai-close-button').click()
-            userInput.value += aiUserCommands[index].commandBody;
+            e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click()
+            userInput.value += aiUserCommands[index]?.commandBody;
             const enterEvent = new KeyboardEvent('keydown', {
                 bubbles: true,
                 cancelable: true,
@@ -1137,12 +1176,10 @@ function userCmdItemBtnClicked(e){
         case 'delete':
             aiUserCommands.splice(index, 1);
             setAiUserCommands()
-            .then(() => e.target.closest('#commandListContainer').querySelector('div.lai-close-button').click())
+            .then(() => e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click())
             .catch(e => console.error('>>>', e));
             break;
         default:
             console.warn(`Unknown action - ${action}`);
     }
-
-    console.log(`>>> clicked #${e.target.getAttribute('data-index')}`, e.target);
 }

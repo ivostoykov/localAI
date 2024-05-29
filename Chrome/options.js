@@ -1,7 +1,12 @@
+const manifest = chrome.runtime.getManifest();
+
 document.addEventListener('DOMContentLoaded', e => {
     loadSettings(e);
     attachListeners(e);
 });
+
+document.title = manifest.name || '';
+document.getElementById('pageTitle').textContent = `${manifest.name} - ${manifest.version}`;
 document.getElementById('laiOptionsForm').addEventListener('submit', saveSettings);
 document.getElementById('cancelButton').addEventListener('click', cancelOptions);
 document.getElementById('deleteAllSessions').addEventListener('click', deleteAllAiSessions);

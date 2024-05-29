@@ -54,6 +54,13 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 
     chrome.contextMenus.create({
+        id: "askAiExplanation",
+        title: "Ask AI to Explain Selected",
+        parentId: "sendToLocalAi",
+        contexts: ["selection"]
+    });
+
+    chrome.contextMenus.create({
         id: "sendSelectedText",
         title: "Send Selected",
         parentId: "sendToLocalAi",
@@ -68,15 +75,18 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     switch (info.menuItemId) {
         case "sendSelectedText":
             if (!info.selectionText.length) { return; }
             if (!tab.id) {  return;  }
-            chrome.tabs.sendMessage(tab.id, {
+            await chrome.tabs.sendMessage(tab.id, {
                 action: "activePageSelection",
                 selection: info.selectionText
             });
+            break;
+        case "askAiExplanation":
+            await askAIExplanation(info, tab);
             break;
         case "sendPageContent":
             if(tab.id){
@@ -137,12 +147,25 @@ function fetchUserCommandResult(command, sender) {
     });
 }
 
+function getPageTextContent(){
+    debugger;
+
+    const bodyClone = document.body.cloneNode(true);
+    ['script', 'link', 'select', 'style'].forEach(selector => {
+        bodyClone.querySelectorAll(selector).forEach(el => el.remove());
+    });
+
+    const content = bodyClone.textContent.replace(/\s+/g, ' ').replace(/\n+/g, '\n').trim();
+
+    return content;
+}
+
 function extractEnhancedContent() {
     const bodyClone = document.body.cloneNode(true);
 
     // Selector for common elements not directly related to the main content
     const unwantedSelectors = [
-        'script', 'style', 'code', 'header', 'footer', 'nav', 'aside',
+        'script', 'style', 'code', 'header', 'footer', 'nav', 'aside', 'link', 'select',
         'form', 'iframe', 'video', '[id*="ad"]',
         '[class*="sidebar"]', '[class*="ad"]', '[class*="side-nav"]',
         '.sidebar', '.widget', 'button'
@@ -199,28 +222,25 @@ function handleStreamingResponse(reader, senderTabId) {
     read();
 }
 
-// depreciated
-/* function updateSystemMessageDate(messages){
-    let idx = messages.findIndex(el => el.role === "system");
-    const sysIntruct = laiOptions?.systemInstructions || '';
-    if(idx < 0){
-        messages.unshift({ role: "system", content: '' });
-        idx = 0;
+async function askAIExplanation(info, tab) {
+    console.log('>>>', info);
+    console.log('>>>', tab);
+    try {
+        const scriptResponse = await chrome.scripting.executeScript({
+            target: {tabId: tab.id},
+            function: getPageTextContent
+        });
+        const pageContent = scriptResponse?.[0]?.result ?? '';
+        if (!pageContent) {  return;  }
+        await chrome.tabs.sendMessage(tab.id, {
+            action: "explainSelection",
+            selection: info.selectionText,
+            page: pageContent
+        });
+    } catch (err) {
+        console.error('>>>', err);
     }
-
-    // const currentDate = `[local date and time: ${( new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString())}]`;
-
-    // if(!messages[idx].content){
-    //     messages[idx].content = `${sysIntruct} ${currentDate}`;
-    // } else if(messages[idx].content.indexOf('[local date and time: ') < 0){
-    //     messages[idx].content += ` ${currentDate}`;
-    // } else {
-    //     messages[idx].content = messages[idx].content.replace(/\[local date and time: \d{4}-\d{1,2}-\d{1,2}T\d{1,2}:\d{1,2}:\d{1,2}\.\d{1,3}Z\]/gm, currentDate);
-    // }
-
-    messages[idx].content = addPersonalInfoToSystemMessage(messages[idx].content);
-    return messages;
-} */
+}
 
 async function fetchDataAction(request, sender) {
     const controller = new AbortController();
