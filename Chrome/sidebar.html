@@ -7,6 +7,17 @@
         <div class="ribbon-sections">
             <div class="rib-section left">
                 <img src="" id="cogBtn" alt="Options" title="Options" data-type="cog"/>
+                <div id="cogMenu" class="rib-cog-menu-container">
+                    <select name="apiUrl" id="apiUrl">
+                        <option value="" selected>Select API endpoint</option>
+                        <option value="">Test</option>
+                    </select>
+                    <select name="model" id="model">
+                        <option value="" selected>Select Model name</option>
+                    </select>
+                    <hr>
+                    <div class="cog-menu-item">Options</div>
+                </div>
             </div>
 
             <div id="laiSessionHistryMenu" class="rib-section center" title="Session history">

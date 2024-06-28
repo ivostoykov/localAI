@@ -103,6 +103,38 @@
     padding-left: 16px;
 }
 
+.rib-cog-menu-container{
+    background-color: #fff;
+    position: absolute;
+    display: block;
+    border: 1px solid #bbb;
+    padding: 5px 15px;
+    opacity: 1;
+    top: 28px;
+    left: 30px;
+    cursor: pointer;
+    z-index: 100;
+}
+
+.rib-cog-menu-container select{
+    min-width: 125px;
+    color: #000;
+}
+
+.rib-cog-menu-container select:has(option:first-child:checked) {
+    color: #bbb;
+}
+
+.cog-menu-item{
+    position: relative;
+    margin-left: 5px;
+    min-width: 125px;
+}
+
+.cog-menu-item:hover{
+    background-color: #eee;
+}
+
 .rib-section.right{
     padding-right: 16px;
     justify-content: flex-end;
