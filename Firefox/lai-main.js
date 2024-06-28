@@ -706,10 +706,10 @@ browser.runtime.onMessage.addListener((response) => {
             laiSwapSidebarWithButton(true);
             break;
         case "activePageSelection":
-            laiAppendSelectionToUserImput(response.selection);
+            laiAppendSelectionToUserInput(response.selection);
             break;
         case "activePageContent":
-            laiAppendSelectionToUserImput(response.selection.replace(/\s{1,}/gm, ' '));
+            laiAppendSelectionToUserInput(response.selection.replace(/\s{1,}/gm, ' '));
             break;
         case "toggleSelectElement":
             isElementSelectionActive = response.selection;
@@ -770,7 +770,7 @@ function laiGetRecipient() {
     return recipient;
 }
 
-function laiAppendSelectionToUserImput(text) {
+function laiAppendSelectionToUserInput(text) {
     const currentSelection = window.getSelection().toString() || text;
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }

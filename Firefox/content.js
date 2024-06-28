@@ -99,7 +99,7 @@ function laiClearElementOver(e){
 function laiGetClickedSelectedElement(event){
   isElementSelectionActive = false;
   laiClearElementOver(event);
-  laiAppendSelectionToUserImput(event.target.textContent.trim().replace(/\s{1,}/g, ' ') || 'No content found');
+  laiAppendSelectionToUserInput(event.target.textContent.trim().replace(/\s{1,}/g, ' ') || 'No content found');
 }
 
 function laiBuiltMainButton() {

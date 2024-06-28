@@ -1,3 +1,4 @@
+var DONE = 'DONE';
 var laiOptions = {};
 var aiSessions = [];
 var aiUserCommands = [];
@@ -99,7 +100,7 @@ function laiClearElementOver(e){
 function laiGetClickedSelectedElement(event){
   isElementSelectionActive = false;
   laiClearElementOver(event);
-  laiAppendSelectionToUserImput(event.target.textContent.trim().replace(/\s{1,}/g, ' ') || 'No content found');
+  laiAppendSelectionToUserInput(event.target.textContent.trim().replace(/\s{1,}/g, ' ') || 'No content found');
 }
 
 function laiBuiltMainButton() {
@@ -224,8 +225,8 @@ function getLaiOptions() {
   return new Promise((resolve, reject) => {
     const defaults = {
       "openPanelOnLoad": false,
-      "localPort": "1234",
-      "chatHistory": 5,
+      "aiUrl": "",
+      "aiModel": "",
       "closeOnClickOut": true,
       "closeOnCopy": false,
       "closeOnSendTo": true,
@@ -287,4 +288,3 @@ chrome.storage.onChanged.addListener(function (changes, namespace) {
     }
   }
 });
-

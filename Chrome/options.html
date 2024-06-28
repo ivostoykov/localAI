@@ -36,13 +36,37 @@
                 <label for="loadHistoryOnStart">Load last history session on start</label>
             </div>
             <div class="el-holder">
-                <label for="localPort">Local Server Port:</label>
-                <input type="number" id="localPort" name="localPort" value="1234">
+                <label for="aiUrl">End point:</label>
+                <input type="text" id="aiUrl" name="aiUrl" value="" class="url" placeholder="http://localhost:1111/api/" list="urlList">
+                <div id="urlButtons">
+                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
+                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft Desc">
+                </div>
+                <datalist id="urlList"></datalist>
             </div>
-            <!-- <div class="el-holder">
-                <label for="chatHistory">Chat History length:</label>
-                <input type="number" id="chatHistory" name="chatHistory" value="25">
-            </div> -->
+            <div class="el-holder">
+                <label for="aiModel">Model:</label>
+                <input type="text" id="aiModel" name="aiModel" value="" class="url" placeholder="llama3" list="modelList">
+                <div id="modelButtons">
+                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
+                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft Desc">
+                </div>
+                <datalist id="modelList"></datalist>
+            </div>
+<!--
+            <div class="el-holder folded">
+                <div id="advancedSettings" class="advance-settings-title">
+                    Advanced Model Settings
+                    <img src="img/fold.svg" class="model-icon-button fold-icon-button" title="Show advanced settings">
+                </div>
+                <div id="advancedSettingsContainer" class="advance-settings-container invisible">Additional settings</div>
+            </div>
+            <hr>
+ -->
             <div class="el-holder">
                 <label for="localPort">System Instructions:</label>
                 <div class="tooltip">

@@ -1,6 +1,7 @@
 var controller;
 var shouldAbort = false;
 var laiOptions;
+const storageOptionKey = 'laiOptions';
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
@@ -11,6 +12,14 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     }
 });
 
+chrome.storage.onChanged.addListener(async (changes, areaName) => {
+    if (areaName !== 'sync') {  return; }
+    for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
+        if(key === storageOptionKey){
+            laiOptions = await getOptions();
+        }
+    }
+});
 
 chrome.action.onClicked.addListener((tab) => {
     if(tab.url.startsWith('http')) {
@@ -151,7 +160,7 @@ function getPageTextContent(){
     debugger;
 
     const bodyClone = document.body.cloneNode(true);
-    ['script', 'link', 'select', 'style'].forEach(selector => {
+    ['script', 'link', 'select', 'style', 'svg'].forEach(selector => {
         bodyClone.querySelectorAll(selector).forEach(el => el.remove());
     });
 
@@ -168,7 +177,7 @@ function extractEnhancedContent() {
         'script', 'style', 'code', 'header', 'footer', 'nav', 'aside', 'link', 'select',
         'form', 'iframe', 'video', '[id*="ad"]',
         '[class*="sidebar"]', '[class*="ad"]', '[class*="side-nav"]',
-        '.sidebar', '.widget', 'button'
+        '.sidebar', '.widget', 'button', 'svg'
     ];
 
     // Remove elements based on the selectors
@@ -195,7 +204,6 @@ function extractEnhancedContent() {
 }
 
 function handleStreamingResponse(reader, senderTabId) {
-    // const reader = response.body.getReader();
     if(!reader || !reader.read){ return; }
 
     const read = () => {
@@ -210,7 +218,9 @@ function handleStreamingResponse(reader, senderTabId) {
                 return;
             }
             const textChunk = new TextDecoder().decode(value);
-            chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: textChunk});
+            let data = textChunk.replace(/^data:\s+/i, '').trim();
+            data = JSON.parse(data);
+            chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(data)});
             read();
         }).catch(error => {
             if (!shouldAbort) {
@@ -223,8 +233,6 @@ function handleStreamingResponse(reader, senderTabId) {
 }
 
 async function askAIExplanation(info, tab) {
-    console.log('>>>', info);
-    console.log('>>>', tab);
     try {
         const scriptResponse = await chrome.scripting.executeScript({
             target: {tabId: tab.id},
@@ -243,15 +251,31 @@ async function askAIExplanation(info, tab) {
 }
 
 async function fetchDataAction(request, sender) {
-    const controller = new AbortController();
     let messages = request?.data?.messages || [];
+    if(messages.length < 1){  return;  }
+
+    if(Object.keys(laiOptions ?? {}).length < 1){
+        laiOptions = await getOptions();
+    }
+
+    if(!laiOptions.aiUrl){
+        console.error('missing API endpoint!', laiOptions);
+        return; // TODO show message || open options
+    }
+
+    const controller = new AbortController();
     let data = messages.slice(-1)[0]?.content || '';
     data = await laiComposeUerImput(data, sender);
+
+    if(laiOptions?.aiModel){
+        request.data['model'] = laiOptions?.aiModel || '';
+    }
+
     request.data.messages.splice(-1, 1, { "role": "user", "content": data});
     request.data.messages = request.data.messages.filter(msg => msg.content.trim());
-    // messages = updateSystemMessageDate(messages);
 
-    const url = `http://localhost:${request.port}${request.path}`;
+    // const url = `http://localhost:${request.port}${request.path}`;
+    const url = laiOptions.aiUrl;
     fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -345,12 +369,11 @@ function getPersonalInfo(){
     return personalInfo;
 }
 
-function getOptions() {
-    return new Promise((resolve, reject) => {
-      const defaults = {
+async function getOptions() {
+    const defaults = {
         "openPanelOnLoad": false,
-        "localPort": "1234",
-        "chatHistory": 25,
+        "aiUrl": "",
+        "aiModel": "",
         "closeOnClickOut": true,
         "closeOnCopy": false,
         "closeOnSendTo": true,
@@ -358,15 +381,14 @@ function getOptions() {
         "loadHistoryOnStart": false,
         "systemInstructions": '',
         "personalInfo": ''
-      };
-      chrome.storage.sync.get('laiOptions', function (obj) {
-        if (chrome.runtime.lastError) {
-          return reject(chrome.runtime.lastError);
-        }
+    };
 
-        const laiOptions = Object.assign({}, defaults, obj.laiOptions);
+    let obj = {};
+    try {
+        obj = await chrome.storage.sync.get(storageOptionKey);
+    } catch (e) {
+        console.error(e);
+    }
 
-        resolve(laiOptions);
-      });
-    });
-  }
+    return Object.assign({}, defaults, obj.laiOptions);
+}

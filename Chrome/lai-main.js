@@ -233,7 +233,7 @@ function onUserInputFileDropped(e) {
         const reader = new FileReader();
         reader.onload = function(e) {
             if(!Array.isArray(attachments)){  attachments = [];  }
-            attachments.push(`file name: ${fileName}; file content: ${e.target.result}`);
+            attachments.push(`attached file name: ${fileName}; attached file content: ${e.target.result}`);
             showAttachment(fileName);
         };
         reader.readAsText(file);
@@ -294,16 +294,6 @@ function clearAttachments(){
     attachmentContainer.classList.remove('active');
     attachments = [];
 }
-
-/* function laiHandleUserInput(e) {
-    // const shadowRoot = getShadowRoot();
-    // if (!shadowRoot) { return; }
-    // const value = e.target.value;
-    // adjustHeight(e.target);
-    // const cursorPosition = e.target.selectionStart;
-    // const textUpToCursor = value.substring(0, cursorPosition);
-    // const commandMatch = textUpToCursor.match(/@\{\{[^\{\}]*$/);
-} */
 
 function adjustHeight(userInput) {
     if (!userInput) { return; }
@@ -614,11 +604,11 @@ function laiQueryAI() {
     const requestData = {
         action: "fetchData",
         port: laiOptions.localPort || '1234',
-        path: '/v1/chat/completions',
+        // path: '/v1/chat/completions',
         data: {
             "messages": messages,
-            "temperature": 0.5,
-            "max_tokens": 1024,
+            // "temperature": 0.5,
+            // "max_tokens": 1024,
             "stream": true
         }
     };
@@ -683,14 +673,15 @@ chrome.runtime.onMessage.addListener((response) => {
     switch (response.action) {
         case "streamData":
 
+            let dataChunk;
             try {
-                let dataChunk = laiExtractDataFromResponse(response);
+                dataChunk = laiExtractDataFromResponse(response);
                 if (!dataChunk) { return; }
                 StreamMarkdownProcessor.processStreamChunk(dataChunk, laiGetRecipient);
             } catch (err) {
                 laiHandleStreamActions(`${err}`, recipient)
                 console.error(err);
-                console.log(response);
+                console.log(dataChunk, response);
             }
             break;
         case "streamEnd":
@@ -747,9 +738,6 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
     if (streamData) {
         messages.push({ "role": "assistant", "content": streamData });
         aiSessions[activeSessionIndex].push({ "role": "assistant", "content": streamData });
-        /*         if(messages.length > laiOptions.chatHistory){
-                    messages.split(1, 1);
-                } */
     }
 
     if (abortText && recipient) {
@@ -895,7 +883,7 @@ function checkCommandHandler(e){
                 userInput.value = userInput.value.replace(matches[i], '');
                 popUserCommandEditor();
                 break;
-            case 'list': // TODO similar to @{{help}}
+            case 'list':
                 popUserCommandList(e);
                 break;
             default:

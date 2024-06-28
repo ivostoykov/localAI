@@ -18,9 +18,20 @@ body {
     width: 60%;
 }
 
+.advance-settings-title{
+    display: flex;
+    flex-direction: row;
+    gap: 5px;
+    align-items: center;
+}
+
+.advance-settings-container{
+    display: block;
+}
+
 .el-holder {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto auto 1fr;
     gap: 0.5rem;
     align-items: center;
     margin-bottom: 15px;
@@ -39,12 +50,30 @@ label {
     min-width: 120px
 }
 
+.model-icon-button{
+    width: 26px;
+    height: auto;
+    cursor: pointer;
+}
+
+.model-icon-button:hover{
+    background-color: #ddd;
+    border: 1px solid #aaa;
+}
+
+.fold-icon-button{
+    width: 16px !important;
+}
+
 .icon-button{
     width: 32px;
     height: auto;
 }
 
-input[type="number"],
+.url{
+    width: 500px;
+}
+
 input[type="checkbox"] {
     width: auto;
 }

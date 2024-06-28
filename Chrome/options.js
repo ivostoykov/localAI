@@ -3,7 +3,10 @@ const manifest = chrome.runtime.getManifest();
 document.addEventListener('DOMContentLoaded', e => {
     loadSettings(e);
     attachListeners(e);
+    attachModelListeners(e);
 });
+
+document.querySelector('#aiUrl').addEventListener('blur', loadModels);
 
 document.title = manifest.name || '';
 document.getElementById('pageTitle').textContent = `${manifest.name} - ${manifest.version}`;
@@ -24,21 +27,28 @@ function saveSettings(e) {
 
     for (let i = 0; i < elements.length; i++) {
         const element = elements[i];
-        if(['checkbox', 'input', 'textarea'].indexOf(element.type) < 0){
+        if(['checkbox', 'text', 'textarea'].indexOf(element.type) < 0){
             continue;
         }
         optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
     }
+
+    const modelList = document.querySelectorAll('#modelList option') ?? [];
+    const attributeValues = Array.from(modelList).map(e => e.getAttribute('value'));
+    optionsData['modelList'] = attributeValues ?? [];
 
     chrome.storage.sync.set({'laiOptions': optionsData}, function() {
         showMessage('Settings saved', 'success');
     });
 }
 
-function loadSettings() {
+function loadSettings(e) {
     chrome.storage.sync.get('laiOptions', function(obj) {
         const formData = obj.laiOptions || {};
-        Object.keys(formData).forEach(key => {
+
+        formData?.modelList?.forEach(model => addModel(e, model));
+
+        Object.keys(formData)?.forEach(key => {
             const element = document.getElementById(key);
             if (element) {
                 if (element.type === 'checkbox') {
@@ -54,6 +64,7 @@ function loadSettings() {
 function attachListeners(e){
     document.getElementById('showEmbeddedButton').addEventListener('click', onshowEmbeddedButtonClicked);
     document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
+    document.querySelector('#advancedSettings img')?.addEventListener('click', toggleFold);
 }
 
 function onshowEmbeddedButtonClicked(e){
@@ -144,3 +155,153 @@ function importFromFile(e){
     reader.readAsText(file);
 }
 
+
+async function loadModels(e){
+    const aiUrl = e.target || document.querySelector('#aiUrl');
+    if(!aiUrl){
+        showMessage(`No API endpoint found - ${aiUrl?.value}!`, 'error');
+        return false;
+    }
+
+    let urlVal = aiUrl.value.trim();
+    if(urlVal === ''){  return;  }
+    if(!urlVal.startsWith('http')){
+        showMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
+        return false;
+    }
+
+    if(urlVal.indexOf('/api/') < 0){  return;  }
+
+    urlVal = urlVal.replace(/\/api\/.+/i, '/api/tags');
+    let response;
+    let models;
+    try {
+      response = await fetch(urlVal, {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+      });
+
+      models = await response.json();
+      if(models.models && Array.isArray(models.models)) {  fillModelList( models.models);  }
+    } catch (e) {
+      console.error(e);
+    }
+}
+
+function fillModelList(models = []){
+    if(models.length < 1){  return;  }
+    let modelDataList = document.querySelector('#models');
+    if(!modelDataList){
+      const el = document.createElement('datalist');
+      el.id = 'models'
+      document.body.appendChild(el);
+      modelDataList = document.querySelector('#models');
+    } else {
+        modelDataList.replaceChildren();
+    }
+
+    for (let i = 0; i < models.length; i++) {
+      const option = document.createElement('option');
+      option.value = models[i].name;
+      modelDataList.appendChild(option);
+    }
+}
+
+function toggleFold(e){
+    const src = e.target.src.indexOf('/unfold') > -1 ? '/unfold' : '/fold';
+    const target = src === '/unfold' ? '/fold' : '/unfold';
+    e.target.src = e.target.src.replace(src, target);
+    e.target.title = `${target === '/fold' ? 'Show' : 'Hide'} advanced settings`;
+    const advancedSettingsContainer = document.getElementById('advancedSettingsContainer');
+    if(e.target.src.indexOf('/fold') > -1){
+        advancedSettingsContainer.classList.add('invisible');
+    } else {
+        advancedSettingsContainer.classList.remove('invisible');
+    }
+}
+
+// model field function
+
+function sortDatalist(e, datalist, direction) {
+    if(!['asc', 'desc'].includes(direction)){  return;  }
+    const options = Array.from(datalist.options);
+    if(!options || options?.length === 0)  {  return;  }
+    if(direction === 'desc'){
+        options.sort((a, b) => b.value.localeCompare(a.value));
+    }
+    if(direction === 'asc'){
+        options.sort((a, b) => a.value.localeCompare(b.value));
+    }
+
+    datalist.replaceChildren();
+
+    options.forEach(option => datalist.appendChild(option));
+}
+
+function addModel(e, datalist, valueEl){
+    if(!valueEl || !datalist){ return;  }
+    const op = document.createElement('option');
+    op.value = valueEl?.value?.trim();
+    datalist.appendChild(op);
+    valueEl.value = '';
+    valueEl.focus();
+}
+
+function removeModel(e, datalist, valueEl){
+    if(!valueEl || !datalist){ return;  }
+    const options = datalist.querySelectorAll('option');
+    if(!options || options.length === 0){
+        valueEl.value = '';
+        valueEl.focus();
+        return;
+    }
+
+    for (let i = 0; i < options.length; i++) {
+        const option = options[i];
+        if(option.value === valueEl){
+            datalist.removeChild(option);
+            valueEl.value = '';
+            valueEl.focus();
+            break;
+        }
+    }
+}
+
+function attachModelListeners(e){
+
+    const containers = [];
+    const modelButtonsContainer = document.querySelector('#modelButtons');
+    if(!modelButtonsContainer) {  return;  }
+    containers.push({
+        "container": modelButtonsContainer,
+        "datalist": document.getElementById('modelList'),
+        "valueEl": document.getElementById('aiModel')
+    });
+
+    const urlButtons = document.querySelector('#urlButtons');
+    if(!urlButtons) {  return;  }
+    containers.push({
+        "container": urlButtons,
+        "datalist": document.getElementById('urlList'),
+        "valueEl": document.getElementById('aiUrl')
+    });
+
+    for (let i = 0; i < containers.length; i++) {
+        containers[i].container.querySelectorAll('img').forEach(b => {
+            const action = b.getAttribute('data-action')?.toLowerCase();
+            switch (action) {
+                case 'add':
+                    b.addEventListener('click', e => addModel(e, containers[i].datalist, containers[i].valueEl));
+                    break;
+                case 'remove':
+                    b.addEventListener('click', e => removeModel(e, containers[i].datalist, containers[i].valueEl));
+                    break;
+                case 'asc':
+                case 'desc':
+                    b.addEventListener('click', e => sortDatalist(e, action.toLowerCase(), containers[i].datalist));
+                    break;
+            }
+        });
+    }
+}
