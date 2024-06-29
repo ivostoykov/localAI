@@ -78,7 +78,7 @@ document.addEventListener('DOMContentLoaded', async function (e) {
       laiBuiltMainButton();
     })
     .catch(error => {
-      console.error('Error loading one or more styles:', error);
+      console.error(`>>> ${manifest.name} - Error loading one or more styles`, error);
     });
 });
 
@@ -221,7 +221,56 @@ function laiShowMessage(message, type) {
   }, 3000);
 }
 
-function getLaiOptions() {
+function buildMenuDropdowns(){
+  const shadowRoot = getShadowRoot();
+  const menuDropDowns = shadowRoot.querySelectorAll('#cogMenu select');
+  for (let i = 0; i < menuDropDowns.length; i++) {
+    const list = menuDropDowns[i];
+    const selectOption = list.querySelectorAll('option')[0];
+    list.replaceChildren();
+    list.appendChild(selectOption);
+    list.selectedIndex = 0;
+    let data = list.getAttribute('data-source');
+    if(!data){  continue;  }
+    try { data = JSON.parse(data);  }
+    catch(e){  continue;  }
+    if(!laiOptions?.[data?.list]){  return;  }
+    laiOptions[data?.list]?.forEach(m => {
+      const option = document.createElement('option');
+      option.value = option.text = m;
+      if(m === laiOptions[data?.selected]){  option.selected = true;  }
+      list.appendChild(option);
+    });
+  }
+}
+
+async function getLaiOptions() {
+    const defaults = {
+      "openPanelOnLoad": false,
+      "aiUrl": "",
+      "aiModel": "",
+      "closeOnClickOut": true,
+      "closeOnCopy": false,
+      "closeOnSendTo": true,
+      "showEmbeddedButton": false,
+      "loadHistoryOnStart": false,
+      "systemInstructions": 'You are a helpful assistant.',
+      "personalInfo": ''
+    };
+
+    try {
+      const obj = await chrome.storage.sync.get('laiOptions');
+      const laiOptions = Object.assign({}, defaults, obj?.laiOptions ?? {});
+      if(laiOptions.systemInstructions) {
+        messages.push({ role: "system", content: laiOptions.systemInstructions });
+      }
+      return laiOptions;
+  } catch (e) {
+    console.error(`>>> ${manifest.name}`, e);
+  }
+}
+
+/* function getLaiOptions() {
   return new Promise((resolve, reject) => {
     const defaults = {
       "openPanelOnLoad": false,
@@ -248,7 +297,7 @@ function getLaiOptions() {
     });
   });
 }
-
+ */
 async function getAiSessions(){
   const sessions = await chrome.storage.local.get(['aiSessions']);
   aiSessions = sessions.aiSessions || [];

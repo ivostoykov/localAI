@@ -3,7 +3,7 @@ const manifest = chrome.runtime.getManifest();
 document.addEventListener('DOMContentLoaded', e => {
     loadSettings(e);
     attachListeners(e);
-    attachModelListeners(e);
+    attachDataListListeners(e);
 });
 
 document.querySelector('#aiUrl').addEventListener('blur', loadModels);
@@ -33,9 +33,13 @@ function saveSettings(e) {
         optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
     }
 
-    const modelList = document.querySelectorAll('#modelList option') ?? [];
-    const attributeValues = Array.from(modelList).map(e => e.getAttribute('value'));
-    optionsData['modelList'] = attributeValues ?? [];
+    const dataLists = ['modelList', 'urlList', 'webHookList'];
+    for (let i = 0; i < dataLists.length; i++) {
+        const list = dataLists[i];
+        const options = document.querySelectorAll(`#${list} option`) ?? [];
+        let attributeValues = Array.from(options)?.map(e => e.getAttribute('value'));
+        optionsData[list] = attributeValues ?? [];
+    }
 
     chrome.storage.sync.set({'laiOptions': optionsData}, function() {
         showMessage('Settings saved', 'success');
@@ -46,7 +50,12 @@ function loadSettings(e) {
     chrome.storage.sync.get('laiOptions', function(obj) {
         const formData = obj.laiOptions || {};
 
-        formData?.modelList?.forEach(model => addModel(e, model));
+        const dataLists = ['modelList', 'urlList', 'webHookList'];
+        for (let i = 0; i < dataLists.length; i++) {
+            const list = dataLists[i];
+            if(!formData[list]){  continue;  }
+            formData[list]?.forEach(value => extenddList(e, document.querySelector(`#${list}`), value));
+        }
 
         Object.keys(formData)?.forEach(key => {
             const element = document.getElementById(key);
@@ -223,8 +232,11 @@ function toggleFold(e){
 
 // model field function
 
-function sortDatalist(e, datalist, direction) {
+function sortDatalist(e) {
+    const datalist = e.target.parentElement.nextElementSibling;
+    const direction = e.target.getAttribute('data-action');
     if(!['asc', 'desc'].includes(direction)){  return;  }
+
     const options = Array.from(datalist.options);
     if(!options || options?.length === 0)  {  return;  }
     if(direction === 'desc'){
@@ -239,17 +251,32 @@ function sortDatalist(e, datalist, direction) {
     options.forEach(option => datalist.appendChild(option));
 }
 
-function addModel(e, datalist, valueEl){
+function extenddList(e, datalist, valueEl){
+    datalist = datalist ?? e.target.parentElement.nextElementSibling;
+    valueEl = valueEl ?? e.target.parentElement.previousElementSibling;
     if(!valueEl || !datalist){ return;  }
     const op = document.createElement('option');
-    op.value = valueEl?.value?.trim();
+    if(typeof(valueEl) === 'string'){
+        op.value = valueEl
+    } else {
+        op.value = valueEl?.value?.trim();
+        valueEl.value = '';
+        valueEl.focus();
+    }
+
     datalist.appendChild(op);
-    valueEl.value = '';
-    valueEl.focus();
 }
 
-function removeModel(e, datalist, valueEl){
+function shrinkList(e){
+    const datalist = e.target.parentElement.nextElementSibling;
+    const valueEl = e.target.parentElement.previousElementSibling;
     if(!valueEl || !datalist){ return;  }
+    const action = e.target.getAttribute('data-action')?.toLowerCase();
+    if(action === 'removeall'){
+        datalist.replaceChildren();
+        return;
+    }
+
     const options = datalist.querySelectorAll('option');
     if(!options || options.length === 0){
         valueEl.value = '';
@@ -259,7 +286,7 @@ function removeModel(e, datalist, valueEl){
 
     for (let i = 0; i < options.length; i++) {
         const option = options[i];
-        if(option.value === valueEl){
+        if(option.value === valueEl?.value){
             datalist.removeChild(option);
             valueEl.value = '';
             valueEl.focus();
@@ -268,9 +295,36 @@ function removeModel(e, datalist, valueEl){
     }
 }
 
-function attachModelListeners(e){
+function attachDataListListeners(e){
 
-    const containers = [];
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons'];
+    for (let x = 0; x < containers.length; x++) {
+        const container = document.querySelector(`#${containers[x]}`);
+        if(!container) {  continue;  }
+        const buttons = container.querySelectorAll('img');
+
+        for (let i = 0; i < buttons.length; i++) {
+            const b = buttons[i];
+            const action = b.getAttribute('data-action')?.toLowerCase();
+            switch (action) {
+                case 'add':
+                    b.addEventListener('click', e => extenddList(e));
+                    break;
+                case 'remove':
+                case 'removeall':
+                    b.addEventListener('click', e => shrinkList(e));
+                    break;
+                case 'asc':
+                case 'desc':
+                    b.addEventListener('click', e => sortDatalist(e));
+                    break;
+            }
+        }
+    }
+}
+/* function attachDataListListeners(e){
+
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons'];
     const modelButtonsContainer = document.querySelector('#modelButtons');
     if(!modelButtonsContainer) {  return;  }
     containers.push({
@@ -304,4 +358,4 @@ function attachModelListeners(e){
             }
         });
     }
-}
+} */

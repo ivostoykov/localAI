@@ -8,12 +8,14 @@
             <div class="rib-section left">
                 <img src="" id="cogBtn" alt="Options" title="Options" data-type="cog"/>
                 <div id="cogMenu" class="rib-cog-menu-container">
-                    <select name="apiUrl" id="apiUrl">
+                    <select name="apiUrlList" id="apiUrlList" data-source='{"list": "urlList", "selected": "aiUrl"}'>
                         <option value="" selected>Select API endpoint</option>
-                        <option value="">Test</option>
                     </select>
-                    <select name="model" id="model">
+                    <select name="modelList" id="modelList" data-source='{"list": "modelList", "selected": "aiModel"}'>
                         <option value="" selected>Select Model name</option>
+                    </select>
+                    <select name="hookList" id="hookList" data-source='{"list": "webHookList", "selected": "webHook"}'>
+                        <option value="" selected>Select Webhook (optional)</option>
                     </select>
                     <hr>
                     <div class="cog-menu-item">Options</div>

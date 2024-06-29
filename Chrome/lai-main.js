@@ -79,6 +79,8 @@ function laiInitSidebar() {
     if (laiOptions.loadHistoryOnStart) {
         restoreLastSession();
     }
+
+    buildMenuDropdowns();
 };
 
 function onSystemInstructionsChange(e) {

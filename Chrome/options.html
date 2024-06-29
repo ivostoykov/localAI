@@ -41,8 +41,9 @@
                 <div id="urlButtons">
                     <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
                     <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
-                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft Desc">
+                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
                 </div>
                 <datalist id="urlList"></datalist>
             </div>
@@ -52,10 +53,23 @@
                 <div id="modelButtons">
                     <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
                     <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
-                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft Desc">
+                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
                 </div>
                 <datalist id="modelList"></datalist>
+            </div>
+            <div class="el-holder">
+                <label for="webHook">Webhook URL</label>
+                <input type="text" name="webHook" id="webHook" list="webHookList" class="url" placeholder="http://localhost:port/endpoint">
+                <div id="hookButtons">
+                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
+                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
+                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                </div>
+                <datalist id="webHookList"></datalist>
             </div>
 <!--
             <div class="el-holder folded">
