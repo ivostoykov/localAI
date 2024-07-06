@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local AI helper",
-  "version": "1.9.63",
+  "version": "1.10.14",
   "options_page": "options.html",
   "permissions": [
     "activeTab",
@@ -21,7 +21,7 @@
         "<all_urls>"
       ],
       "js": [
-        "jslib/stream_processor.min.js",
+        "jslib/stream_processor.js",
         "lai-main.js",
         "content.js"
       ],

@@ -1,3 +1,4 @@
+var DONE = 'DONE';
 var laiOptions = {};
 var aiSessions = [];
 var aiUserCommands = [];
@@ -77,7 +78,7 @@ document.addEventListener('DOMContentLoaded', async function (e) {
       laiBuiltMainButton();
     })
     .catch(error => {
-      console.error('Error loading one or more styles:', error);
+      console.error(`>>> ${manifest.name} - Error loading one or more styles`, error);
     });
 });
 
@@ -115,7 +116,7 @@ if(!shadowRoot) {  return;  }
     laiOptions.showEmbeddedButton = false;
 
     setTimeout(() => {
-      theMainButton.classList.add('lai-invisible');
+      theMainButton.classList.add('invisible');
       theMainButton.classList.remove('lai-faid-out');
     }, 750);
   });
@@ -124,12 +125,12 @@ if(!shadowRoot) {  return;  }
 function laiBuildMainButton(){
   var theMainButton = Object.assign(document.createElement('div'), {
     id: "laiMainButton",
-    className: `lai-semi-sphere-button ${laiOptions.showEmbeddedButton ? '' : 'lai-invisible'}`,
+    className: `lai-semi-sphere-button ${laiOptions.showEmbeddedButton ? '' : 'invisible'}`,
     title: "Click to open the panel.",
   });
 
   const img = document.createElement('img');
-  img.src = browser.runtime.getURL('img/icon128.svg');
+  img.src = chrome.runtime.getURL('img/icon128.svg');
   img.classList.add('img-btn');
   theMainButton.appendChild(img);
 
@@ -152,7 +153,7 @@ function laiMainButtonClicked(e){
 }
 
 function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
-  fetch(browser.runtime.getURL('sidebar.html'))
+  fetch(chrome.runtime.getURL('sidebar.html'))
     .then(response => response.text())
     .then(data => {
       var theSideBar = Object.assign(document.createElement('div'), {
@@ -177,7 +178,7 @@ function laiFetchStyles(cssNames) {
   if (!Array.isArray(cssNames)) { cssNames = [cssNames]; }
 
   return cssNames.map(cssName =>
-    fetch(browser.runtime.getURL(cssName))
+    fetch(chrome.runtime.getURL(cssName))
       .then(response => response.text())
       .then(data => {
         const shadowRoot = getShadowRoot();
@@ -194,11 +195,11 @@ function laiFetchStyles(cssNames) {
 function laiSetImg(el) {
   const name = el?.getAttribute('data-type')?.toLowerCase();
   if (name) {
-    el.src = browser.runtime.getURL(`img/${name}.svg`);
+    el.src = chrome.runtime.getURL(`img/${name}.svg`);
   }
 }
 
-function laiShowMessage(message, type) {
+function showMessage(message, type) {
   const shadowRoot = getShadowRoot();
   if(!shadowRoot) {  return;  }
   let msg = shadowRoot.querySelector('#feedbackMessage');
@@ -208,7 +209,7 @@ function laiShowMessage(message, type) {
 
   if (msg.classList.contains('feedback-message-active')) {
     msg.classList.remove('feedback-message-active');
-    setTimeout(() => { laiShowMessage(message, type); }, 250);
+    setTimeout(() => { showMessage(message, type); }, 250);
     return;
   }
 
@@ -220,12 +221,34 @@ function laiShowMessage(message, type) {
   }, 3000);
 }
 
-function getLaiOptions() {
-  return new Promise((resolve, reject) => {
+function buildMenuDropdowns(){
+  const shadowRoot = getShadowRoot();
+  const menuDropDowns = shadowRoot.querySelectorAll('#cogMenu select');
+  for (let i = 0; i < menuDropDowns.length; i++) {
+    const list = menuDropDowns[i];
+    const selectOption = list.querySelectorAll('option')[0];
+    list.replaceChildren();
+    list.appendChild(selectOption);
+    list.selectedIndex = 0;
+    let data = list.getAttribute('data-source');
+    if(!data){  continue;  }
+    try { data = JSON.parse(data);  }
+    catch(e){  continue;  }
+    if(!laiOptions?.[data?.list]){  return;  }
+    laiOptions[data?.list]?.forEach(m => {
+      const option = document.createElement('option');
+      option.value = option.text = m;
+      if(m === laiOptions[data?.selected]){  option.selected = true;  }
+      list.appendChild(option);
+    });
+  }
+}
+
+async function getLaiOptions() {
     const defaults = {
       "openPanelOnLoad": false,
-      "localPort": "1234",
-      "chatHistory": 5,
+      "aiUrl": "",
+      "aiModel": "",
       "closeOnClickOut": true,
       "closeOnCopy": false,
       "closeOnSendTo": true,
@@ -234,41 +257,40 @@ function getLaiOptions() {
       "systemInstructions": 'You are a helpful assistant.',
       "personalInfo": ''
     };
-    browser.storage.sync.get('laiOptions', function (obj) {
-      if (browser.runtime.lastError) {
-        return reject(browser.runtime.lastError);
-      }
 
-      const laiOptions = Object.assign({}, defaults, obj.laiOptions);
+    try {
+      const obj = await chrome.storage.sync.get('laiOptions');
+      const laiOptions = Object.assign({}, defaults, obj?.laiOptions ?? {});
       if(laiOptions.systemInstructions) {
         messages.push({ role: "system", content: laiOptions.systemInstructions });
       }
-      resolve(laiOptions);
-    });
-  });
+      return laiOptions;
+  } catch (e) {
+    console.error(`>>> ${manifest.name}`, e);
+  }
 }
 
 async function getAiSessions(){
-  const sessions = await browser.storage.local.get(['aiSessions']);
+  const sessions = await chrome.storage.local.get(['aiSessions']);
   aiSessions = sessions.aiSessions || [];
   if(aiSessions.length < 1){  aiSessions[0] = [];  }
   activeSessionIndex = aiSessions.length - 1;
 }
 
 async function setAiSessions(){
-  await browser.storage.local.set({['aiSessions']: aiSessions});
+  await chrome.storage.local.set({['aiSessions']: aiSessions});
 }
 
 async function getAiUserCommands(){
-  const commands = await browser.storage.local.get(['aiUserCommands']);
+  const commands = await chrome.storage.local.get(['aiUserCommands']);
   aiUserCommands = commands.aiUserCommands || [];
 }
 
 async function setAiUserCommands(){
-  await browser.storage.local.set({['aiUserCommands']: aiUserCommands});
+  await chrome.storage.local.set({['aiUserCommands']: aiUserCommands});
 }
 
-browser.storage.onChanged.addListener(function (changes, namespace) {
+chrome.storage.onChanged.addListener(function (changes, namespace) {
   for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
     if (key === 'laiOptions') {
       laiOptions = newValue;
@@ -287,4 +309,3 @@ browser.storage.onChanged.addListener(function (changes, namespace) {
     }
   }
 });
-

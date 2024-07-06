@@ -18,6 +18,7 @@ document.getElementById('importUserCmd').addEventListener('click', importUserCom
 document.getElementById('exportUserCmd').addEventListener('click', exportAsFile);
 document.getElementById('cleartUserCmd').addEventListener('click', deleteUserCommands);
 document.getElementById('fileInput').addEventListener('change', importFromFile);
+document.getElementById('aiUrl').addEventListener('input', loadModels)
 
 function saveSettings(e) {
     e.preventDefault();
@@ -200,15 +201,17 @@ async function loadModels(e){
 
 function fillModelList(models = []){
     if(models.length < 1){  return;  }
-    let modelDataList = document.querySelector('#models');
+    let modelDataList = document.querySelector('#modelList');
     if(!modelDataList){
-      const el = document.createElement('datalist');
-      el.id = 'models'
-      document.body.appendChild(el);
-      modelDataList = document.querySelector('#models');
-    } else {
-        modelDataList.replaceChildren();
+        console.error('Cannot find modelList element!');
+        return;
+    //   const el = document.createElement('datalist');
+    //   el.id = 'modelList'
+    //   document.body.appendChild(el);
+    //   modelDataList = document.querySelector('#models');
+    // } else {
     }
+    modelDataList.replaceChildren();
 
     for (let i = 0; i < models.length; i++) {
       const option = document.createElement('option');

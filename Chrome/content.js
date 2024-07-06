@@ -116,7 +116,7 @@ if(!shadowRoot) {  return;  }
     laiOptions.showEmbeddedButton = false;
 
     setTimeout(() => {
-      theMainButton.classList.add('lai-invisible');
+      theMainButton.classList.add('invisible');
       theMainButton.classList.remove('lai-faid-out');
     }, 750);
   });
@@ -125,7 +125,7 @@ if(!shadowRoot) {  return;  }
 function laiBuildMainButton(){
   var theMainButton = Object.assign(document.createElement('div'), {
     id: "laiMainButton",
-    className: `lai-semi-sphere-button ${laiOptions.showEmbeddedButton ? '' : 'lai-invisible'}`,
+    className: `lai-semi-sphere-button ${laiOptions.showEmbeddedButton ? '' : 'invisible'}`,
     title: "Click to open the panel.",
   });
 
@@ -199,7 +199,7 @@ function laiSetImg(el) {
   }
 }
 
-function laiShowMessage(message, type) {
+function showMessage(message, type) {
   const shadowRoot = getShadowRoot();
   if(!shadowRoot) {  return;  }
   let msg = shadowRoot.querySelector('#feedbackMessage');
@@ -209,7 +209,7 @@ function laiShowMessage(message, type) {
 
   if (msg.classList.contains('feedback-message-active')) {
     msg.classList.remove('feedback-message-active');
-    setTimeout(() => { laiShowMessage(message, type); }, 250);
+    setTimeout(() => { showMessage(message, type); }, 250);
     return;
   }
 
@@ -270,34 +270,6 @@ async function getLaiOptions() {
   }
 }
 
-/* function getLaiOptions() {
-  return new Promise((resolve, reject) => {
-    const defaults = {
-      "openPanelOnLoad": false,
-      "aiUrl": "",
-      "aiModel": "",
-      "closeOnClickOut": true,
-      "closeOnCopy": false,
-      "closeOnSendTo": true,
-      "showEmbeddedButton": false,
-      "loadHistoryOnStart": false,
-      "systemInstructions": 'You are a helpful assistant.',
-      "personalInfo": ''
-    };
-    chrome.storage.sync.get('laiOptions', function (obj) {
-      if (chrome.runtime.lastError) {
-        return reject(chrome.runtime.lastError);
-      }
-
-      const laiOptions = Object.assign({}, defaults, obj.laiOptions);
-      if(laiOptions.systemInstructions) {
-        messages.push({ role: "system", content: laiOptions.systemInstructions });
-      }
-      resolve(laiOptions);
-    });
-  });
-}
- */
 async function getAiSessions(){
   const sessions = await chrome.storage.local.get(['aiSessions']);
   aiSessions = sessions.aiSessions || [];

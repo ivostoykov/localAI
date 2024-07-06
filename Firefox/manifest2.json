@@ -1,16 +1,12 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "Local AI helper",
-  "version": "1.10.14",
+  "version": "1.7.74",
   "options_page": "options.html",
   "permissions": [
     "activeTab",
     "storage",
-    "contextMenus",
-    "scripting"
-  ],
-  "host_permissions": [
-    "*://*/*"
+    "contextMenus"
   ],
   "background": {
     "scripts": ["background.js"]
@@ -21,32 +17,31 @@
         "<all_urls>"
       ],
       "js": [
-        "jslib/stream_processor.js",
+        "jslib/stream_processor.min.js",
         "lai-main.js",
         "content.js"
       ],
       "run_at": "document_start"
     }
   ],
-  "action": {},
+  "browser_action": {
+    "default_icon": {
+      "16": "img/icon16.png",
+      "48": "img/icon48.png",
+      "128": "img/icon128.png"
+    }
+  },
   "icons": {
     "16": "img/icon16.png",
     "48": "img/icon48.png",
     "128": "img/icon128.png"
   },
   "web_accessible_resources": [
-    {
-      "resources": [
-        "sidebar.html",
-        "button.css",
-        "sidebar.css",
-        "lai-main.js",
-        "img/*.svg"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
+    "sidebar.html",
+    "button.css",
+    "sidebar.css",
+    "lai-main.js",
+    "img/*.svg"
   ],
   "browser_specific_settings": {
     "gecko": {
@@ -54,3 +49,4 @@
     }
   }
 }
+

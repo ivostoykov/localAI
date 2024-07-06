@@ -203,6 +203,25 @@ function extractEnhancedContent() {
     return bodyClone.textContent.trim();
 }
 
+// Ollama returns several json object in a single response which invalidates the JSON
+function processTextChunk(textChunk) {
+    if(textChunk.indexOf('\n{"model"') > -1){
+        return `[${textChunk.replace(/\n{"model"/g, ',\n{"model"')}]`;
+    }
+
+    console.log(`>>> textChunk: ${textChunk}`);
+    textChunk = textChunk.replace(/^data:\s+/i, '').trim();
+    textChunk = textChunk.replace(/data:\s+\[DONE\]$/i, '').trim();
+
+    if(textChunk.indexOf("\ndata:") > -1) {
+        textChunk = `[${textChunk.replace(/\ndata:\s+/ig, ',')}]`;
+        console.log(`>>> textChunk: ${textChunk}`,);
+        return textChunk;
+    }
+
+    return textChunk;
+}
+
 function handleStreamingResponse(reader, senderTabId) {
     if(!reader || !reader.read){ return; }
 
@@ -218,9 +237,22 @@ function handleStreamingResponse(reader, senderTabId) {
                 return;
             }
             const textChunk = new TextDecoder().decode(value);
-            let data = textChunk.replace(/^data:\s+/i, '').trim();
-            data = JSON.parse(data);
-            chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(data)});
+            // let data = textChunk.replace(/^data:\s+/i, '').trim();
+            let data = processTextChunk(textChunk);
+            // data = data.replace(/data:\s+\[DONE\]$/i, '').trim();
+            try {
+                data = JSON.parse(data);
+            } catch (e) {
+                console.log(`>>>`, e);
+                console.log(`>>> textChunk`, textChunk);
+                console.log(`>>> data`, data);
+            }
+console.log(`>>> data:`, data);
+            if(Array.isArray(data)){
+                data.forEach(el => chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(el)}))
+            } else {
+                chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(data)});
+            }
             read();
         }).catch(error => {
             if (!shouldAbort) {
@@ -274,8 +306,7 @@ async function fetchDataAction(request, sender) {
     request.data.messages.splice(-1, 1, { "role": "user", "content": data});
     request.data.messages = request.data.messages.filter(msg => msg.content.trim());
 
-    // const url = `http://localhost:${request.port}${request.path}`;
-    const url = laiOptions.aiUrl;
+    const url = request?.url ?? laiOptions.aiUrl;
     fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

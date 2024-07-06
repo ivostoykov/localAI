@@ -37,8 +37,14 @@
             </div>
             <div class="el-holder">
                 <label for="aiUrl">End point:</label>
+<!--                 <select name="aiUrl" id="aiUrl">
+                    <option value="">Select API Endpoint</option>
+                    <option value="http://localhost:1234/v1/chat/completions">LM Studio</option>
+                    <option value="http://localhost:11434/api/chat">Ollama</option>
+                </select> -->
                 <input type="text" id="aiUrl" name="aiUrl" value="" class="url" placeholder="http://localhost:1111/api/" list="urlList">
                 <div id="urlButtons">
+                    <img src="img/edit2.svg" class="model-icon-button" data-action="add" alt="Edit selected" title="Edit selected">
                     <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
                     <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
                     <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">

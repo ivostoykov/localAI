@@ -3,7 +3,10 @@ const manifest = chrome.runtime.getManifest();
 document.addEventListener('DOMContentLoaded', e => {
     loadSettings(e);
     attachListeners(e);
+    attachDataListListeners(e);
 });
+
+document.querySelector('#aiUrl').addEventListener('blur', loadModels);
 
 document.title = manifest.name || '';
 document.getElementById('pageTitle').textContent = `${manifest.name} - ${manifest.version}`;
@@ -15,6 +18,7 @@ document.getElementById('importUserCmd').addEventListener('click', importUserCom
 document.getElementById('exportUserCmd').addEventListener('click', exportAsFile);
 document.getElementById('cleartUserCmd').addEventListener('click', deleteUserCommands);
 document.getElementById('fileInput').addEventListener('change', importFromFile);
+document.getElementById('aiUrl').addEventListener('input', loadModels)
 
 function saveSettings(e) {
     e.preventDefault();
@@ -24,21 +28,37 @@ function saveSettings(e) {
 
     for (let i = 0; i < elements.length; i++) {
         const element = elements[i];
-        if(['checkbox', 'input', 'textarea'].indexOf(element.type) < 0){
+        if(['checkbox', 'text', 'textarea'].indexOf(element.type) < 0){
             continue;
         }
         optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
     }
 
-    browser.storage.sync.set({'laiOptions': optionsData}, function() {
+    const dataLists = ['modelList', 'urlList', 'webHookList'];
+    for (let i = 0; i < dataLists.length; i++) {
+        const list = dataLists[i];
+        const options = document.querySelectorAll(`#${list} option`) ?? [];
+        let attributeValues = Array.from(options)?.map(e => e.getAttribute('value'));
+        optionsData[list] = attributeValues ?? [];
+    }
+
+    chrome.storage.sync.set({'laiOptions': optionsData}, function() {
         showMessage('Settings saved', 'success');
     });
 }
 
-function loadSettings() {
-    browser.storage.sync.get('laiOptions', function(obj) {
+function loadSettings(e) {
+    chrome.storage.sync.get('laiOptions', function(obj) {
         const formData = obj.laiOptions || {};
-        Object.keys(formData).forEach(key => {
+
+        const dataLists = ['modelList', 'urlList', 'webHookList'];
+        for (let i = 0; i < dataLists.length; i++) {
+            const list = dataLists[i];
+            if(!formData[list]){  continue;  }
+            formData[list]?.forEach(value => extenddList(e, document.querySelector(`#${list}`), value));
+        }
+
+        Object.keys(formData)?.forEach(key => {
             const element = document.getElementById(key);
             if (element) {
                 if (element.type === 'checkbox') {
@@ -54,6 +74,7 @@ function loadSettings() {
 function attachListeners(e){
     document.getElementById('showEmbeddedButton').addEventListener('click', onshowEmbeddedButtonClicked);
     document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
+    document.querySelector('#advancedSettings img')?.addEventListener('click', toggleFold);
 }
 
 function onshowEmbeddedButtonClicked(e){
@@ -79,7 +100,7 @@ function cancelOptions() {
 }
 
 function deleteAllAiSessions(e){
-   browser.storage.local.remove(['aiSessions']).then(() =>{
+   chrome.storage.local.remove(['aiSessions']).then(() =>{
     showMessage('All sessions have been deleted.', 'success');
    }).catch(e => {
     console.error('>>>', e)
@@ -87,7 +108,7 @@ function deleteAllAiSessions(e){
 }
 
 function deleteUserCommands(e){
-    browser.storage.local.remove(['aiUserCommands']).then(() =>{
+    chrome.storage.local.remove(['aiUserCommands']).then(() =>{
         showMessage('All User commands have been deleted.', 'success');
     }).catch(e => {
         console.error('>>>', e)
@@ -112,7 +133,7 @@ async function exportAsFile(e) {
 
     if(!storageKey){  return;  }
 
-    const obj = await browser.storage.local.get([storageKey]);
+    const obj = await chrome.storage.local.get([storageKey]);
     const json = obj[storageKey] || [];
     var blob = new Blob([JSON.stringify(json, null, 4)], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
@@ -133,7 +154,7 @@ function importFromFile(e){
     reader.onloadend = function() {
         try {
             var json = JSON.parse(reader.result);
-            browser.storage.local.set({['aiUserCommands']: json})
+            chrome.storage.local.set({['aiUserCommands']: json})
             .then(() => showMessage('User Commands imported successfully.', 'success'))
             .catch(e => console.error('>>>', e));
         } catch (err) {
@@ -144,3 +165,200 @@ function importFromFile(e){
     reader.readAsText(file);
 }
 
+
+async function loadModels(e){
+    const aiUrl = e.target || document.querySelector('#aiUrl');
+    if(!aiUrl){
+        showMessage(`No API endpoint found - ${aiUrl?.value}!`, 'error');
+        return false;
+    }
+
+    let urlVal = aiUrl.value.trim();
+    if(urlVal === ''){  return;  }
+    if(!urlVal.startsWith('http')){
+        showMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
+        return false;
+    }
+
+    if(urlVal.indexOf('/api/') < 0){  return;  }
+
+    urlVal = urlVal.replace(/\/api\/.+/i, '/api/tags');
+    let response;
+    let models;
+    try {
+      response = await fetch(urlVal, {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+      });
+
+      models = await response.json();
+      if(models.models && Array.isArray(models.models)) {  fillModelList( models.models);  }
+    } catch (e) {
+      console.error(e);
+    }
+}
+
+function fillModelList(models = []){
+    if(models.length < 1){  return;  }
+    let modelDataList = document.querySelector('#modelList');
+    if(!modelDataList){
+        console.error('Cannot find modelList element!');
+        return;
+    //   const el = document.createElement('datalist');
+    //   el.id = 'modelList'
+    //   document.body.appendChild(el);
+    //   modelDataList = document.querySelector('#models');
+    // } else {
+    }
+    modelDataList.replaceChildren();
+
+    for (let i = 0; i < models.length; i++) {
+      const option = document.createElement('option');
+      option.value = models[i].name;
+      modelDataList.appendChild(option);
+    }
+}
+
+function toggleFold(e){
+    const src = e.target.src.indexOf('/unfold') > -1 ? '/unfold' : '/fold';
+    const target = src === '/unfold' ? '/fold' : '/unfold';
+    e.target.src = e.target.src.replace(src, target);
+    e.target.title = `${target === '/fold' ? 'Show' : 'Hide'} advanced settings`;
+    const advancedSettingsContainer = document.getElementById('advancedSettingsContainer');
+    if(e.target.src.indexOf('/fold') > -1){
+        advancedSettingsContainer.classList.add('invisible');
+    } else {
+        advancedSettingsContainer.classList.remove('invisible');
+    }
+}
+
+// model field function
+
+function sortDatalist(e) {
+    const datalist = e.target.parentElement.nextElementSibling;
+    const direction = e.target.getAttribute('data-action');
+    if(!['asc', 'desc'].includes(direction)){  return;  }
+
+    const options = Array.from(datalist.options);
+    if(!options || options?.length === 0)  {  return;  }
+    if(direction === 'desc'){
+        options.sort((a, b) => b.value.localeCompare(a.value));
+    }
+    if(direction === 'asc'){
+        options.sort((a, b) => a.value.localeCompare(b.value));
+    }
+
+    datalist.replaceChildren();
+
+    options.forEach(option => datalist.appendChild(option));
+}
+
+function extenddList(e, datalist, valueEl){
+    datalist = datalist ?? e.target.parentElement.nextElementSibling;
+    valueEl = valueEl ?? e.target.parentElement.previousElementSibling;
+    if(!valueEl || !datalist){ return;  }
+    const op = document.createElement('option');
+    if(typeof(valueEl) === 'string'){
+        op.value = valueEl
+    } else {
+        op.value = valueEl?.value?.trim();
+        valueEl.value = '';
+        valueEl.focus();
+    }
+
+    datalist.appendChild(op);
+}
+
+function shrinkList(e){
+    const datalist = e.target.parentElement.nextElementSibling;
+    const valueEl = e.target.parentElement.previousElementSibling;
+    if(!valueEl || !datalist){ return;  }
+    const action = e.target.getAttribute('data-action')?.toLowerCase();
+    if(action === 'removeall'){
+        datalist.replaceChildren();
+        return;
+    }
+
+    const options = datalist.querySelectorAll('option');
+    if(!options || options.length === 0){
+        valueEl.value = '';
+        valueEl.focus();
+        return;
+    }
+
+    for (let i = 0; i < options.length; i++) {
+        const option = options[i];
+        if(option.value === valueEl?.value){
+            datalist.removeChild(option);
+            valueEl.value = '';
+            valueEl.focus();
+            break;
+        }
+    }
+}
+
+function attachDataListListeners(e){
+
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons'];
+    for (let x = 0; x < containers.length; x++) {
+        const container = document.querySelector(`#${containers[x]}`);
+        if(!container) {  continue;  }
+        const buttons = container.querySelectorAll('img');
+
+        for (let i = 0; i < buttons.length; i++) {
+            const b = buttons[i];
+            const action = b.getAttribute('data-action')?.toLowerCase();
+            switch (action) {
+                case 'add':
+                    b.addEventListener('click', e => extenddList(e));
+                    break;
+                case 'remove':
+                case 'removeall':
+                    b.addEventListener('click', e => shrinkList(e));
+                    break;
+                case 'asc':
+                case 'desc':
+                    b.addEventListener('click', e => sortDatalist(e));
+                    break;
+            }
+        }
+    }
+}
+/* function attachDataListListeners(e){
+
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons'];
+    const modelButtonsContainer = document.querySelector('#modelButtons');
+    if(!modelButtonsContainer) {  return;  }
+    containers.push({
+        "container": modelButtonsContainer,
+        "datalist": document.getElementById('modelList'),
+        "valueEl": document.getElementById('aiModel')
+    });
+
+    const urlButtons = document.querySelector('#urlButtons');
+    if(!urlButtons) {  return;  }
+    containers.push({
+        "container": urlButtons,
+        "datalist": document.getElementById('urlList'),
+        "valueEl": document.getElementById('aiUrl')
+    });
+
+    for (let i = 0; i < containers.length; i++) {
+        containers[i].container.querySelectorAll('img').forEach(b => {
+            const action = b.getAttribute('data-action')?.toLowerCase();
+            switch (action) {
+                case 'add':
+                    b.addEventListener('click', e => addModel(e, containers[i].datalist, containers[i].valueEl));
+                    break;
+                case 'remove':
+                    b.addEventListener('click', e => removeModel(e, containers[i].datalist, containers[i].valueEl));
+                    break;
+                case 'asc':
+                case 'desc':
+                    b.addEventListener('click', e => sortDatalist(e, action.toLowerCase(), containers[i].datalist));
+                    break;
+            }
+        });
+    }
+} */
