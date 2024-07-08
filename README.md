@@ -30,8 +30,8 @@ To use it, you need:
 
 | | Browser | Extension |
 |-|---------|-----------|
-| | Chrome |  [link](http://localhost)|
-| | Firefox |  [link](http://localhost)|
+| <img src="media/chrome.png" height="48" alt="Chrome"/> | Chrome |  [link](http://localhost)|
+| <img src="media/ff.png" height="48" alt="Firefox"/> | Firefox |  [link](https://addons.mozilla.org/addon/local-ai-helper/)|
 
 
 Upon installation of this extension, you'll see the icon in the bottom-right corner. It will respond to mouse hover/over.

@@ -218,7 +218,7 @@ function showMessage(message, type) {
   msg.classList.add('feedback-message-active', type || 'info');
   setTimeout(() => {
     msg.classList.remove('feedback-message-active');
-  }, 3000);
+  }, type === 'error' ? 7500 : 3000);
 }
 
 function buildMenuDropdowns(){

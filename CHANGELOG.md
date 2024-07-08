@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.10.13] - latest
+## [1.10.xx] - latest
+
+### Custom commands
+* fixed a bug preventing change of the command name
+* added `edut` to directly load custom command in the editor
+
+## [1.10.13]
 
 ### Options
 * added multiple API endpoints

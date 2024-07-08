@@ -23,7 +23,7 @@ function laiInitSidebar() {
     ribbon.addEventListener('mouseleave', e => e.target.querySelector('#version')?.classList.add('invisible'));
 
     const userInput = shadowRoot.getElementById('laiUserInput');
-    userInput.addEventListener('keydown', onLaiTextAreaKeyUp);
+    userInput.addEventListener('keydown', onPromptTextAreaKeyUp);
     userInput.addEventListener('click', userInputClicked);
     userInput.addEventListener('blur', e => e.target.closest('div.lai-user-area').classList.remove('focused'));
 
@@ -47,7 +47,19 @@ function laiInitSidebar() {
         if(!cogMenu.classList.contains('invisible')){
             cogMenu.classList.add('invisible');
         }
-        chrome.runtime.sendMessage({ action: "openOptionsPage" });
+
+        try {
+            chrome.runtime.sendMessage({ action: "openOptionsPage" })
+            .then()
+            .catch(e => {
+                console.error(`>>> ${manifest.name}`, e);
+            });
+        } catch (e) {
+            if(e.message.indexOf('Extension context invalidated.') > -1){
+                showMessage(`${e.message}. Please reload the page.`, 'warning');
+            }
+            console.error(`>>> ${manifest.name}`, e);
+        }
         shadowRoot.getElementById('laiUserInput')?.focus();
     });
 
@@ -160,7 +172,7 @@ function laiPushpinClicked(e) {
     shadowRoot.getElementById('laiUserInput')?.focus();
 }
 
-function laiCheckForDump(userText) {
+function checkForDump(userText) {
     if (userText.indexOf('@{{dump}}') > -1 || userText.indexOf('@{{dumpStream}}') > -1) {
         dumpStream = true;
     }
@@ -335,7 +347,7 @@ function userInputClicked(e){
     cogMenu?.classList.add('invisible');
 }
 
-function onLaiTextAreaKeyUp(e) {
+function onPromptTextAreaKeyUp(e) {
     e.stopImmediatePropagation();
     e.stopPropagation();
 
@@ -350,14 +362,19 @@ function onLaiTextAreaKeyUp(e) {
         if (!shadowRoot) { return; }
         shadowRoot.getElementById('laiSysIntructContainer').classList.remove('active');
 
+        if(e.target?.value?.trim() === ''){
+            showMessage('It looks like there is no propt yet.', 'warning');
+            return;
+        }
+
         const inputChunks = splitInputToChunks(e.target.value, 4096);
-        laiCheckForDump(e.target.value);
+        checkForDump(e.target.value);
         addUserInputIntoMessageQ(inputChunks);
 
-        laiUpdateChatHistoryWithUserInput(e.target.value, 'user', messages.length - 1);
-        laiUpdateChatHistoryWithUserInput('', 'ai');
+        updateChatHistoryWithUserInput(e.target.value, 'user', messages.length - 1);
+        updateChatHistoryWithUserInput('', 'ai');
         addAttachmentsToUserInput();
-        laiQueryAI();
+        queryAI();
         clearAttachments();
         e.target.value = '';
         e.target.classList.add('invisible');
@@ -407,7 +424,7 @@ function transformTextInHtml(inputText) {
     return lastChatText;
 }
 
-function laiUpdateChatHistoryWithUserInput(inputText, type, index = -1) {
+function updateChatHistoryWithUserInput(inputText, type, index = -1) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const chatHist = shadowRoot.getElementById('laiChatMessageList');
@@ -619,21 +636,14 @@ function laiAbortRequest(e) {
 }
 
 
-function laiQueryAI() {
+function queryAI() {
     const shadowRoot = getShadowRoot();
-    // const selectedAiUrl = shadowRoot.querySelector('#apiUrlList');
-    // if(selectedAiUrl.selectedIndex < 1){
+
     if(laiOptions.aiUrl.trim() === ''){
         showMessage('Please choose API endpoint');
         return;
     }
-/*     const aiUrl = selectedAiUrl.options[selectedAiUrl.selectedIndex]?.text;
-    laiOptions.aiUrl = aiUrl;
-    if (!aiUrl){
-        showMessage('Please choose API endpoint');
-        return;
-    }
- */
+
     const data = {
         "messages": messages,
         "stream": true
@@ -652,24 +662,17 @@ function laiQueryAI() {
         action: "fetchData",
         url: laiOptions.aiUrl,
         data: data
-        // port: laiOptions.localPort || '1234',
-        // path: '/v1/chat/completions',
-/*         data: {
-            "messages": messages,
-            // "temperature": 0.5,
-            // "max_tokens": 1024,
-            "stream": true
-        } */
     };
 
     chrome.runtime.sendMessage(requestData, (response) => {
         if (response?.error) {
+            showMessage(response.error, 'error');
             console.error("Fetch error:", response.error);
         }
     });
 }
 
-function laiSetModelName(data) {
+function setModelNameLabel(data) {
     if (!data) { return; }
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
@@ -707,7 +710,7 @@ function laiExtractDataFromResponse(response) {
         return '';
     }
 
-    laiSetModelName(data);
+    setModelNameLabel(data);
     return (data?.choices?.[0]?.delta?.content || data?.message?.content || '');
 }
 
@@ -912,11 +915,11 @@ function laiResizeContainer(e) {
 }
 
 function checkCommandHandler(e){
-    const regex = /\/(\w+)[\t\n\s]?/gi;
+    let res = false;
     const userInput = e.target;
-    if (!userInput) { return false; }
+    if (!userInput || (userInput?.value?.trim() || '') === '') { return res; }
 
-    // const matches = userInput.value.match(regex);
+    const regex = /\/(\w+)(?:\((\w+)\))?[\t\n\s]?/gi;
     const matches = [];
     let match;
 
@@ -926,26 +929,45 @@ function checkCommandHandler(e){
         }
     }
 
-    if(matches.length < 1) { return false; }
-    let res = true;
+    if(matches.length < 1) { return res; }
+    res = true;
 
+    let continueLoop = true;
     for (let i = 0; i < matches.length; i++) {
-        const cmd = matches[i][1].toLowerCase();
-        userInput.value = userInput.value.replace(matches[i][0], '');
+        const cmd = matches[i][1]?.toLowerCase();
+        const param = matches[i][2]?.toLowerCase();
+        userInput.value = userInput.value?.replace(matches[i][0], '');
         switch (cmd) {
             case 'add':
-                userInput.value = userInput.value.replace(matches[i], '');
+                userInput.value = userInput.value?.replace(matches[i], '');
                 popUserCommandEditor();
+                continueLoop = false;
                 break;
             case 'list':
+                continueLoop = false;
                 popUserCommandList(e);
+                break;
+            case 'edit':
+                continueLoop = false;
+                if(!param){
+                    showMessage('Command name to edit is required.', 'error')
+                } else {
+                    const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === param);
+                    if(idx < 0){
+                        showMessage(`${param} custom command not found.`, 'error');
+                    } else {
+                        popUserCommandEditor(idx);
+                    }
+                }
                 break;
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
-                userInput.value = `${userInput.value}${userInput.value.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx]?.commandBody}`;
+                userInput.value = `${userInput.value}${userInput.value?.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx]?.commandBody || ''}`;
                 res = false;
                 break;
         }
+
+        if(!continueLoop) {  break;  }
     }
 
     return res;
@@ -961,8 +983,12 @@ function popUserCommandEditor(idx = -1){
     const closeBtn = editor.querySelector('.help-close-btn');
 
     editor.querySelector('#commandName').addEventListener('input', e => e.target.value = e.target.value.replace(/\s/g, '_'));
-    closeBtn.addEventListener('click', (e) => { e.target.closest('div#userCommandEditor').remove() })
-    editor.querySelector('button').addEventListener('click', e => {
+    closeBtn.addEventListener('click', (e) => { e.target.closest('div#userCommandEditor').remove() });
+    const saveButton = editor.querySelector('button');
+    saveButton.setAttribute('data-cmd-idx', idx);
+    saveButton?.addEventListener('click', e => {
+        const cmdIdx = parseInt(e.target.getAttribute('data-cmd-idx') || '-1', 10);
+        e.target?.removeAttribute('data-cmd-idx');
         const inputs = editor.querySelectorAll('input, textarea');
         const cmdData = {};
         inputs.forEach(el => {
@@ -974,7 +1000,7 @@ function popUserCommandEditor(idx = -1){
             return;
         }
 
-        addToUserCommands(cmdData);
+        addToUserCommands(cmdData, cmdIdx);
         closeBtn?.click();
     })
 
@@ -1000,17 +1026,21 @@ function loadUserCommandIntoEditor(idx = -1, editor){
     return editor;
 }
 
-function addToUserCommands(cmdData) {
+function addToUserCommands(cmdData, idx = -1) {
     if(!cmdData || !cmdData.commandName || !cmdData.commandBody ){  return;  }
 
-    const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmdData.commandName.toLowerCase());
     if (idx < 0) {
         aiUserCommands.push(cmdData);
     } else {
-        aiUserCommands[idx].commandBody = cmdData.commandBody;
-        aiUserCommands[idx].commandDescription = cmdData.commandDescription;
+        aiUserCommands[idx] = cmdData;
     }
-    setAiUserCommands().then().catch(e => console.error('>>>', e));
+
+    setAiUserCommands().then().catch(e => {
+        if(e.message.indexOf('Extension context invalidated.') > -1){
+            showMessage(`${e.message}. Please reload the page.`, 'error');
+        }
+        console.error('>>>', e);
+    });
 }
 
 function showHelp() {
@@ -1060,7 +1090,7 @@ function restoreLastSession(sessionIdx) {
         return;
     }
     session.forEach((msg, i) => {
-        laiUpdateChatHistoryWithUserInput(msg.content, msg.role.replace(/assistant/i, 'ai'), i);
+        updateChatHistoryWithUserInput(msg.content, msg.role.replace(/assistant/i, 'ai'), i);
     });
     showMessage(`session #${sessionIdx} restored.`, 'info');
 }
@@ -1128,6 +1158,7 @@ function selectMenuChanged(e){
             break;
         case 'modelList':
             laiOptions.aiModel = e.target.options[e.target.selectedIndex].value;
+            setModelNameLabel({"model": laiOptions.aiModel});
             break;
         case 'hookList':
             console.log(`${manifest.name} - ${id} is not implemented yet`);

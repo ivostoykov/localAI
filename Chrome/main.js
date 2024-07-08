@@ -9,7 +9,7 @@ function initSidebar() {
     }
 
     const userInput = theShadowRoot.querySelector('#laiUserInput');
-    userInput.addEventListener('keydown', onLaiTextAreaKeyUp);
+    userInput.addEventListener('keydown', onPromptTextAreaKeyUp);
     // userInput.addEventListener('input', laiHandleUserInput);
 
     theSideBar.querySelectorAll('img').forEach(pic => {
@@ -107,7 +107,7 @@ function laiPushpinClicked(e) {
     theShadowRoot.querySelector('#laiUserInput')?.focus();
 }
 
-function laiCheckForDump(userText){
+function checkForDump(userText){
     if(userText.indexOf('@{{dump}}') > -1 || userText.indexOf('@{{dumpStream}}') > -1){
         dumpStream = true;
     }
@@ -151,17 +151,17 @@ function laiHideSuggestions() {
     const value = e.target.value;
 } */
 
-function onLaiTextAreaKeyUp(e) {
+function onPromptTextAreaKeyUp(e) {
     e.stopImmediatePropagation();
     e.stopPropagation();
 
     if (e.key === 'Enter' && e.code !== 'NumpadEnter' && !e.shiftKey) {
         e.preventDefault();
         theShadowRoot.querySelector('#laiSysIntructContainer').classList.remove('active');
-        const idx = messages.push({ "role": "user", "content": laiCheckForDump(e.target.value) });
-        laiUpdateChatHistoryWithUserInput(e.target.value, 'user', idx-1);
-        laiUpdateChatHistoryWithUserInput('', 'ai');
-        laiQueryAI(e.target.value);
+        const idx = messages.push({ "role": "user", "content": checkForDump(e.target.value) });
+        updateChatHistoryWithUserInput(e.target.value, 'user', idx-1);
+        updateChatHistoryWithUserInput('', 'ai');
+        queryAI(e.target.value);
         e.target.value = '';
         e.target.classList.add('invisible');
         theShadowRoot.querySelector('#laiAbort')?.classList.remove('invisible');
@@ -183,7 +183,7 @@ function transformTextInHtml(inputText){
     return lastChatText;
 }
 
-function laiUpdateChatHistoryWithUserInput(inputText, type, index=-1){
+function updateChatHistoryWithUserInput(inputText, type, index=-1){
     // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
     const chatHist = theShadowRoot.querySelector('#laiChatMessageList');
     const lastChatElement = Object.assign(document.createElement('div'), {
@@ -381,7 +381,7 @@ function laiAbortRequest(e) {
 }
 
 
-function laiQueryAI(inputText) {
+function queryAI(inputText) {
 
     const requestData = {
         action: "fetchData",
@@ -404,7 +404,7 @@ function laiQueryAI(inputText) {
     });
 }
 
-function laiSetModelName(data){
+function setModelNameLabel(data){
     if(!data) {  return;  }
     // const theShadowRoot = document.getElementById('localAI').theShadowRoot;
     const modelName = theShadowRoot.querySelector('#laiModelName');
@@ -435,7 +435,7 @@ function laiExtractDataFromResponse(response){
         throw err;
     }
 
-    laiSetModelName(data);
+    setModelNameLabel(data);
     return (data?.choices?.[0]?.delta?.content || '');
 }
 
