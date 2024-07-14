@@ -30,7 +30,7 @@ To use it, you need:
 
 | | Browser | Extension |
 |-|---------|-----------|
-| <img src="media/chrome.png" height="48" alt="Chrome"/> | Chrome |  [link](http://localhost)|
+| <img src="media/chrome.png" height="48" alt="Chrome"/> | Chrome |  [link](https://chromewebstore.google.com/detail/local-ai-helper/mplpnjanhjddepeecpmjbglbiccdhnfp)|
 | <img src="media/ff.png" height="48" alt="Firefox"/> | Firefox |  [link](https://addons.mozilla.org/addon/local-ai-helper/)|
 
 
