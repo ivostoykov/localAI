@@ -9,6 +9,8 @@ var attachments = [];
 var userScrolled = false;
 var isElementSelectionActive = false;
 var dumpStream = false;
+var lastRegisteredErrorMessage = [];
+lastRegisteredErrorMessage.lastLength = 0;
 var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
 const commandPlacehoders = {
   "@{{page}}": "Include page into the prompt",
@@ -17,6 +19,11 @@ const commandPlacehoders = {
   "@{{today}}": "Include cuddent date without the time",
   "@{{time}}": "Include current time without the date"
 };
+var userPredefinedCmd = [
+  {"commandName": "add", "commandDescription":"Create a new predefined prompt"},
+  {"commandName":"list", "commandDescription":"Show all defined commands"},
+  {"commandName": "error", "commandDescription":"Show last error"}
+];
 
 document.addEventListener('DOMContentLoaded', async function (e) {
 
@@ -123,6 +130,10 @@ if(!shadowRoot) {  return;  }
 }
 
 function laiBuildMainButton(){
+  if(!chrome.runtime.id){
+    console.error(`${manifest.name} - Extension context invalidated. Please reload the tab.`);
+    return;
+  }
   var theMainButton = Object.assign(document.createElement('div'), {
     id: "laiMainButton",
     className: `lai-semi-sphere-button ${laiOptions.showEmbeddedButton ? '' : 'invisible'}`,
@@ -153,6 +164,10 @@ function laiMainButtonClicked(e){
 }
 
 function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
+  if(!chrome.runtime.id){
+    console.error(`${manifest.name} - Extension context invalidated. Please reload the tab.`);
+    return;
+  }
   fetch(chrome.runtime.getURL('sidebar.html'))
     .then(response => response.text())
     .then(data => {
@@ -174,6 +189,7 @@ function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
 }
 
 function laiFetchStyles(cssNames) {
+  if(!checkExtensionState()){  return;  }
   if (!cssNames) { return; }
   if (!Array.isArray(cssNames)) { cssNames = [cssNames]; }
 
@@ -193,32 +209,45 @@ function laiFetchStyles(cssNames) {
 }
 
 function laiSetImg(el) {
+  if(!checkExtensionState()){  return;  }
   const name = el?.getAttribute('data-type')?.toLowerCase();
   if (name) {
     el.src = chrome.runtime.getURL(`img/${name}.svg`);
   }
 }
 
-function showMessage(message, type) {
+function showMessage(messages, type) {
+  if(!messages){  return;  }
+  if(!Array.isArray(messages)){  messages = [messages];  }
+  if(messages.length < 1) {  return;  }
   const shadowRoot = getShadowRoot();
   if(!shadowRoot) {  return;  }
   let msg = shadowRoot.querySelector('#feedbackMessage');
+  let oldTimerId = msg.getAttribute('data-timerId');
+  if(oldTimerId){
+    clearTimeout(parseInt(oldTimerId, 10));
+  }
 
   const types = ['success', 'error', 'info', 'warning'];
   type = types.find(el => el===type) || 'info';
 
-  if (msg.classList.contains('feedback-message-active')) {
-    msg.classList.remove('feedback-message-active');
-    setTimeout(() => { showMessage(message, type); }, 250);
-    return;
+  for (let i = 0; i < messages.length; i++) {
+    const msgText = document.createElement('p');
+    msgText.textContent = messages[i];
+    msg.appendChild(msgText);
   }
 
-  msg.innerHTML = message;
   msg.classList.remove('success', 'error', 'info', 'warning');
   msg.classList.add('feedback-message-active', type || 'info');
-  setTimeout(() => {
+  const timerId = setTimeout(() => {
+    lastRegisteredErrorMessage = Array.from(msg.children).map(el => el.textContent);
+    handleErrorButton();
+    msg.replaceChildren(); // clear the space
     msg.classList.remove('feedback-message-active');
   }, type === 'error' ? 7500 : 3000);
+  if(timerId) {
+    msg.setAttribute('data-timerId', timerId);
+  }
 }
 
 function buildMenuDropdowns(){
@@ -309,3 +338,17 @@ chrome.storage.onChanged.addListener(function (changes, namespace) {
     }
   }
 });
+
+function handleErrorButton(){
+  if(lastRegisteredErrorMessage.length === lastRegisteredErrorMessage.lastLength) {  return;  }
+  const shadowRoot = getShadowRoot();
+  const errorBtn = shadowRoot.querySelector('#errorMsgBtn');
+  if(!errorBtn)  {  return;  }
+  if(lastRegisteredErrorMessage.length > 0){
+    errorBtn.classList.remove('invisible');
+  } else {
+    errorBtn.classList.add('invisible');
+  }
+
+  lastRegisteredErrorMessage.lastLength = lastRegisteredErrorMessage.length;
+}

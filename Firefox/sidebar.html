@@ -20,6 +20,7 @@
                     <hr>
                     <div id="optionsMenu" class="cog-menu-item">Options</div>
                 </div>
+                <img src="" id="errorMsgBtn" class="invisible" alt="Show last error" title="Show last error" data-type="error">
             </div>
 
             <div id="laiSessionHistryMenu" class="rib-section center" title="Session history">
@@ -58,7 +59,10 @@
 <div id="laiCopyHint" class="lai-copy-hint invisible">Copied!</div>
 <div class="lai-resize-handle"><img src="" alt="resize" data-type="resize"></div>
 <div id="commandListContainer" class="invisible user-command-list">
-    <div class="help-close-btn" title="Close">✖</div>
+    <div class="user-command-list-ribbon">
+        <div id="cmdListNew" class="help-new-btn" title="Close"><img src="" alt="Create new command" title="Create new command" data-type="new"></div>
+        <div id="cmdListClose" class="help-close-btn" title="Close">✖</div>
+    </div>
     <div class="user-command-block"></div>
 </div>
 

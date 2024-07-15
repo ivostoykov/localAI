@@ -314,6 +314,9 @@ async function fetchDataAction(request, sender) {
         signal: controller.signal,
     })
     .then(response => {
+        if(response.status > 299){
+            throw new Error(`${response.status}: ${response.statusText}`);
+        }
         if(shouldAbort && controller){
             controller.abort();
             chrome.tabs.sendMessage(senderTabId, { action: "streamAbort" });

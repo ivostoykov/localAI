@@ -1,10 +1,14 @@
 # Local AI - Changelog
 
-## [1.10.xx] - latest
+## [1.11.51] 2024-07-15 - latest
+* some bugs fixed
+* added buttons to increase or decrease font-size for individual chat block
+* added `new` button to create a custom command from executed prompt.
+* chat related buttons positioned better to avoid overlapping the content.
 
 ### Custom commands
 * fixed a bug preventing change of the command name
-* added `edut` to directly load custom command in the editor
+* added `edit` to directly load custom command in the editor
 
 ## [1.10.13]
 

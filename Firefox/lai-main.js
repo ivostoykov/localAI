@@ -15,12 +15,18 @@ function laiInitSidebar() {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
-    shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => e.target.classList.remove('feedback-message-active'));
+    shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => {
+        lastRegisteredErrorMessage = Array.from(e.target.children).map(el => el.textContent);
+        handleErrorButton();
+        e.target.replaceChildren();
+        e.target.classList.remove('feedback-message-active')
+    });
 
     shadowRoot.querySelector('#version').textContent = `${manifest.name} - ${manifest.version}`;
     const ribbon = shadowRoot.querySelector('div.lai-ribbon');
     ribbon.addEventListener('mouseenter', e => e.target.querySelector('#version')?.classList.remove('invisible'));
     ribbon.addEventListener('mouseleave', e => e.target.querySelector('#version')?.classList.add('invisible'));
+    ribbon.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
 
     const userInput = shadowRoot.getElementById('laiUserInput');
     userInput.addEventListener('keydown', onPromptTextAreaKeyUp);
@@ -43,6 +49,7 @@ function laiInitSidebar() {
     });
 
     shadowRoot.querySelector('#optionsMenu')?.addEventListener('click', function (e) {
+        if(!checkExtensionState()){  return;  }
         const cogMenu = shadowRoot.querySelector('#cogMenu');
         if(!cogMenu.classList.contains('invisible')){
             cogMenu.classList.add('invisible');
@@ -89,6 +96,7 @@ function laiInitSidebar() {
     });
 
     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
+    laiChatMessageList.addEventListener('click', hidePopups);
     laiChatMessageList.addEventListener('scroll', () => {
         const fromBottom = laiChatMessageList.scrollHeight - laiChatMessageList.scrollTop - laiChatMessageList.clientHeight;
         userScrolled = fromBottom > 10 ? true : false;
@@ -103,6 +111,7 @@ function laiInitSidebar() {
         restoreLastSession();
     }
 
+    setModelNameLabel({"model":laiOptions.aiModel});
     buildMenuDropdowns();
 };
 
@@ -281,6 +290,7 @@ function showAttachment(title){
 }
 
 function createAttachmentImage(title) {
+    if(!checkExtensionState()){  return;  }
     const img = document.createElement('img');
     img.src = chrome.runtime.getURL('img/attachment.svg');
     img.style.cursor = `url('${chrome.runtime.getURL('img/del.svg')}'), auto`;
@@ -342,9 +352,15 @@ function adjustHeight(userInput) {
 
 function userInputClicked(e){
     e.target.closest('div.lai-user-area')?.classList.add('focused');
-    const shadowRoot = getShadowRoot();
-    const cogMenu = shadowRoot.querySelector('#cogMenu');
-    cogMenu?.classList.add('invisible');
+    hidePopups(e);
+}
+
+function hidePopups(e) {
+    const shadowRoot = getShadowRoot();// Select elements with given selectors inside shadowRoot
+
+    shadowRoot.querySelector('#cogMenu')?.classList.add('invisible');
+    shadowRoot.querySelectorAll('#helpPopup').forEach(el => el.remove());
+    shadowRoot.querySelector('#commandListContainer')?.classList.add('invisible');
 }
 
 function onPromptTextAreaKeyUp(e) {
@@ -424,7 +440,60 @@ function transformTextInHtml(inputText) {
     return lastChatText;
 }
 
+/**
+ * Recursively builds and returns a DocumentFragment containing the specified elements.
+ *
+ * @param {Object|Object[]} elements - An object or an array of objects representing HTML elements to create.
+ * Each object should have a tag name as its key and an optional attributes object as its value.
+ * @returns {DocumentFragment|HTMLElement|null} A DocumentFragment containing the created elements,
+ * a single HTMLElement if only one element is provided, or null if no elements are provided.
+ *
+ * @example
+ * // Example usage:
+ * const elements = [
+ *   {
+ *     "span": {
+ *       "class": "lai-edit-item-action",
+ *       "data-type": "edit",
+ *       "data-index": 0,
+ *       "children": [
+ *         { "img": { "src": "img/edit.svg" } }
+ *       ]
+ *     }
+ *   }
+ * ];
+ * const fragment = buildElements(elements);
+ * document.body.appendChild(fragment);
+ */
+function buildElements(elements){
+    if(!elements) {  return;  }
+    if(!Array.isArray(elements))  {  elements = [elements];  }
+    let fragment = document.createDocumentFragment();
+
+    for (let i = 0; i < elements.length; i++) {
+        let el = elements[i];
+        let tagName = Object.keys(el)[0];
+        let attributes = el[tagName];
+
+        let newElement = document.createElement(tagName);
+
+        for (let attribute in attributes) {
+            if (attribute === 'children') {
+                newElement.appendChild(buildElements(attributes[attribute]));
+            } else {
+                newElement.setAttribute(attribute, attributes[attribute]);
+            }
+        }
+
+        fragment.appendChild(newElement); // Append the newly created element to a document fragment
+    }
+
+    return fragment.childNodes.length === 1 ? fragment.firstChild : fragment;
+}
+
 function updateChatHistoryWithUserInput(inputText, type, index = -1) {
+    if(!checkExtensionState()){  return;  }
+
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const chatHist = shadowRoot.getElementById('laiChatMessageList');
@@ -443,30 +512,50 @@ function updateChatHistoryWithUserInput(inputText, type, index = -1) {
         innerHTML: `${type === 'ai' ? type.toUpperCase() : type}:&nbsp;`
     });
     const lastChatText = transformTextInHtml(inputText);
-    let buttons = '<span class="lai-delete-chat-item-action" data-type="delete"></span><span class="lai-copy-chat-item-action" data-type="copy"></span>';
-    if (type !== 'ai' && index > -1) {
-        buttons += `<span class="lai-edit-item-action" data-type="edit" data-index=${index}><img src="${chrome.runtime.getURL('img/edit.svg')}"></span>`;
-    }
-    const actionIconsDiv = Object.assign(document.createElement('div'), {
-        // id: `${type === 'ai' ? 'laiActiveAiInput' : ''}`,
-        className: 'lai-action-icons invisible',
-        innerHTML: buttons
-    });
+    const arrButtons = [
+        { "span": { "class": "lai-chat-item-button", "data-type": "delete", "title": "Delete",
+            "children": [ { "img": {"src": chrome.runtime.getURL('img/remove-all.svg') } } ] } },
+        { "span": { "class": "lai-chat-item-button", "data-type": "copy", "title": "Copy",
+            "children": [ { "img": {"src": chrome.runtime.getURL('img/paste.svg') } } ] } },
+        { "span": { "class":"lai-chat-item-button", "data-type":"increase", "title": "Increase font",
+                "children": [ { "img": {"src": chrome.runtime.getURL('img/fontup.svg') } } ] } },
+        { "span": { "class":"lai-chat-item-button", "data-type":"decrease", "title": "Decrease font",
+                "children": [ { "img": {"src": chrome.runtime.getURL('img/fontdown.svg') } } ] } }
+    ];
+    const arrEditButton = [ {
+            "span": { "class":"lai-chat-item-button", "data-type":"edit", "data-index": index, "title": "Edit",
+                "children": [ { "img": {"src": chrome.runtime.getURL('img/edit.svg') } } ] }
+        }, {
+            "span": { "class":"lai-chat-item-button", "data-type":"add", "title": "Add this prompt as User Command",
+                "children": [ { "img": {"src": chrome.runtime.getURL('img/new.svg') } } ] }
+        } ];
 
+    const actionIconsDiv = document.createElement('div');
+    actionIconsDiv.classList.add('lai-action-icons','invisible');
+    actionIconsDiv.appendChild(buildElements(type !== 'ai' && index > -1 ? [...arrButtons, ...arrEditButton] : arrButtons));
     lastChatElement.appendChild(lastChatlabel)
     lastChatElement.appendChild(lastChatText)
     lastChatElement.appendChild(actionIconsDiv);
     chatHist.appendChild(lastChatElement);
+
     lastChatElement.addEventListener('mouseenter', function (e) {
         const el = e.target.querySelector('.lai-action-icons');
-        el?.classList.remove('invisible');
+        if(!el){  return;  }
+        const elHist = el.closest('.lai-chat-history');
+        const elIdx = Array.from( el.closest('#laiChatMessageList').children).indexOf(elHist);
+        el.classList.remove('invisible');
+        if (elIdx > 0) {
+            el.style.top = `-${el.getBoundingClientRect().height}px`;
+        } else {
+            el.style.bottom = `-${el.getBoundingClientRect().height}px`;
+        }
     });
     lastChatElement.addEventListener('mouseleave', function (e) {
         const el = e.target.querySelector('.lai-action-icons');
         el?.classList.add('invisible');
     });
 
-    lastChatElement.querySelectorAll('.lai-copy-chat-item-action, .lai-delete-chat-item-action, .lai-edit-item-action').forEach(el => {
+    lastChatElement.querySelectorAll('.lai-chat-item-button').forEach(el => {
         el.addEventListener('click', function (e) {
             let action = e.target.getAttribute('data-type');
             if (!action) {
@@ -474,15 +563,22 @@ function updateChatHistoryWithUserInput(inputText, type, index = -1) {
             }
             if (!action) { return; }
             switch (action) {
+                case "add":
+                    const thisPromptContainer = e.target.closest('.lai-chat-history');
+                    prompt2UserCommand(thisPromptContainer.querySelector('.lai-input-text').textContent);
+                    break;
                 case 'copy':
                     laiCopyElementContent(e, type);
-                    // navigator.clipboard.writeText(e.target.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text')?.textContent || '');
                     break;
                 case 'delete':
                     e.target.closest(`.lai-${type}-input`)?.remove();
                     break;
                 case 'edit':
                     editUserInput(e, type);
+                    break;
+                case "increase":
+                case "decrease":
+                    adjustFontSize(e.target.closest('.lai-chat-history'), action === 'increase' ? 1 : -1);
                     break;
                 default:
                     break;
@@ -502,9 +598,7 @@ function laiShowCopyHint(e) {
     if (!shadowRoot) { return; }
     const hint = shadowRoot.getElementById('laiCopyHint');
 
-    hint.style.right = '';
-    hint.style.left = '';
-    hint.style.opacity = 0;
+    hint.style.cssText = 'right: ""; left: ""; opacity: 0; z-index: 10';
     hint.classList.remove('invisible');
 
     var hintWidth = hint.offsetWidth;
@@ -626,9 +720,14 @@ function laiOnRibbonButtonClick(e) {
 }
 
 function laiAbortRequest(e) {
-    chrome.runtime.sendMessage({ action: "abortFetch" }, () => {
-        console.log("Abort message sent");
-    });
+    if(checkExtensionState()){
+        chrome.runtime.sendMessage({ action: "abortFetch" })
+        .then()
+        .catch(e => {
+            console.error(`>>> ${manifest.name}`, e);
+        });
+    }
+
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     shadowRoot?.getElementById('laiAbort')?.classList.add('invisible');
@@ -637,6 +736,11 @@ function laiAbortRequest(e) {
 
 
 function queryAI() {
+    if(!checkExtensionState()){
+        setTimeout(laiAbortRequest, 1000) ;
+        return;
+    }
+
     const shadowRoot = getShadowRoot();
 
     if(laiOptions.aiUrl.trim() === ''){
@@ -679,7 +783,8 @@ function setModelNameLabel(data) {
     const modelName = shadowRoot.getElementById('laiModelName');
     const model = data?.model;
     if (!model) { return; }
-    modelName.textContent = (/[^a-zA-Z:]/g.test(data.model) ? model.split(/\\|\//).pop().split('.').slice(0, -1).join('.') : data?.model) ?? '';
+    modelName.textContent = (/\\|\//.test(model) ? model.split(/\\|\//).pop().split('.').slice(0, -1).join('.') : model) ?? '';
+    // modelName.textContent = (/[^a-zA-Z:]/g.test(data.model) ? model.split(/\\|\//).pop().split('.').slice(0, -1).join('.') : data?.model) ?? '';
 }
 
 function laiFinalPreFormat() {
@@ -773,6 +878,10 @@ chrome.runtime.onMessage.addListener((response) => {
     if (!userScrolled) {
         const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
         laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+    }
+
+    if(response.error){
+        showMessage(response.error, 'error');
     }
 });
 
@@ -943,6 +1052,11 @@ function checkCommandHandler(e){
                 popUserCommandEditor();
                 continueLoop = false;
                 break;
+            case 'error':
+            case 'lasterror':
+                showMessage(lastRegisteredErrorMessage.toReversed().slice(0,5), 'error');
+                continueLoop = false;
+                break;
             case 'list':
                 continueLoop = false;
                 popUserCommandList(e);
@@ -1007,14 +1121,17 @@ function popUserCommandEditor(idx = -1){
     editor = loadUserCommandIntoEditor(idx, editor);
     theSidebar.appendChild(editor);
     editor.focus();
+
+    return editor;
+
 }
 
 function loadUserCommandIntoEditor(idx = -1, editor){
-    if(idx < 0 || !editor){  return;  }
-    if(aiUserCommands.length < idx){  return;  }
+    if(idx < 0 || !editor){  return editor;  }
+    if(aiUserCommands.length < idx){  return editor;  }
 
     const cmd = aiUserCommands[idx];
-    if(!cmd){  return;  }
+    if(!cmd){  return editor;  }
 
     const cmdName = editor.querySelector('#commandName');
     if(cmdName){  cmdName.value = cmd.commandName;  }
@@ -1041,6 +1158,15 @@ function addToUserCommands(cmdData, idx = -1) {
         }
         console.error('>>>', e);
     });
+}
+
+function prompt2UserCommand(prompt = ''){
+    if(!prompt){  return;  }
+    const editor = popUserCommandEditor();
+    if(!editor) {  return;  }
+    const cmdBody = editor.querySelector('#commandBody')
+    if(!cmdBody) {  return;  }
+    cmdBody.value = prompt;
 }
 
 function showHelp() {
@@ -1178,25 +1304,35 @@ function popUserCommandList(e){
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const cmdList = shadowRoot.querySelector('#commandListContainer');
-    const closeBtn = cmdList.querySelector('div.help-close-btn')
+    const closeBtn = cmdList.querySelector('#cmdListClose')
     closeBtn.addEventListener('click', e => cmdList.classList.add('invisible'));
+    const addNewBtn = cmdList.querySelector('#cmdListNew');
+    addNewBtn.addEventListener('click', e => {
+        closeBtn.click();
+        popUserCommandEditor()
+    });
+    laiSetImg(addNewBtn.querySelector('img'));
     const container = cmdList.querySelector('div.user-command-block')
 
     container.replaceChildren();
 
     const clickHandler = e => closeBtn.click();
-    if(aiUserCommands.length < 1){
+    container.addEventListener('click', clickHandler);
+/*     if(aiUserCommands.length < 1){
         container.textContent = 'No commands found. Use /add to add some commands.';
         container.addEventListener('click', clickHandler);
     } else {
         container.textContent = '';
         container.removeEventListener('click', clickHandler);
-    }
+    } */
 
-    const userInput = shadowRoot.getElementById('laiUserInput');
+    // const userInput = shadowRoot.getElementById('laiUserInput');
+    const allCmds = [...userPredefinedCmd, ...aiUserCommands];
 
-    for (let i = 0; i < aiUserCommands.length; i++) {
-        const cmd = aiUserCommands[i];
+    // for (let i = 0; i < aiUserCommands.length; i++) {
+    //     const cmd = aiUserCommands[i];
+    for (let i = 0; i < allCmds.length; i++) {
+        const cmd = allCmds[i];
         const el = document.createElement('div');
         el.setAttribute('data-index', i.toString());
 
@@ -1217,6 +1353,7 @@ function popUserCommandList(e){
 }
 
 function addCmdItemButtons(item, index){
+    if(!checkExtensionState()){  return;  }
     if(!item) {  return;  }
     item.classList.add('user-cmd-item-btn');
     Object.keys(userCmdItemBtns).forEach(key => {
@@ -1270,4 +1407,37 @@ function userCmdItemBtnClicked(e){
         default:
             console.warn(`Unknown action - ${action}`);
     }
+
+    if(action !== 'edit'){
+        hidePopups(e);
+        userInput.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
+    }
+}
+
+function checkExtensionState(){
+    if(!chrome.runtime.id){
+        if(typeof(showMessage) === 'function'){
+            showMessage(`${manifest.name} - Extension context invalidated. Please reload the tab.`, 'error');
+        } else {
+            console.error(`${manifest.name} - Extension context invalidated. Please reload the tab.`);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+function showLastErrorMessage(e){
+    e.stopPropagation();
+    showMessage(lastRegisteredErrorMessage.toReversed().slice(0,5), 'error');
+}
+
+function adjustFontSize(elm, direction) {
+    if(direction === 0) {  return;  }
+    let scaleFactor = direction > 0 ? 1 : -1;
+    let currentFontSize = window.getComputedStyle(elm, null).getPropertyValue('font-size');
+    let fontSizeNumber = parseFloat(currentFontSize);
+    if(isNaN(fontSizeNumber)) {  return;  }
+    elm.style.fontSize = `${fontSizeNumber + scaleFactor}px`;
+    Array.from(elm.children).forEach(child => adjustFontSize(child, direction));
 }

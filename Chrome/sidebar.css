@@ -101,6 +101,7 @@
 .rib-section.left{
     justify-content: flex-start;
     padding-left: 16px;
+    gap: 15px;
 }
 
 .rib-cog-menu-container{
@@ -184,6 +185,7 @@
 
 .lai-model {
     bottom: -5px;
+    transition: bottom .5s ease;
 }
 
 .lai-model:hover {
@@ -342,59 +344,30 @@
 .lai-action-icons {
     position: absolute;
     display: flex;
-    line-height: 2.3rem;
-    border: 1px solid lightgray;
+    border: 1px solid #aaa;
     min-width: 85px;
-    background-color: #FFF;
+    background-color: #eee;
     justify-content: space-evenly;
-    top: -15px;
+    z-index: 5;
+    gap: 10px;
+    flex-direction: row;
+    padding: 5px;
+    align-items: baseline;
 }
 
-.lai-copy-chat-item-action, .lai-delete-chat-item-action {
-    color: #c3c3c3;
+.lai-chat-item-button {
     cursor: pointer;
-    padding: 0 8px;
-    font-size: 22px;
 }
 
-.lai-copy-chat-item-action:hover, .lai-delete-chat-item-action:hover {
-    color: gray;
-    font-weight: bold;
-    font-size: 24px;
-}
-
-.lai-copy-chat-item-action::before{
-    content: '⎗';
-}
-.lai-delete-chat-item-action::before {
-    content: '✘';
-}
-
-.lai-edit-item-action{
-    text-align: center;
-}
-
-.lai-edit-item-action img{
-    width: 16px;
+.lai-chat-item-button img{
+    width: 24px;
     height: auto;
     opacity: .25;
 }
 
-.lai-edit-item-action img:hover{
-    width: 16px;
-    height: auto;
+.lai-chat-item-button img:hover{
     opacity: 1;
 }
-
-.lai-copy-chat-item-action:hover, .lai-delete-chat-item-action:hover, .lai-edit-item-action:hover {
-    background-color: #f0f0f0;
-}
-
-.lai-copy-chat-item-action:focus, .lai-delete-chat-item-action:focus, .lai-edit-item-action:focus {
-    outline: 2px solid #005A9C;
-}
-
-
 
 /* User Input */
 .lai-user-area {
@@ -570,6 +543,13 @@
     cursor: pointer;
 }
 
+.help-new-btn{
+    position: absolute;
+    top: 10px;
+    left: 5px;
+    cursor: pointer;
+}
+
 .help-close-btn{
     position: absolute;
     top: 10px;
@@ -678,6 +658,11 @@
     overflow: auto;
 }
 
+.user-command-list-ribbon{
+    display: flex;
+    flex-direction: row;
+}
+
 .user-command-item{
     padding: 10px;
     display: flex;
@@ -686,7 +671,8 @@
     border-bottom: 1px solid #888;
 }
 
-.user-command-item img {
+.user-command-item img,
+.user-command-list-ribbon img {
     width: 18px;
     height: auto;
     padding: 0 15px;
