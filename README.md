@@ -25,6 +25,11 @@ Supported tools are (those providing a local endpoint API):
 
 To use it, you need:
 
+> [!IMPORTANT]
+> 
+> If you are a Firefox user, please read [this](ff.md).
+> 
+
 1. One or more of these services running on your local system.
 2. An extension for your browser.
 
