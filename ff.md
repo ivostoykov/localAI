@@ -1,3 +1,5 @@
+If you're looking for a general usage directions - [read here](README.md)
+
 # Important Troubleshooting
 
 If you're using Firefox >= 158 it probably worth to keep reading.
