@@ -129,7 +129,16 @@ There are two types of commands: system and custom. System commands start with `
 
 Custom commands are user defined prompts. Usually, those are prompts often used and this will help avoiding repetitive typing the same prompt again and again.
 
+To list all available commands type `/list` and press `Enter`.
+
+![alt text](media/list.png)
+
+On the top of the list there are two buttons: `Close` (<img src="Chrome/img/remove-all.svg" height="26" alt="Close"/>) on the right and `New` (<img src="Chrome/img/new.svg" height="26" alt="New"/>) on the left. Following are a few predefined commands which connot be changed, with their descriptions: `/add`, `/list` and `/error`.
+
+The rest in the list are the commands created by the User. Above each command there are a few buttons:
+
 ![Custom commands](media/cmd_list.png)
+
 
 To use a predefined custom command type its name after a slash `/` and press `Enter`, or use any of the buttons available:
 
@@ -154,6 +163,11 @@ summarise @{{page}}
 ```
 
 This will send the content of the page from current active tab to the AI with a requiest to generate a summary.
+
+`New` (<img src="Chrome/img/new.svg" height="26" alt="New"/>) and `edit` (<img src="Chrome/img/edit.svg" height="26" alt="Edit"/>) will open a simple editor:
+
+<img src="media/editor.png" height="500" alt="Editor" title="Editor"/>
+
 
 # Options
 
