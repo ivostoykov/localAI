@@ -133,7 +133,9 @@ To list all available commands type `/list` and press `Enter`.
 
 ![alt text](media/list.png)
 
-On the top of the list there are two buttons: `Close` (<img src="Chrome/img/remove-all.svg" height="26" alt="Close"/>) on the right and `New` (<img src="Chrome/img/new.svg" height="26" alt="New"/>) on the left. Following are a few predefined commands which connot be changed, with their descriptions: `/add`, `/list` and `/error`.
+On the top of the list there are two buttons: `Close` (<img src="Chrome/img/remove-all.svg" height="26" alt="Close"/>) on the right and `New` (<img src="Chrome/img/new.svg" height="26" alt="New"/>) on the left. Custom commands could be imported (<img src="Chrome/img/import.svg" height="26" alt="Close"/>) and exported (<img src="Chrome/img/export.svg" height="26" alt="Close"/>) from here.
+
+Following are a few predefined commands which connot be changed, with their descriptions: `/add`, `/list` and `/error`.
 
 The rest in the list are the commands created by the User. Above each command there are a few buttons:
 
