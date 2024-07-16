@@ -2,6 +2,7 @@ var controller;
 var shouldAbort = false;
 var laiOptions;
 const storageOptionKey = 'laiOptions';
+const manifest = chrome.runtime.getManifest();
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
@@ -124,7 +125,37 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         }
 });
 
-function fetchUserCommandResult(command, sender) {
+async function fetchUserCommandResult(command, sender) {
+    let res = '';
+    switch (command) {
+        case 'page':
+            const response = await chrome.scripting.executeScript({
+                target: {tabId: sender.tab.id},
+                func: extractEnhancedContent
+            });
+            if (chrome.runtime.lastError) {
+                console.error(`>>> ${manifest.name}`, chrome.runtime.lastError.message);
+                return res;
+            }
+            res = response?.[0]?.result ?? '';
+            break;
+        case 'now':
+            res = (new Date()).toISOString();
+            break;
+        case 'today':
+            res = (new Date()).toISOString().split('T')[0];
+            break;
+        case 'time':
+            res = (new Date()).toISOString().split('T')[1];
+            break;
+        case 'url':
+            res = sender.url;
+            break;
+    }
+
+    return res;
+}
+/* function fetchUserCommandResult(command, sender) {
     return new Promise((resolve, reject) => {
         switch (command) {
             case 'page':
@@ -154,7 +185,7 @@ function fetchUserCommandResult(command, sender) {
                 resolve('');
         }
     });
-}
+} */
 
 function getPageTextContent(){
     debugger;
@@ -209,7 +240,6 @@ function processTextChunk(textChunk) {
         return `[${textChunk.replace(/\n{"model"/g, ',\n{"model"')}]`;
     }
 
-    console.log(`>>> textChunk: ${textChunk}`);
     textChunk = textChunk.replace(/^data:\s+/i, '').trim();
     textChunk = textChunk.replace(/data:\s+\[DONE\]$/i, '').trim();
 
@@ -247,7 +277,7 @@ function handleStreamingResponse(reader, senderTabId) {
                 console.log(`>>> textChunk`, textChunk);
                 console.log(`>>> data`, data);
             }
-console.log(`>>> data:`, data);
+
             if(Array.isArray(data)){
                 data.forEach(el => chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(el)}))
             } else {

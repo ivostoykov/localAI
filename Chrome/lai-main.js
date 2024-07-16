@@ -48,6 +48,18 @@ function laiInitSidebar() {
         shadowRoot.querySelector('#cogMenu').classList.toggle('invisible');
     });
 
+    shadowRoot.querySelector('#addUsrCmdMenu').addEventListener('click', e => {
+        shadowRoot.querySelector('#cogBtn').click();
+        popUserCommandEditor();
+    });
+    shadowRoot.querySelector('#listUsrCmdMenu').addEventListener('click', e => {
+        shadowRoot.querySelector('#cogBtn').click();
+        popUserCommandList(e);
+    });
+    shadowRoot.querySelector('#listSysCmdMenu').addEventListener('click', e => {
+        shadowRoot.querySelector('#cogBtn').click();
+        showHelp();
+    });
     shadowRoot.querySelector('#optionsMenu')?.addEventListener('click', function (e) {
         if(!checkExtensionState()){  return;  }
         const cogMenu = shadowRoot.querySelector('#cogMenu');
@@ -1300,10 +1312,13 @@ function hideSessionHistoryMenu() {
 }
 
 function popUserCommandList(e){
-    e.target.value = e.target.value.replace('/list', '');
+    if(e?.target?.value){
+        e.target.value = e.target.value.replace('/list', '');
+    }
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const cmdList = shadowRoot.querySelector('#commandListContainer');
+    cmdList.querySelectorAll('img').forEach(img => { laiSetImg(img); });
     const closeBtn = cmdList.querySelector('#cmdListClose')
     closeBtn.addEventListener('click', e => cmdList.classList.add('invisible'));
     const addNewBtn = cmdList.querySelector('#cmdListNew');
@@ -1311,26 +1326,19 @@ function popUserCommandList(e){
         closeBtn.click();
         popUserCommandEditor()
     });
-    laiSetImg(addNewBtn.querySelector('img'));
+
+    cmdList.querySelector('#cmdImport').addEventListener('click', e => userImport(e));
+    cmdList.querySelector('#cmdExport').addEventListener('click', async (e)=> await exportAsFile(e));
+
     const container = cmdList.querySelector('div.user-command-block')
 
     container.replaceChildren();
 
     const clickHandler = e => closeBtn.click();
     container.addEventListener('click', clickHandler);
-/*     if(aiUserCommands.length < 1){
-        container.textContent = 'No commands found. Use /add to add some commands.';
-        container.addEventListener('click', clickHandler);
-    } else {
-        container.textContent = '';
-        container.removeEventListener('click', clickHandler);
-    } */
 
-    // const userInput = shadowRoot.getElementById('laiUserInput');
     const allCmds = [...userPredefinedCmd, ...aiUserCommands];
 
-    // for (let i = 0; i < aiUserCommands.length; i++) {
-    //     const cmd = aiUserCommands[i];
     for (let i = 0; i < allCmds.length; i++) {
         const cmd = allCmds[i];
         const el = document.createElement('div');
@@ -1356,13 +1364,15 @@ function addCmdItemButtons(item, index){
     if(!checkExtensionState()){  return;  }
     if(!item) {  return;  }
     item.classList.add('user-cmd-item-btn');
+    const userPredefinedCmdCount = userPredefinedCmd.length
     Object.keys(userCmdItemBtns).forEach(key => {
+        if((key === 'edit' || key === 'delete') && index < userPredefinedCmdCount) {  return;  }
         if(!userCmdItemBtns[key]){  userCmdItemBtns[key] = chrome.runtime.getURL(`img/${key}.svg`);  }
         const img = document.createElement('img');
         img.src = userCmdItemBtns[key];
         img.setAttribute('title', key);
         img.setAttribute('alt', key);
-        img.setAttribute('data-index', index.toString());
+        img.setAttribute('data-index', (index - userPredefinedCmdCount).toString());
         img.setAttribute('data-action', key);
         item.appendChild(img);
         img.addEventListener('click', userCmdItemBtnClicked);

@@ -241,7 +241,9 @@ function showMessage(messages, type) {
   msg.classList.remove('success', 'error', 'info', 'warning');
   msg.classList.add('feedback-message-active', type || 'info');
   const timerId = setTimeout(() => {
-    lastRegisteredErrorMessage = Array.from(msg.children).map(el => el.textContent);
+    if(type === 'error'){
+      lastRegisteredErrorMessage = Array.from(msg.children).map(el => el.textContent);
+    }
     handleErrorButton();
     msg.replaceChildren(); // clear the space
     msg.classList.remove('feedback-message-active');

@@ -1,6 +1,11 @@
 # Local AI - Changelog
 
-## [1.11.51] 2024-07-15 - latest
+## [1.12.3] 2024-07-16 - latest
+* lost contact with the background when executing some prompts has been fixed.
+* Added user commands `import` and `export` to the main menu.
+* Added user commands `import` and `export` to the cog menu.
+
+## [1.11.51] 2024-07-15
 * some bugs fixed
 * added buttons to increase or decrease font-size for individual chat block
 * added `new` button to create a custom command from executed prompt.

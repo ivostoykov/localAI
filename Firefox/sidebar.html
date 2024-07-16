@@ -18,6 +18,10 @@
                         <option value="" selected>Select Webhook (optional)</option>
                     </select>
                     <hr>
+                    <div id="addUsrCmdMenu" class="cog-menu-item">Add new custom prompt</div>
+                    <div id="listUsrCmdMenu" class="cog-menu-item">List predefined custom prompts</div>
+                    <div id="listSysCmdMenu" class="cog-menu-item">List system commands</div>
+                    <hr>
                     <div id="optionsMenu" class="cog-menu-item">Options</div>
                 </div>
                 <img src="" id="errorMsgBtn" class="invisible" alt="Show last error" title="Show last error" data-type="error">
@@ -61,6 +65,14 @@
 <div id="commandListContainer" class="invisible user-command-list">
     <div class="user-command-list-ribbon">
         <div id="cmdListNew" class="help-new-btn" title="Close"><img src="" alt="Create new command" title="Create new command" data-type="new"></div>
+        <div class="help-other-btns-container">
+            <div id="cmdImport" title="Import">
+                <img src="" alt="Import" title="Import predefiened prompts" data-type="import">
+            </div>
+            <div id="cmdExport" title="Export">
+                <img src="" alt="Export" title="Export predefiened prompts" data-type="export">
+            </div>
+        </div>
         <div id="cmdListClose" class="help-close-btn" title="Close">✖</div>
     </div>
     <div class="user-command-block"></div>
