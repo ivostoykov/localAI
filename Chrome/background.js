@@ -4,12 +4,15 @@ var laiOptions;
 const storageOptionKey = 'laiOptions';
 const manifest = chrome.runtime.getManifest();
 
+chrome.tabs.onCreated.addListener(tab => {  composeContextMenu();  });
+
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
     if(tab.url && !tab.url.startsWith('http')) {  return;  }
 
     if (changeInfo.status === 'complete' && tab.url) {
         laiOptions = await getOptions();
+        composeContextMenu();
     }
 });
 
@@ -50,6 +53,50 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
+    composeContextMenu();
+});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    switch (info.menuItemId) {
+        case "sendSelectedText":
+            if (!info.selectionText.length) { return; }
+            if (!tab.id) {  return;  }
+            await chrome.tabs.sendMessage(tab.id, {
+                action: "activePageSelection",
+                selection: info.selectionText
+            });
+            break;
+        case "askAiExplanation":
+            await askAIExplanation(info, tab);
+            break;
+        case "sendPageContent":
+            if(tab.id){
+                chrome.scripting.executeScript({
+                    target: {tabId: tab.id},
+                    func: extractEnhancedContent
+                }, (response) => {
+                    const pageContent = response?.[0]?.result ?? '';
+                    if (!pageContent) {  return;  }
+                        chrome.tabs.sendMessage(tab.id, {
+                            action: "activePageContent",
+                            selection: pageContent
+                        });
+                });
+            }
+            break;
+        case "selectAndSendElement":
+            if (!tab.id) {  return;  }
+            chrome.tabs.sendMessage(tab.id, {
+                action: "toggleSelectElement",
+                selection: true
+            });
+            break;
+        default:
+            console.error(`Unknown menu id: ${info.menuItemId}`);
+        }
+});
+
+function composeContextMenu() {
     chrome.contextMenus.create({
         id: "sendToLocalAi",
         title: "Local AI",
@@ -57,7 +104,7 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 
     chrome.contextMenus.create({
-        id: "selectElement",
+        id: "selectAndSendElement",
         title: "Select and Send Element",
         parentId: "sendToLocalAi",
         contexts: ["all"]
@@ -83,47 +130,7 @@ chrome.runtime.onInstalled.addListener(() => {
         parentId: "sendToLocalAi",
         contexts: ["all"]
     });
-});
-
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    switch (info.menuItemId) {
-        case "sendSelectedText":
-            if (!info.selectionText.length) { return; }
-            if (!tab.id) {  return;  }
-            await chrome.tabs.sendMessage(tab.id, {
-                action: "activePageSelection",
-                selection: info.selectionText
-            });
-            break;
-        case "askAiExplanation":
-            await askAIExplanation(info, tab);
-            break;
-        case "sendPageContent":
-            if(tab.id){
-                chrome.scripting.executeScript({
-                    target: {tabId: tab.id},
-                    function: extractEnhancedContent
-                }, (response) => {
-                    const pageContent = response?.[0]?.result ?? '';
-                    if (!pageContent) {  return;  }
-                        chrome.tabs.sendMessage(tab.id, {
-                            action: "activePageContent",
-                            selection: pageContent
-                        });
-                });
-            }
-            break;
-        case "selectElement":
-            if (!tab.id) {  return;  }
-            chrome.tabs.sendMessage(tab.id, {
-                action: "toggleSelectElement",
-                selection: true
-            });
-            break;
-        default:
-            console.error(`Unknown menu id: ${info.menuItemId}`);
-        }
-});
+}
 
 async function fetchUserCommandResult(command, sender) {
     let res = '';
@@ -154,50 +161,6 @@ async function fetchUserCommandResult(command, sender) {
     }
 
     return res;
-}
-/* function fetchUserCommandResult(command, sender) {
-    return new Promise((resolve, reject) => {
-        switch (command) {
-            case 'page':
-                chrome.scripting.executeScript({
-                    target: {tabId: sender.tab.id},
-                    function: extractEnhancedContent
-                }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        reject(new Error(chrome.runtime.lastError.message));
-                        return;
-                    }
-                    resolve(response?.[0]?.result ?? '');
-                });
-                break;
-            case 'now':
-                resolve((new Date()).toISOString());
-                break
-            case 'today':
-                resolve((new Date()).toISOString().split('T')[0]);
-                break
-            case 'time':
-                resolve((new Date()).toISOString().split('T')[1]);
-                break
-            case 'url':
-                resolve(sender.url);
-            default:
-                resolve('');
-        }
-    });
-} */
-
-function getPageTextContent(){
-    debugger;
-
-    const bodyClone = document.body.cloneNode(true);
-    ['script', 'link', 'select', 'style', 'svg'].forEach(selector => {
-        bodyClone.querySelectorAll(selector).forEach(el => el.remove());
-    });
-
-    const content = bodyClone.textContent.replace(/\s+/g, ' ').replace(/\n+/g, '\n').trim();
-
-    return content;
 }
 
 function extractEnhancedContent() {
@@ -296,16 +259,9 @@ function handleStreamingResponse(reader, senderTabId) {
 
 async function askAIExplanation(info, tab) {
     try {
-        const scriptResponse = await chrome.scripting.executeScript({
-            target: {tabId: tab.id},
-            function: getPageTextContent
-        });
-        const pageContent = scriptResponse?.[0]?.result ?? '';
-        if (!pageContent) {  return;  }
         await chrome.tabs.sendMessage(tab.id, {
             action: "explainSelection",
-            selection: info.selectionText,
-            page: pageContent
+            selection: info.selectionText
         });
     } catch (err) {
         console.error('>>>', err);
@@ -314,6 +270,8 @@ async function askAIExplanation(info, tab) {
 
 async function fetchDataAction(request, sender) {
     let messages = request?.data?.messages || [];
+    let theExternalResources = request?.externalResources || [];
+    let binaryFormData = getBinaryFormData(request?.binaryFormData);
     if(messages.length < 1){  return;  }
 
     if(Object.keys(laiOptions ?? {}).length < 1){
@@ -327,7 +285,7 @@ async function fetchDataAction(request, sender) {
 
     const controller = new AbortController();
     let data = messages.slice(-1)[0]?.content || '';
-    data = await laiComposeUerImput(data, sender);
+    data = await composeUserImput(data, sender);
 
     if(laiOptions?.aiModel){
         request.data['model'] = laiOptions?.aiModel || '';
@@ -335,6 +293,7 @@ async function fetchDataAction(request, sender) {
 
     request.data.messages.splice(-1, 1, { "role": "user", "content": data});
     request.data.messages = request.data.messages.filter(msg => msg.content.trim());
+    request.data.messages.push(...await addExternalResourcesToUserInput(theExternalResources, binaryFormData));
 
     const url = request?.url ?? laiOptions.aiUrl;
     fetch(url, {
@@ -364,8 +323,8 @@ async function fetchDataAction(request, sender) {
     });
 }
 
-async function laiComposeUerImput(userInputText, sender) {
-    if (!userInputText) return '';
+async function composeUserImput(userInputText, sender) {
+    if (!userInputText && resources.length < 1) {  return '';  }
 
     var combinedResult = [];
     let userCommands = [];
@@ -394,6 +353,122 @@ async function laiComposeUerImput(userInputText, sender) {
 
     combinedResult.push(userInputText);
     return combinedResult.join('\n');
+}
+
+function getBinaryFormData(formData){
+    if(!formData){  return;  }
+    const theFormData = new FormData();
+
+    formData?.forEach(item => {
+        theFormData.append(item.key, item.value);
+    });
+
+    return theFormData;
+}
+
+async function addExternalResourcesToUserInput(externalResources, binaryFormData){
+    if(!laiOptions?.webHook){  return '';  }
+    let messages = [];
+
+    for (let i = 0; i < externalResources.length; i++) {
+        const [resource, parameters] = externalResources[i].split('?');
+        const formData = addParamsToFormData(parameters, binaryFormData);
+        const res = await fetchExternalResource(resource, formData);
+        if(!res) {  continue;  }
+
+        let content;
+        try {
+            content = typeof(res) !== 'string' ? JSON.parse(res) : res;
+        } catch (e) {
+            content = res;
+        }
+
+        const inputChunks = splitInputToChunks(content, 4096);
+        for (let x = 0; x < inputChunks.length; x++) {
+            if(!inputChunks[i]) {  continue;  }
+            messages.push({ "role": "user", "content": inputChunks[i] });
+        }
+
+        if(messages.length > 0){
+            const re = /\//g;
+            const startTag = `${resource.replace(re, '_').toUpperCase()}_RESOURCE_START`;
+            const endTag = `${resource.replace(re, '_').toUpperCase()}_RESOURCE_END`;
+            messages.unshift({ "role": "user", "content": `The following content, enclosed between "[${startTag}]" and "[${endTag}]" is this extenral resource content: ${resource} ${parameters ? 'called with parameter(s): ': ''}${parameters}. Leverage this information to enhance the quality and relevance of the response to the given prompt.[${startTag}]` });
+            messages.push({ "role": "user", "content": `[${endTag}] ` });
+        }
+    }
+
+    return messages;
+}
+
+function splitInputToChunks(str, chunkSize) {
+    const chunks = [];
+    for (let i = 0; i < str.length; i += chunkSize) {
+        chunks.push(str.slice(i, i + chunkSize));
+    }
+    return chunks;
+}
+
+async function fetchExternalResource(endpoint, params) {
+    if (!endpoint || typeof(endpoint) !== 'string') {  return;  }
+    if (!laiOptions?.webHook) {  return;  }
+
+    const url = `${laiOptions.webHook.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`; // Remove duplicate slashes
+
+    let options = {  method: "GET", headers: {}  };
+
+    if (params) {
+        let body;
+        if (params instanceof FormData) {
+            body = params;  // When using FormData, the browser sets the correct Content-Type automatically
+        } else if (typeof(params) === 'string') {
+            body = params;
+            options.headers["Content-Type"] = "text/plain";
+        } else {
+            try {
+                body = JSON.stringify(params);
+                options.headers["Content-Type"] = "application/json";
+            } catch (e) {
+                console.error(`>>> ${manifest.name}`, e);
+                body = params;
+                options.headers["Content-Type"] = "application/x-www-form-urlencoded";
+            }
+        }
+
+        options.method = "POST";
+        options.body = body;
+    }
+
+    let response;
+    try {
+        response = await fetch(url, options);
+        return await response.text();
+    } catch (e) {
+        console.error(`>>> ${manifest.name} - ${e.message}`);
+        console.log(`>>> ${manifest.name} - url: ${url}; params`, params ?? '');
+        console.log(`>>> ${manifest.name} - error:`, e);
+        console.log(`>>> ${manifest.name} - response:`, response);
+        return;
+    }
+}
+
+
+function addParamsToFormData(parameters, binaryFormData){
+    if(!parameters) {  return;  }
+    let isBinary = binaryFormData instanceof FormData;
+    if(!isBinary){  binaryFormData = {};  }
+    // if(!binaryFormData){ binaryFormData = new FormData();  }
+    const params = parameters.split('&');
+    for (let i = 0; i < params.length; i++) {
+        const [key, value] = params[i].split('=');
+        if(isBinary){
+            binaryFormData.append(key, value);
+        } else {
+            binaryFormData[key] = value;
+        }
+    }
+
+    return binaryFormData;
 }
 
 function addPersonalInfoToSystemMessage(systemContent){

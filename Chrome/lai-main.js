@@ -10,6 +10,13 @@ function getShadowRoot() {
     return document.getElementById('localAI')?.shadowRoot;
 }
 
+function getSideBar(){
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) { return; }
+
+    return shadowRoot.getElementById('laiSidebar');
+}
+
 function laiInitSidebar() {
     const root = getRootElement();
     const shadowRoot = getShadowRoot();
@@ -262,6 +269,15 @@ function onUserInputDragLeave(e) {
     setTimeout(() => dropzone.classList.add('invisible'), 750); // wait transition to complete
 }
 
+function isPlainText(type){
+    const painTextTypes = ["txt", "csv", "json", "log", "md", "xml", "html", "htm", "yaml", "yml", "ini"];
+    for (let i = 0; i < painTextTypes.length; i++) {
+        if(type.indexOf( painTextTypes[i].toLowerCase()) > -1){  return true;  }
+    }
+
+    return false;
+}
+
 function onUserInputFileDropped(e) {
     e.stopImmediatePropagation()
     e.preventDefault();
@@ -274,7 +290,18 @@ function onUserInputFileDropped(e) {
     setTimeout(() => dropzone.classList.add('invisible'), 750);
 
     const files = e.dataTransfer.files;
+    binaryFormData = new FormData();
     for (const file of files) {
+        if(!isPlainText(file.type)){
+            if(!laiOptions?.webHook) {
+                showMessage(`File type of ${file.type} is not a plain text and need a web hook to handle it. Skipping it.`, 'warning');
+                continue;
+            }
+
+            binaryFormData.append('file', file, fileName);
+            continue;
+        }
+
         const fileName = file.name.split(/\\\//).pop();
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -777,7 +804,9 @@ function queryAI() {
     const requestData = {
         action: "fetchData",
         url: laiOptions.aiUrl,
-        data: data
+        data: data,
+        externalResources: externalResources,
+        binaryFormData: binaryFormData
     };
 
     chrome.runtime.sendMessage(requestData, (response) => {
@@ -958,18 +987,30 @@ function laiAppendSelectionToUserInput(text) {
     // userInput.value += `\n\n===========\n${text}`;
 }
 
+function getPageTextContent(){
+    const bodyClone = document.body.cloneNode(true);
+    ['local-ai', 'script', 'link', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside'].forEach(selector => {
+        bodyClone.querySelectorAll(selector).forEach(el => el.remove());
+    });
+
+    let content = bodyClone.textContent.replace(/[ \t]+/g, ' ')
+    content = content.replace(/\s+/g, '\n');
+    return content.trim();
+}
+
 function ask2ExplainSelection(response){
     if(!response){
         showMessage('Nothing received to explain!', 'warning');
+        console.warn(`>>> {manifest.name}: `, response);
         return;
     }
 
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
-    const sideBar = shadowRoot.getElementById('laiSidebar');
+    const sideBar = getSideBar();  //shadowRoot.getElementById('laiSidebar');
     if (!sideBar) {
-        console.err('Sidebar not found!');
+        console.error(`>>> ${manifest.name} - ${ask2ExplainSelection.name}: Sidebar not found!`);
         return;
     }
 
@@ -977,7 +1018,7 @@ function ask2ExplainSelection(response){
     if(!userInput) {  return;  }
 
     const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
-    attachments.push(`Here is the snippet context:\n${response.page.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n')}`);
+    attachments.push(`Use this page for context:\n${getPageTextContent()}`);
 
     const enterEvent = new KeyboardEvent('keydown', {
         bubbles: true,
@@ -989,7 +1030,7 @@ function ask2ExplainSelection(response){
         laiSwapSidebarWithButton();
     }
 
-    userInput.value = `Explain what does this mean, please:\n${selection}`;
+    userInput.value = `Explain what does the following snippet mean, please:\n${selection}`;
     userInput.dispatchEvent( enterEvent );
 }
 
@@ -1035,12 +1076,28 @@ function laiResizeContainer(e) {
     window.addEventListener('mouseup', onMouseUp);
 }
 
-function checkCommandHandler(e){
-    let res = false;
+/**
+ * Populate external resources if any.
+ *
+ * @param {Event} e - The event object.
+ *
+ * @returns {boolean} Whether the resource is found or not.
+ */
+function externalResourcesHandler(e){
     const userInput = e.target;
-    if (!userInput || (userInput?.value?.trim() || '') === '') { return res; }
+    if (!userInput || (userInput?.value?.trim() || '') === '') { return; }
 
-    const regex = /\/(\w+)(?:\((\w+)\))?[\t\n\s]?/gi;
+    const matches = getRegExpMatches(/!#(.+)#!/g, userInput);
+    if(matches.length < 1) { return; }
+
+    for (let i = 0; i < matches.length; i++) {
+        externalResources.push(matches[i][1]);
+    }
+}
+
+function getRegExpMatches(regex, userInput){
+    if(!regex instanceof RegExp ) {  return;  }
+
     const matches = [];
     let match;
 
@@ -1050,28 +1107,41 @@ function checkCommandHandler(e){
         }
     }
 
+    return matches;
+}
+
+function checkCommandHandler(e){
+    let res = false;
+    const userInput = e.target;
+    if (!userInput || (userInput?.value?.trim() || '') === '') { return res; }
+
+    externalResourcesHandler(e);
+
+    const matches = getRegExpMatches(/\/(\w+)(?:\((\w+)\))?[\t\n\s]?/gi, userInput);
     if(matches.length < 1) { return res; }
-    res = true;
 
     let continueLoop = true;
     for (let i = 0; i < matches.length; i++) {
         const cmd = matches[i][1]?.toLowerCase();
         const param = matches[i][2]?.toLowerCase();
-        userInput.value = userInput.value?.replace(matches[i][0], '');
+        // userInput.value = userInput.value?.replace(matches[i][0], '');
         switch (cmd) {
             case 'add':
-                userInput.value = userInput.value?.replace(matches[i], '');
+                // userInput.value = userInput.value?.replace(matches[i], '');
                 popUserCommandEditor();
                 continueLoop = false;
+                res = true;
                 break;
             case 'error':
             case 'lasterror':
                 showMessage(lastRegisteredErrorMessage.toReversed().slice(0,5), 'error');
                 continueLoop = false;
+                res = true;
                 break;
             case 'list':
                 continueLoop = false;
                 popUserCommandList(e);
+                res = true;
                 break;
             case 'edit':
                 continueLoop = false;
@@ -1085,14 +1155,20 @@ function checkCommandHandler(e){
                         popUserCommandEditor(idx);
                     }
                 }
+                res = true;
                 break;
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
-                userInput.value = `${userInput.value}${userInput.value?.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx]?.commandBody || ''}`;
-                res = false;
+                if(idx > -1) {
+                    userInput.value = `${userInput.value}${userInput.value?.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx]?.commandBody || ''}`;
+                }
+                res = idx > -1;
                 break;
         }
 
+        if(res){
+            userInput.value = userInput.value?.replace(matches[i][0], '');
+        }
         if(!continueLoop) {  break;  }
     }
 
@@ -1164,7 +1240,9 @@ function addToUserCommands(cmdData, idx = -1) {
         aiUserCommands[idx] = cmdData;
     }
 
-    setAiUserCommands().then().catch(e => {
+    setAiUserCommands()
+    .then(e => showMessage('Successfully saved.', 'success'))
+    .catch(e => {
         if(e.message.indexOf('Extension context invalidated.') > -1){
             showMessage(`${e.message}. Please reload the page.`, 'error');
         }

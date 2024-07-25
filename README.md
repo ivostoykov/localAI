@@ -4,12 +4,33 @@
 
 ![alt text](media/localAI.png)
 
+- [Usage](#usage)
+- [The Panel](#the-panel)
+    - [Ribbon](#ribbon)
+        - [Menu](#menu)
+        - [Session](#session)
+- [System Instructions](#system-instructions)
+    - [Other](#other)
+    - [Prompt area](#prompt-area)
+        - [Attach file](#attach-file)
+        - [Commands](#commands)
+            - [System commands](#system-commands)
+            - [Custom Commends](#custom-commands)
+- [Options](#options)
+    - [End Points](#end-points)
+        - [Models](#models)
+    - [Web Hooks](#web-hooks)
+- [Troubleshoot](#troubleshoot)
+    - [Ollama](#ollama)
+        - [403 Error](#403-error)
+
+---
 
 Oh! Antohter AI tool!
 
 Why, indeed? Well, even those AI tools that support web browsing can't reach all web content. If interested in the topic, search the web or take a look [here](https://www.technologyreview.com/2024/03/19/1089919/the-ai-act-is-done-heres-what-will-and-wont-change/).
 
-In short, AIs are not allowed to access all content. But you, as a user, can. This is where this tool comes in handy. It uses the content loaded into a tab, allowing it to help you with tasks such as summarising. It is a helper that can use the information available to you as a user and can't go beyond that.
+In short, AIs are not allowed to access all content. But you, as a user, can. Why not interact with the page right in the current tab? This is where this tool comes in handy. It can use the content loaded into a tab, allowing it to help you with tasks such as summarising. It is a helper that can use the information available to you as a user and can't go beyond that.
 
 So, what can it do? It works with your current active tab only. It keeps all data local—no sharing, sending, or storing your actions for later. You have full control. You decide whether to keep it or delete it.
 
@@ -26,9 +47,9 @@ Supported tools are (those providing a local endpoint API):
 To use it, you need:
 
 > [!IMPORTANT]
-> 
+>
 > If you are a Firefox user, please read [this](ff.md).
-> 
+>
 
 1. One or more of these services running on your local system.
 2. An extension for your browser.
@@ -78,7 +99,10 @@ The changes made here are temporary for the session, (until reload) and for the 
 
 * On the top is the API endpoint where AI prompts are sent to.
 * If [Ollama](https://ollama.com/) is used as an endpont, next dropdown will be populated with the available model names. **It is mandatory** to select one, otherwise an error will be trown.
-* The `webhook` is for future use - no impact currently
+* See [Web Hook](#web-hooks) for more information
+* Create a new prompt and save it for future use.
+* Show a list of predefiend and save prompts.
+* Show a list of the availabel system commands.
 * The last menu will open extension's options in a new tab.
 
 ### Session
@@ -96,7 +120,7 @@ Sessions can be managed also from the [Options](#options) page.
 
 <img src="media/instruct.png" height="400" alt="New Session"/>
 
-### Other
+## Other
 
 <img src="Chrome/img/pushpin.svg" height="30" alt="New Session"/> - Pin panel.
 
@@ -175,9 +199,31 @@ This will send the content of the page from current active tab to the AI with a 
 
 ![Options](media/options.png)
 
-## Troubleshoot
+## End Points
 
-#### Ollama 403 Error
+Add the end point used to query the LLM. Use the buttons to add ( <img src="Chrome/img/add.svg" height="25" alt="Add" title="Add"/> ), delete ( <img src="Chrome/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), delete all ( <img src="Chrome/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ), and sort ascending ( <img src="Chrome/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or descending ( <img src="Chrome/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ).
+
+### Models
+
+If [Ollama](https://ollama.com/) is defined as [End Point](#end-points), Model list will be automatically populated. Open the list and click the preferable model. You can temporary change it from the [Menu](#menu) in the [Ribbon](#ribbon).
+
+## Web Hooks
+
+Allows adding a list of predefined API end points to be called before sending the prompt to the model. The resource used must return plain text. Any other type will either be treated as text or throw an error, potentially misleading the model.
+
+The purpose is to enrich the context by providing relevant information when needed, which will improve the quality of the generated response.
+
+The user has complete freedom to choose the type of service they want to use, but the intention is to run the service locally. If needed, this hook can be easily extended to call external services.
+
+**Example Project**: An example project is available on GitHub [here](https://github.com/ivostoykov/localAI_webhook). It provides a simple HTTP server and an option to extend it.
+
+# Troubleshoot
+
+After installing or updating [Ollama](https://ollama.com/) it is likely to hit [403 Forbidden error](https://en.wikipedia.org/wiki/HTTP_403). In this case follow the instruction below.
+
+## Ollama
+
+### 403 Error
 
 1. sudo nano /etc/systemd/system/ollama.service
 2. Add this line in the mentioned section

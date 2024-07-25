@@ -2,10 +2,12 @@ var DONE = 'DONE';
 var laiOptions = {};
 var aiSessions = [];
 var aiUserCommands = [];
+var externalResources = [];
 var userCmdItemBtns = {'edit':null, 'execute': null, 'paste': null, 'delete': null};
 var activeSessionIndex = 0;
 var messages = [];
 var attachments = [];
+var binaryFormData;
 var userScrolled = false;
 var isElementSelectionActive = false;
 var dumpStream = false;
@@ -108,7 +110,8 @@ function laiClearElementOver(e){
 function laiGetClickedSelectedElement(event){
   isElementSelectionActive = false;
   laiClearElementOver(event);
-  laiAppendSelectionToUserInput(event.target.textContent.trim().replace(/\s{1,}/g, ' ') || 'No content found');
+  let elementTextContent = event.target.innerText ?? ''; // get the visible text only
+  laiAppendSelectionToUserInput(elementTextContent.trim() || 'No content found');
 }
 
 function laiBuiltMainButton() {

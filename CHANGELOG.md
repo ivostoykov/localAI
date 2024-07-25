@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.12.3] 2024-07-16 - latest
+## [1.12.90] 2024-07-25 - latest
+
+* Fixed bug in getting the selection used by "Ask AI to Explain Selected" context menu.
+* Fixed bug related to text structure when Select and Send Element is used.
+* Simplified communication between frontend and backend.
+* Added external resources endpoint calls
+
+## [1.12.3] 2024-07-16
 * lost contact with the background when executing some prompts has been fixed.
 * Added user commands `import` and `export` to the main menu.
 * Added user commands `import` and `export` to the cog menu.

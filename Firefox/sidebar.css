@@ -104,7 +104,7 @@
     gap: 15px;
 }
 
-.rib-cog-menu-container{
+.rib-cog-menu-container {
     background-color: #fff;
     position: absolute;
     display: block;
@@ -115,11 +115,13 @@
     left: 30px;
     cursor: pointer;
     z-index: 100;
+	width: 250px;
 }
 
 .rib-cog-menu-container select{
     min-width: 125px;
     color: #000;
+    width: 100%;
 }
 
 .rib-cog-menu-container select:has(option:first-child:checked) {
@@ -130,7 +132,7 @@
     position: relative;
     margin-left: 5px;
     min-width: 125px;
-    height: 1.75rem;
+    height: 25px;
     align-content: center;
 }
 
