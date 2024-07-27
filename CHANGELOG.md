@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.12.90] 2024-07-25 - latest
+## [1.13.3] 2024-07-27 - latest
+
+- fixed issue with context menu
+- fixed permission issue for external resources call
+- resolved issue with calling external resources
+- improved error handling and notification for background issues
+
+## [1.12.90] 2024-07-25
 
 * Fixed bug in getting the selection used by "Ask AI to Explain Selected" context menu.
 * Fixed bug related to text structure when Select and Send Element is used.

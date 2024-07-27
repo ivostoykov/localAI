@@ -2,7 +2,7 @@ const laiWordEndings = /(?:\w+'(?:m|re|ll|s|d|ve|t))\s/;  // 'm, 're, 's, 'd, 'l
 const laiWordFormations = /(?:'(?:clock|til|bout|cause|em))/; // 'clock, 'til, 'bout, 'cause, 'em
 const manifest = chrome.runtime.getManifest();
 
-function getRootElement(){
+function getRootElement() {
     return document.getElementById('localAI');
 }
 
@@ -10,7 +10,7 @@ function getShadowRoot() {
     return document.getElementById('localAI')?.shadowRoot;
 }
 
-function getSideBar(){
+function getSideBar() {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
@@ -40,10 +40,10 @@ function laiInitSidebar() {
     userInput.addEventListener('click', userInputClicked);
     userInput.addEventListener('blur', e => e.target.closest('div.lai-user-area').classList.remove('focused'));
 
-    if(root) {
+    if (root) {
         root.addEventListener('dragenter', onUserInputDragEnter);
         root.addEventListener('dragleave', onUserInputDragLeave);
-        root.addEventListener('dragover', function(e) {
+        root.addEventListener('dragover', function (e) {
             e.preventDefault();
             return false;
         });
@@ -68,20 +68,20 @@ function laiInitSidebar() {
         showHelp();
     });
     shadowRoot.querySelector('#optionsMenu')?.addEventListener('click', function (e) {
-        if(!checkExtensionState()){  return;  }
+        if (!checkExtensionState()) { return; }
         const cogMenu = shadowRoot.querySelector('#cogMenu');
-        if(!cogMenu.classList.contains('invisible')){
+        if (!cogMenu.classList.contains('invisible')) {
             cogMenu.classList.add('invisible');
         }
 
         try {
             chrome.runtime.sendMessage({ action: "openOptionsPage" })
-            .then()
-            .catch(e => {
-                console.error(`>>> ${manifest.name}`, e);
-            });
+                .then()
+                .catch(e => {
+                    console.error(`>>> ${manifest.name}`, e);
+                });
         } catch (e) {
-            if(e.message.indexOf('Extension context invalidated.') > -1){
+            if (e.message.indexOf('Extension context invalidated.') > -1) {
                 showMessage(`${e.message}. Please reload the page.`, 'warning');
             }
             console.error(`>>> ${manifest.name}`, e);
@@ -130,7 +130,7 @@ function laiInitSidebar() {
         restoreLastSession();
     }
 
-    setModelNameLabel({"model":laiOptions.aiModel});
+    setModelNameLabel({ "model": laiOptions.aiModel });
     buildMenuDropdowns();
 };
 
@@ -269,10 +269,10 @@ function onUserInputDragLeave(e) {
     setTimeout(() => dropzone.classList.add('invisible'), 750); // wait transition to complete
 }
 
-function isPlainText(type){
+function isPlainText(type) {
     const painTextTypes = ["txt", "csv", "json", "log", "md", "xml", "html", "htm", "yaml", "yml", "ini"];
     for (let i = 0; i < painTextTypes.length; i++) {
-        if(type.indexOf( painTextTypes[i].toLowerCase()) > -1){  return true;  }
+        if (type.indexOf(painTextTypes[i].toLowerCase()) > -1) { return true; }
     }
 
     return false;
@@ -292,8 +292,8 @@ function onUserInputFileDropped(e) {
     const files = e.dataTransfer.files;
     binaryFormData = new FormData();
     for (const file of files) {
-        if(!isPlainText(file.type)){
-            if(!laiOptions?.webHook) {
+        if (!isPlainText(file.type)) {
+            if (!laiOptions?.webHook) {
                 showMessage(`File type of ${file.type} is not a plain text and need a web hook to handle it. Skipping it.`, 'warning');
                 continue;
             }
@@ -304,8 +304,8 @@ function onUserInputFileDropped(e) {
 
         const fileName = file.name.split(/\\\//).pop();
         const reader = new FileReader();
-        reader.onload = function(e) {
-            if(!Array.isArray(attachments)){  attachments = [];  }
+        reader.onload = function (e) {
+            if (!Array.isArray(attachments)) { attachments = []; }
             attachments.push(`attached file name: ${fileName}; attached file content: ${e.target.result}`);
             showAttachment(fileName);
         };
@@ -313,23 +313,23 @@ function onUserInputFileDropped(e) {
     }
 }
 
-function showAttachment(title){
+function showAttachment(title) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
     const attachmentContainer = shadowRoot.querySelector('#attachContainer');
-    if(!attachmentContainer.classList.contains('active')){
+    if (!attachmentContainer.classList.contains('active')) {
         attachmentContainer.classList.add('active');
     }
 
     const img = createAttachmentImage(title);
-    if(img){
+    if (img) {
         attachmentContainer.appendChild(img);
     }
 }
 
 function createAttachmentImage(title) {
-    if(!checkExtensionState()){  return;  }
+    if (!checkExtensionState()) { return; }
     const img = document.createElement('img');
     img.src = chrome.runtime.getURL('img/attachment.svg');
     img.style.cursor = `url('${chrome.runtime.getURL('img/del.svg')}'), auto`;
@@ -351,19 +351,19 @@ function createAttachmentImage(title) {
     return img;
 }
 
-function attachmentDeleted(){
-    if (attachments.length > 0) {  return;  }
+function attachmentDeleted() {
+    if (attachments.length > 0) { return; }
 
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     shadowRoot.querySelector('#attachContainer')?.classList.remove('active');
 }
 
-function clearAttachments(){
+function clearAttachments() {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const attachmentContainer = shadowRoot.querySelector('#attachContainer');
-    if(!attachmentContainer) {  return;  }
+    if (!attachmentContainer) { return; }
     attachmentContainer.replaceChildren();
     attachmentContainer.classList.remove('active');
     attachments = [];
@@ -389,7 +389,7 @@ function adjustHeight(userInput) {
     }
 }
 
-function userInputClicked(e){
+function userInputClicked(e) {
     e.target.closest('div.lai-user-area')?.classList.add('focused');
     hidePopups(e);
 }
@@ -417,7 +417,7 @@ function onPromptTextAreaKeyUp(e) {
         if (!shadowRoot) { return; }
         shadowRoot.getElementById('laiSysIntructContainer').classList.remove('active');
 
-        if(e.target?.value?.trim() === ''){
+        if (e.target?.value?.trim() === '') {
             showMessage('It looks like there is no propt yet.', 'warning');
             return;
         }
@@ -429,16 +429,22 @@ function onPromptTextAreaKeyUp(e) {
         updateChatHistoryWithUserInput(e.target.value, 'user', messages.length - 1);
         updateChatHistoryWithUserInput('', 'ai');
         addAttachmentsToUserInput();
-        queryAI();
-        clearAttachments();
-        e.target.value = '';
-        e.target.classList.add('invisible');
-        shadowRoot.getElementById('laiAbort')?.classList.remove('invisible');
+        try {
+            queryAI();
+        } catch (e) {
+            showMessage(`ERROR: ${e.message}`, error);
+        } finally {
+            clearAttachments();
+            externalResources = [];
+            e.target.value = '';
+            e.target.classList.add('invisible');
+            shadowRoot.getElementById('laiAbort')?.classList.remove('invisible');
+        }
     }
 }
 
-function addAttachmentsToUserInput(){
-    if(attachments.length < 1){  return false;  }
+function addAttachmentsToUserInput() {
+    if (attachments.length < 1) { return false; }
     for (let i = 0; i < attachments.length; i++) {
         const inputChunks = splitInputToChunks(attachments[i], 4096);
         for (let i = 0; i < inputChunks.length; i++) {
@@ -448,10 +454,10 @@ function addAttachmentsToUserInput(){
 }
 
 function addUserInputIntoMessageQ(inputChunks, omitFromSession = false) {
-    if(aiSessions.length < 1){  aiSessions[0] = [];  }
+    if (aiSessions.length < 1) { aiSessions[0] = []; }
     for (let i = 0; i < inputChunks.length; i++) {
         messages.push({ "role": "user", "content": inputChunks[i] });
-        if(omitFromSession)  {  continue;  }
+        if (omitFromSession) { continue; }
         aiSessions[activeSessionIndex].push({ "role": "user", "content": inputChunks[i] });
     }
 }
@@ -504,9 +510,9 @@ function transformTextInHtml(inputText) {
  * const fragment = buildElements(elements);
  * document.body.appendChild(fragment);
  */
-function buildElements(elements){
-    if(!elements) {  return;  }
-    if(!Array.isArray(elements))  {  elements = [elements];  }
+function buildElements(elements) {
+    if (!elements) { return; }
+    if (!Array.isArray(elements)) { elements = [elements]; }
     let fragment = document.createDocumentFragment();
 
     for (let i = 0; i < elements.length; i++) {
@@ -531,7 +537,7 @@ function buildElements(elements){
 }
 
 function updateChatHistoryWithUserInput(inputText, type, index = -1) {
-    if(!checkExtensionState()){  return;  }
+    if (!checkExtensionState()) { return; }
 
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
@@ -552,25 +558,45 @@ function updateChatHistoryWithUserInput(inputText, type, index = -1) {
     });
     const lastChatText = transformTextInHtml(inputText);
     const arrButtons = [
-        { "span": { "class": "lai-chat-item-button", "data-type": "delete", "title": "Delete",
-            "children": [ { "img": {"src": chrome.runtime.getURL('img/remove-all.svg') } } ] } },
-        { "span": { "class": "lai-chat-item-button", "data-type": "copy", "title": "Copy",
-            "children": [ { "img": {"src": chrome.runtime.getURL('img/paste.svg') } } ] } },
-        { "span": { "class":"lai-chat-item-button", "data-type":"increase", "title": "Increase font",
-                "children": [ { "img": {"src": chrome.runtime.getURL('img/fontup.svg') } } ] } },
-        { "span": { "class":"lai-chat-item-button", "data-type":"decrease", "title": "Decrease font",
-                "children": [ { "img": {"src": chrome.runtime.getURL('img/fontdown.svg') } } ] } }
+        {
+            "span": {
+                "class": "lai-chat-item-button", "data-type": "delete", "title": "Delete",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/remove-all.svg') } }]
+            }
+        },
+        {
+            "span": {
+                "class": "lai-chat-item-button", "data-type": "copy", "title": "Copy",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/paste.svg') } }]
+            }
+        },
+        {
+            "span": {
+                "class": "lai-chat-item-button", "data-type": "increase", "title": "Increase font",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/fontup.svg') } }]
+            }
+        },
+        {
+            "span": {
+                "class": "lai-chat-item-button", "data-type": "decrease", "title": "Decrease font",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/fontdown.svg') } }]
+            }
+        }
     ];
-    const arrEditButton = [ {
-            "span": { "class":"lai-chat-item-button", "data-type":"edit", "data-index": index, "title": "Edit",
-                "children": [ { "img": {"src": chrome.runtime.getURL('img/edit.svg') } } ] }
-        }, {
-            "span": { "class":"lai-chat-item-button", "data-type":"add", "title": "Add this prompt as User Command",
-                "children": [ { "img": {"src": chrome.runtime.getURL('img/new.svg') } } ] }
-        } ];
+    const arrEditButton = [{
+        "span": {
+            "class": "lai-chat-item-button", "data-type": "edit", "data-index": index, "title": "Edit",
+            "children": [{ "img": { "src": chrome.runtime.getURL('img/edit.svg') } }]
+        }
+    }, {
+        "span": {
+            "class": "lai-chat-item-button", "data-type": "add", "title": "Add this prompt as User Command",
+            "children": [{ "img": { "src": chrome.runtime.getURL('img/new.svg') } }]
+        }
+    }];
 
     const actionIconsDiv = document.createElement('div');
-    actionIconsDiv.classList.add('lai-action-icons','invisible');
+    actionIconsDiv.classList.add('lai-action-icons', 'invisible');
     actionIconsDiv.appendChild(buildElements(type !== 'ai' && index > -1 ? [...arrButtons, ...arrEditButton] : arrButtons));
     lastChatElement.appendChild(lastChatlabel)
     lastChatElement.appendChild(lastChatText)
@@ -579,9 +605,9 @@ function updateChatHistoryWithUserInput(inputText, type, index = -1) {
 
     lastChatElement.addEventListener('mouseenter', function (e) {
         const el = e.target.querySelector('.lai-action-icons');
-        if(!el){  return;  }
+        if (!el) { return; }
         const elHist = el.closest('.lai-chat-history');
-        const elIdx = Array.from( el.closest('#laiChatMessageList').children).indexOf(elHist);
+        const elIdx = Array.from(el.closest('#laiChatMessageList').children).indexOf(elHist);
         el.classList.remove('invisible');
         if (elIdx > 0) {
             el.style.top = `-${el.getBoundingClientRect().height}px`;
@@ -759,12 +785,12 @@ function laiOnRibbonButtonClick(e) {
 }
 
 function laiAbortRequest(e) {
-    if(checkExtensionState()){
+    if (checkExtensionState()) {
         chrome.runtime.sendMessage({ action: "abortFetch" })
-        .then()
-        .catch(e => {
-            console.error(`>>> ${manifest.name}`, e);
-        });
+            .then()
+            .catch(e => {
+                console.error(`>>> ${manifest.name}`, e);
+            });
     }
 
     const shadowRoot = getShadowRoot();
@@ -775,14 +801,14 @@ function laiAbortRequest(e) {
 
 
 function queryAI() {
-    if(!checkExtensionState()){
-        setTimeout(laiAbortRequest, 1000) ;
+    if (!checkExtensionState()) {
+        setTimeout(laiAbortRequest, 1000);
         return;
     }
 
     const shadowRoot = getShadowRoot();
 
-    if(laiOptions.aiUrl.trim() === ''){
+    if (laiOptions.aiUrl.trim() === '') {
         showMessage('Please choose API endpoint');
         return;
     }
@@ -792,8 +818,8 @@ function queryAI() {
         "stream": true
     }
 
-    if(laiOptions.aiUrl.indexOf('api') > -1){
-        if(laiOptions.aiModel.trim() === '') {
+    if (laiOptions.aiUrl.indexOf('api') > -1) {
+        if (laiOptions.aiModel.trim() === '') {
             showMessage('Please choose a model from the ');
             return;
         } else {
@@ -809,12 +835,7 @@ function queryAI() {
         binaryFormData: binaryFormData
     };
 
-    chrome.runtime.sendMessage(requestData, (response) => {
-        if (response?.error) {
-            showMessage(response.error, 'error');
-            console.error("Fetch error:", response.error);
-        }
-    });
+    chrome.runtime.sendMessage(requestData);
 }
 
 function setModelNameLabel(data) {
@@ -851,7 +872,7 @@ function laiExtractDataFromResponse(response) {
         throw err;
     }
 
-    if(data?.error && data.error.length > 0){
+    if (data?.error && data.error.length > 0) {
         showMessage(data.error, 'error');
         return '';
     }
@@ -921,7 +942,7 @@ chrome.runtime.onMessage.addListener((response) => {
         laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
     }
 
-    if(response.error){
+    if (response.error) {
         showMessage(response.error, 'error');
     }
 });
@@ -984,10 +1005,9 @@ function laiAppendSelectionToUserInput(text) {
     }
     const userInput = sideBar.querySelector('#laiUserInput');
     userInput.value += `${currentSelection}`;
-    // userInput.value += `\n\n===========\n${text}`;
 }
 
-function getPageTextContent(){
+function getPageTextContent() {
     const bodyClone = document.body.cloneNode(true);
     ['local-ai', 'script', 'link', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside'].forEach(selector => {
         bodyClone.querySelectorAll(selector).forEach(el => el.remove());
@@ -998,8 +1018,8 @@ function getPageTextContent(){
     return content.trim();
 }
 
-function ask2ExplainSelection(response){
-    if(!response){
+function ask2ExplainSelection(response) {
+    if (!response) {
         showMessage('Nothing received to explain!', 'warning');
         console.warn(`>>> {manifest.name}: `, response);
         return;
@@ -1015,7 +1035,7 @@ function ask2ExplainSelection(response){
     }
 
     const userInput = shadowRoot.getElementById('laiUserInput');
-    if(!userInput) {  return;  }
+    if (!userInput) { return; }
 
     const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
     attachments.push(`Use this page for context:\n${getPageTextContent()}`);
@@ -1030,8 +1050,8 @@ function ask2ExplainSelection(response){
         laiSwapSidebarWithButton();
     }
 
-    userInput.value = `Explain what does the following snippet mean, please:\n${selection}`;
-    userInput.dispatchEvent( enterEvent );
+    userInput.value = `Below is a text snippet. Please, explain what it means. Here is the snippet:\n${selection}`;
+    userInput.dispatchEvent(enterEvent);
 }
 
 function laiResizeContainer(e) {
@@ -1083,26 +1103,26 @@ function laiResizeContainer(e) {
  *
  * @returns {boolean} Whether the resource is found or not.
  */
-function externalResourcesHandler(e){
+function externalResourcesHandler(e) {
     const userInput = e.target;
     if (!userInput || (userInput?.value?.trim() || '') === '') { return; }
 
     const matches = getRegExpMatches(/!#(.+)#!/g, userInput);
-    if(matches.length < 1) { return; }
+    if (matches.length < 1) { return; }
 
     for (let i = 0; i < matches.length; i++) {
         externalResources.push(matches[i][1]);
     }
 }
 
-function getRegExpMatches(regex, userInput){
-    if(!regex instanceof RegExp ) {  return;  }
+function getRegExpMatches(regex, userInput) {
+    if (!regex instanceof RegExp) { return; }
 
     const matches = [];
     let match;
 
     while ((match = regex.exec(userInput.value)) !== null) {
-        if(match){
+        if (match) {
             matches.push(match);
         }
     }
@@ -1110,7 +1130,7 @@ function getRegExpMatches(regex, userInput){
     return matches;
 }
 
-function checkCommandHandler(e){
+function checkCommandHandler(e) {
     let res = false;
     const userInput = e.target;
     if (!userInput || (userInput?.value?.trim() || '') === '') { return res; }
@@ -1118,7 +1138,7 @@ function checkCommandHandler(e){
     externalResourcesHandler(e);
 
     const matches = getRegExpMatches(/\/(\w+)(?:\((\w+)\))?[\t\n\s]?/gi, userInput);
-    if(matches.length < 1) { return res; }
+    if (matches.length < 1) { return res; }
 
     let continueLoop = true;
     for (let i = 0; i < matches.length; i++) {
@@ -1134,7 +1154,7 @@ function checkCommandHandler(e){
                 break;
             case 'error':
             case 'lasterror':
-                showMessage(lastRegisteredErrorMessage.toReversed().slice(0,5), 'error');
+                showMessage(lastRegisteredErrorMessage.toReversed().slice(0, 5), 'error');
                 continueLoop = false;
                 res = true;
                 break;
@@ -1145,11 +1165,11 @@ function checkCommandHandler(e){
                 break;
             case 'edit':
                 continueLoop = false;
-                if(!param){
+                if (!param) {
                     showMessage('Command name to edit is required.', 'error')
                 } else {
                     const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === param);
-                    if(idx < 0){
+                    if (idx < 0) {
                         showMessage(`${param} custom command not found.`, 'error');
                     } else {
                         popUserCommandEditor(idx);
@@ -1159,24 +1179,24 @@ function checkCommandHandler(e){
                 break;
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
-                if(idx > -1) {
+                if (idx > -1) {
                     userInput.value = `${userInput.value}${userInput.value?.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx]?.commandBody || ''}`;
                 }
                 res = idx > -1;
                 break;
         }
 
-        if(res){
+        if (res) {
             userInput.value = userInput.value?.replace(matches[i][0], '');
         }
-        if(!continueLoop) {  break;  }
+        if (!continueLoop) { break; }
     }
 
     return res;
 }
 
 // popup
-function popUserCommandEditor(idx = -1){
+function popUserCommandEditor(idx = -1) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const theSidebar = shadowRoot.querySelector('#laiSidebar');
@@ -1197,7 +1217,7 @@ function popUserCommandEditor(idx = -1){
             cmdData[el.id] = el.value || '';
         })
 
-        if(!cmdData.commandName || !cmdData.commandBody){
+        if (!cmdData.commandName || !cmdData.commandBody) {
             showMessage('Command must have name and boddy!', 'error');
             return;
         }
@@ -1214,25 +1234,25 @@ function popUserCommandEditor(idx = -1){
 
 }
 
-function loadUserCommandIntoEditor(idx = -1, editor){
-    if(idx < 0 || !editor){  return editor;  }
-    if(aiUserCommands.length < idx){  return editor;  }
+function loadUserCommandIntoEditor(idx = -1, editor) {
+    if (idx < 0 || !editor) { return editor; }
+    if (aiUserCommands.length < idx) { return editor; }
 
     const cmd = aiUserCommands[idx];
-    if(!cmd){  return editor;  }
+    if (!cmd) { return editor; }
 
     const cmdName = editor.querySelector('#commandName');
-    if(cmdName){  cmdName.value = cmd.commandName;  }
+    if (cmdName) { cmdName.value = cmd.commandName; }
     const cmdDesc = editor.querySelector('#commandDescription');
-    if(cmdDesc) {  cmdDesc.value = cmd.commandDescription;  }
+    if (cmdDesc) { cmdDesc.value = cmd.commandDescription; }
     const cmdBody = editor.querySelector('#commandBody');
-    if(cmdBody)  {  cmdBody.value = cmd.commandBody;  }
+    if (cmdBody) { cmdBody.value = cmd.commandBody; }
 
     return editor;
 }
 
 function addToUserCommands(cmdData, idx = -1) {
-    if(!cmdData || !cmdData.commandName || !cmdData.commandBody ){  return;  }
+    if (!cmdData || !cmdData.commandName || !cmdData.commandBody) { return; }
 
     if (idx < 0) {
         aiUserCommands.push(cmdData);
@@ -1241,21 +1261,21 @@ function addToUserCommands(cmdData, idx = -1) {
     }
 
     setAiUserCommands()
-    .then(e => showMessage('Successfully saved.', 'success'))
-    .catch(e => {
-        if(e.message.indexOf('Extension context invalidated.') > -1){
-            showMessage(`${e.message}. Please reload the page.`, 'error');
-        }
-        console.error('>>>', e);
-    });
+        .then(e => showMessage('Successfully saved.', 'success'))
+        .catch(e => {
+            if (e.message.indexOf('Extension context invalidated.') > -1) {
+                showMessage(`${e.message}. Please reload the page.`, 'error');
+            }
+            console.error('>>>', e);
+        });
 }
 
-function prompt2UserCommand(prompt = ''){
-    if(!prompt){  return;  }
+function prompt2UserCommand(prompt = '') {
+    if (!prompt) { return; }
     const editor = popUserCommandEditor();
-    if(!editor) {  return;  }
+    if (!editor) { return; }
     const cmdBody = editor.querySelector('#commandBody')
-    if(!cmdBody) {  return;  }
+    if (!cmdBody) { return; }
     cmdBody.value = prompt;
 }
 
@@ -1273,7 +1293,7 @@ function showHelp() {
         ul.appendChild(li);
         li.addEventListener('click', e => {
             const userInput = shadowRoot.getElementById('laiUserInput');
-            if(userInput) {
+            if (userInput) {
                 userInput.value = (`${userInput.value.trim()} ${command}`).trim();
             }
         });
@@ -1289,7 +1309,7 @@ function isAskingForHelp(e) {
     if (!userInput) { return false; }
 
     const regex = /(@\{\{help\}\}|\/help|\/\?)[\t\n]?/gi;
-    if (regex.test( userInput.value.trim().toLowerCase())) {
+    if (regex.test(userInput.value.trim().toLowerCase())) {
         const usrVal = userInput.value.replace(regex, '').trim();
         userInput.value = usrVal;
         showHelp();
@@ -1313,7 +1333,7 @@ function restoreLastSession(sessionIdx) {
 
 function showSessionHistoryMenu(e) {
     e.preventDefault();
-    if(aiSessions.length < 1)  {
+    if (aiSessions.length < 1) {
         showMessage('No stored sessions found.');
         return;
     }
@@ -1331,17 +1351,17 @@ function showSessionHistoryMenu(e) {
     headerSection.appendChild(sessionHistMenu);
 
     const menuItemContent = aiSessions.map(innerArray => innerArray.find(obj => obj.role === 'user')).filter(Boolean);
-    if(menuItemContent.length < 1)  {
+    if (menuItemContent.length < 1) {
         showMessage('No stored sessions found.');
         return;
     }
 
-    menuItemContent.push({"role": "user", "content": "---"});
-    menuItemContent.push({"role": "user", "content": "Delete all sessions"});
+    menuItemContent.push({ "role": "user", "content": "---" });
+    menuItemContent.push({ "role": "user", "content": "Delete all sessions" });
     for (let i = 0, l = menuItemContent.length; i < l; i++) {
         const userEl = menuItemContent[i];
-        let menuItem = document.createElement(userEl.content === '---' ? 'hr' :'div');
-        if(userEl.content !== '---'){
+        let menuItem = document.createElement(userEl.content === '---' ? 'hr' : 'div');
+        if (userEl.content !== '---') {
             menuItem.className = 'menu-item';
             menuItem.textContent = `${userEl.content.substring(0, 35)}${userEl.content.length > 35 ? '...' : ''}`;
             if (i === l - 1) {
@@ -1366,7 +1386,7 @@ function showSessionHistoryMenu(e) {
     sessionHistMenu.style.cssText = `top: ${e.clientY + 10}px;; left: ${e.clientX - (sessionHistMenu.offsetWidth / 4)}px;`;
 }
 
-function selectMenuChanged(e){
+function selectMenuChanged(e) {
     const id = e.target.id;
     switch (id) {
         case 'apiUrlList':
@@ -1374,7 +1394,7 @@ function selectMenuChanged(e){
             break;
         case 'modelList':
             laiOptions.aiModel = e.target.options[e.target.selectedIndex].value;
-            setModelNameLabel({"model": laiOptions.aiModel});
+            setModelNameLabel({ "model": laiOptions.aiModel });
             break;
         case 'hookList':
             console.log(`${manifest.name} - ${id} is not implemented yet`);
@@ -1389,8 +1409,8 @@ function hideSessionHistoryMenu() {
     headerSection.querySelector('#sessionHistMenu')?.remove();
 }
 
-function popUserCommandList(e){
-    if(e?.target?.value){
+function popUserCommandList(e) {
+    if (e?.target?.value) {
         e.target.value = e.target.value.replace('/list', '');
     }
     const shadowRoot = getShadowRoot();
@@ -1406,7 +1426,7 @@ function popUserCommandList(e){
     });
 
     cmdList.querySelector('#cmdImport').addEventListener('click', e => userImport(e));
-    cmdList.querySelector('#cmdExport').addEventListener('click', async (e)=> await exportAsFile(e));
+    cmdList.querySelector('#cmdExport').addEventListener('click', async (e) => await exportAsFile(e));
 
     const container = cmdList.querySelector('div.user-command-block')
 
@@ -1438,14 +1458,14 @@ function popUserCommandList(e){
     cmdList.focus();
 }
 
-function addCmdItemButtons(item, index){
-    if(!checkExtensionState()){  return;  }
-    if(!item) {  return;  }
+function addCmdItemButtons(item, index) {
+    if (!checkExtensionState()) { return; }
+    if (!item) { return; }
     item.classList.add('user-cmd-item-btn');
     const userPredefinedCmdCount = userPredefinedCmd.length
     Object.keys(userCmdItemBtns).forEach(key => {
-        if((key === 'edit' || key === 'delete') && index < userPredefinedCmdCount) {  return;  }
-        if(!userCmdItemBtns[key]){  userCmdItemBtns[key] = chrome.runtime.getURL(`img/${key}.svg`);  }
+        if ((key === 'edit' || key === 'delete') && index < userPredefinedCmdCount) { return; }
+        if (!userCmdItemBtns[key]) { userCmdItemBtns[key] = chrome.runtime.getURL(`img/${key}.svg`); }
         const img = document.createElement('img');
         img.src = userCmdItemBtns[key];
         img.setAttribute('title', key);
@@ -1459,7 +1479,7 @@ function addCmdItemButtons(item, index){
     return item;
 }
 
-function userCmdItemBtnClicked(e){
+function userCmdItemBtnClicked(e) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
@@ -1481,7 +1501,7 @@ function userCmdItemBtnClicked(e){
                 cancelable: true,
                 key: 'Enter'
             });
-            userInput.dispatchEvent( enterEvent );
+            userInput.dispatchEvent(enterEvent);
             break;
         case 'paste':
             userInput.value += aiUserCommands[index].commandBody;
@@ -1489,22 +1509,22 @@ function userCmdItemBtnClicked(e){
         case 'delete':
             aiUserCommands.splice(index, 1);
             setAiUserCommands()
-            .then(() => e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click())
-            .catch(e => console.error('>>>', e));
+                .then(() => e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click())
+                .catch(e => console.error('>>>', e));
             break;
         default:
             console.warn(`Unknown action - ${action}`);
     }
 
-    if(action !== 'edit'){
+    if (action !== 'edit') {
         hidePopups(e);
         userInput.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
     }
 }
 
-function checkExtensionState(){
-    if(!chrome.runtime.id){
-        if(typeof(showMessage) === 'function'){
+function checkExtensionState() {
+    if (!chrome.runtime.id) {
+        if (typeof (showMessage) === 'function') {
             showMessage(`${manifest.name} - Extension context invalidated. Please reload the tab.`, 'error');
         } else {
             console.error(`${manifest.name} - Extension context invalidated. Please reload the tab.`);
@@ -1515,17 +1535,17 @@ function checkExtensionState(){
     return true;
 }
 
-function showLastErrorMessage(e){
+function showLastErrorMessage(e) {
     e.stopPropagation();
-    showMessage(lastRegisteredErrorMessage.toReversed().slice(0,5), 'error');
+    showMessage(lastRegisteredErrorMessage.toReversed().slice(0, 5), 'error');
 }
 
 function adjustFontSize(elm, direction) {
-    if(direction === 0) {  return;  }
+    if (direction === 0) { return; }
     let scaleFactor = direction > 0 ? 1 : -1;
     let currentFontSize = window.getComputedStyle(elm, null).getPropertyValue('font-size');
     let fontSizeNumber = parseFloat(currentFontSize);
-    if(isNaN(fontSizeNumber)) {  return;  }
+    if (isNaN(fontSizeNumber)) { return; }
     elm.style.fontSize = `${fontSizeNumber + scaleFactor}px`;
     Array.from(elm.children).forEach(child => adjustFontSize(child, direction));
 }

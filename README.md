@@ -20,6 +20,7 @@
     - [End Points](#end-points)
         - [Models](#models)
     - [Web Hooks](#web-hooks)
+        - [Format](#format)
 - [Troubleshoot](#troubleshoot)
     - [Ollama](#ollama)
         - [403 Error](#403-error)
@@ -216,6 +217,29 @@ The purpose is to enrich the context by providing relevant information when need
 The user has complete freedom to choose the type of service they want to use, but the intention is to run the service locally. If needed, this hook can be easily extended to call external services.
 
 **Example Project**: An example project is available on GitHub [here](https://github.com/ivostoykov/localAI_webhook). It provides a simple HTTP server and an option to extend it.
+
+### Format
+
+To embed a Web Hook, follow this structure:
+
+* `!#` indicates the start of an external call construction.
+* `/path/to/the/resource`: This is the endpoint API defined in [Web Hooks](#web-hooks).
+* `?`: A separator used if any parameters will be passed.
+* `key=value`: A sequence used to pass parameters as a `POST` body.
+* `#!`: Indicates the end of the external call construction.
+
+To add web resources as prompt contexts, consider this example project. A script that queries and returns text content is available on [this GitHub repository](https://github.com/ivostoykov/localAI). Once set up, you can pass it in the prompt like so:
+
+```
+!#/readweb?resource=https://github.com/ivostoykov/localAI#!
+```
+
+The result will be the text content added to the rest of the prompt. The purpose is for this retrieved content to be used as context by the model.
+
+**Note:** If another API is used, it must abide by two rules:
+* Understand the content enclosed between `!#...#!`.
+* Return plain text.
+
 
 # Troubleshoot
 

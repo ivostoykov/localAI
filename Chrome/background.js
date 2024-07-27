@@ -97,6 +97,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 function composeContextMenu() {
+    chrome.contextMenus.removeAll();
+
     chrome.contextMenus.create({
         id: "sendToLocalAi",
         title: "Local AI",
@@ -208,7 +210,6 @@ function processTextChunk(textChunk) {
 
     if(textChunk.indexOf("\ndata:") > -1) {
         textChunk = `[${textChunk.replace(/\ndata:\s+/ig, ',')}]`;
-        console.log(`>>> textChunk: ${textChunk}`,);
         return textChunk;
     }
 
@@ -230,12 +231,11 @@ function handleStreamingResponse(reader, senderTabId) {
                 return;
             }
             const textChunk = new TextDecoder().decode(value);
-            // let data = textChunk.replace(/^data:\s+/i, '').trim();
             let data = processTextChunk(textChunk);
-            // data = data.replace(/data:\s+\[DONE\]$/i, '').trim();
             try {
                 data = JSON.parse(data);
             } catch (e) {
+                showUIMessage(e.message, 'error');
                 console.log(`>>>`, e);
                 console.log(`>>> textChunk`, textChunk);
                 console.log(`>>> data`, data);
@@ -263,8 +263,9 @@ async function askAIExplanation(info, tab) {
             action: "explainSelection",
             selection: info.selectionText
         });
-    } catch (err) {
-        console.error('>>>', err);
+    } catch (e) {
+        showUIMessage(e.message, 'error');
+        console.error('>>>', e);
     }
 }
 
@@ -444,11 +445,12 @@ async function fetchExternalResource(endpoint, params) {
         response = await fetch(url, options);
         return await response.text();
     } catch (e) {
-        console.error(`>>> ${manifest.name} - ${e.message}`);
+        showUIMessage(e.message, 'error');
+        console.log(`>>> ERROR: ${manifest.name} - ${e.message}`);
         console.log(`>>> ${manifest.name} - url: ${url}; params`, params ?? '');
         console.log(`>>> ${manifest.name} - error:`, e);
         console.log(`>>> ${manifest.name} - response:`, response);
-        return;
+        return `Error: ${e.message}`;
     }
 }
 
@@ -530,4 +532,17 @@ async function getOptions() {
     }
 
     return Object.assign({}, defaults, obj.laiOptions);
+}
+
+async function showUIMessage(tab, message, type = '') {
+    if (!/^http/i.test(tab.url)) { return; }
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id, frameIds: [0] },
+            func: (message, type) => { showMessage(message, type); },
+            args: [message, type]
+        });
+    } catch (e) {
+        console.error(`>>> ${manifest.name ?? ''}`, e)
+    }
 }

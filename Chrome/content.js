@@ -225,6 +225,8 @@ function showMessage(messages, type) {
   if(messages.length < 1) {  return;  }
   const shadowRoot = getShadowRoot();
   if(!shadowRoot) {  return;  }
+  const sideBar = getSideBar();
+  if(!sideBar.classList.contains('active')){ laiSwapSidebarWithButton();}
   let msg = shadowRoot.querySelector('#feedbackMessage');
   let oldTimerId = msg.getAttribute('data-timerId');
   if(oldTimerId){
