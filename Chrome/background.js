@@ -27,7 +27,8 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
 
 chrome.action.onClicked.addListener((tab) => {
     if(tab.url.startsWith('http')) {
-        chrome.tabs.sendMessage(tab.id, { action: "toggleSidebar" });
+        chrome.tabs.sendMessage(tab.id, { action: "toggleSidebar" })
+            .catch(async e => await showUIMessage(tab, e.message, 'error'));
     }
 });
 
@@ -36,9 +37,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         controller = new AbortController();
     }
     switch (request.action) {
+        case 'getModels':
+            getModels()
+            .then(response => sendResponse(response) )
+            .catch(error => {
+                sendResponse({ status: 'error', message: error.toString() });
+            });
+            break;
         case 'fetchData':
             shouldAbort = false;
-            fetchDataAction(request, sender);
+            // fetchDataAction(request, sender);
+            fetchDataAction(request, sender).then(response => {
+                sendResponse(response);
+            }).catch(error => {
+                sendResponse({ status: 'error', message: error.toString() });
+            });
             break;
         case 'abortFetch':
             shouldAbort = true;
@@ -89,7 +102,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
             chrome.tabs.sendMessage(tab.id, {
                 action: "toggleSelectElement",
                 selection: true
-            });
+            }).catch(async e => await showUIMessage(tab, e.message, 'error'));
             break;
         default:
             console.error(`Unknown menu id: ${info.menuItemId}`);
@@ -216,18 +229,21 @@ function processTextChunk(textChunk) {
     return textChunk;
 }
 
-function handleStreamingResponse(reader, senderTabId) {
-    if(!reader || !reader.read){ return; }
+async function handleStreamingResponse(reader, senderTabId) {
+    if (!reader || !reader.read) { return; }
 
-    const read = () => {
-        if(shouldAbort) {
-            reader.cancel();
-            chrome.tabs.sendMessage(senderTabId, { action: "streamAbort" });
+    const read = async () => {
+        if (shouldAbort) {
+            await reader.cancel();
+            chrome.tabs.sendMessage(senderTabId, { action: "streamAbort" })
+                .catch(async e => await showUIMessage(null, e.message, 'error'));
             return;
         }
-        reader.read().then(({ done, value }) => {
+        try {
+            const { done, value } = await reader.read();
             if (done) {
-                chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" });
+                chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" })
+                    .catch(async e => await showUIMessage(null, e.message, 'error'));
                 return;
             }
             const textChunk = new TextDecoder().decode(value);
@@ -235,26 +251,28 @@ function handleStreamingResponse(reader, senderTabId) {
             try {
                 data = JSON.parse(data);
             } catch (e) {
-                showUIMessage(e.message, 'error');
+                await showUIMessage(null, e.message, 'error');
                 console.log(`>>>`, e);
                 console.log(`>>> textChunk`, textChunk);
                 console.log(`>>> data`, data);
             }
 
-            if(Array.isArray(data)){
-                data.forEach(el => chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(el)}))
+            if (Array.isArray(data)) {
+                data.forEach(el => chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(el) }));
             } else {
-                chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(data)});
+                chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(data) })
+                    .catch(async e => await showUIMessage(null, e.message, 'error'));
             }
-            read();
-        }).catch(error => {
+            await read();
+        } catch (error) {
             if (!shouldAbort) {
-                chrome.tabs.sendMessage(senderTabId, { action: "streamError", error: error.toString() });
+                chrome.tabs.sendMessage(senderTabId, { action: "streamError", error: error.toString() })
+                    .catch(async e => await showUIMessage(null, e.message, 'error'));
             }
-        });
+        }
     };
 
-    read();
+    await read();
 }
 
 async function askAIExplanation(info, tab) {
@@ -264,67 +282,99 @@ async function askAIExplanation(info, tab) {
             selection: info.selectionText
         });
     } catch (e) {
-        showUIMessage(e.message, 'error');
+        await showUIMessage(tab, e.message, 'error');
         console.error('>>>', e);
     }
 }
 
+function getLastConsecutiveUserRecords(messages) {
+    if (!messages || messages.length === 0 || messages[messages.length - 1].role !== 'user') {
+        return '';
+    }
+
+    const result = [];
+    while (messages.length > 0) {
+        const last = messages.pop();
+        if (last.role !== 'user') {  break;  }
+        result.unshift(last.content || '');
+    }
+
+    return result.join('\n');
+}
+
+
 async function fetchDataAction(request, sender) {
-    let messages = request?.data?.messages || [];
+    if((request?.data?.messages || []).length < 1){  return {"status": "warning", "message": "Empty prompt"};  }
     let theExternalResources = request?.externalResources || [];
     let binaryFormData = getBinaryFormData(request?.binaryFormData);
-    if(messages.length < 1){  return;  }
 
     if(Object.keys(laiOptions ?? {}).length < 1){
         laiOptions = await getOptions();
     }
 
     if(!laiOptions.aiUrl){
-        console.error('missing API endpoint!', laiOptions);
-        return; // TODO show message || open options
+        let msg = 'Missing API endpoint!';
+        await showUIMessage(sender.tab, `${msg} - ${laiOptions.aiUrl}`, 'error');
+        console.error(msg, laiOptions);
+        return {"status": "error", "message": msg};
     }
 
     const controller = new AbortController();
-    let data = messages.slice(-1)[0]?.content || '';
-    data = await composeUserImput(data, sender);
+    let data = getLastConsecutiveUserRecords(request.data.messages);
+
+    data = await addSystemCommandsToUserInput(data, sender);
 
     if(laiOptions?.aiModel){
         request.data['model'] = laiOptions?.aiModel || '';
     }
 
-    request.data.messages.splice(-1, 1, { "role": "user", "content": data});
-    request.data.messages = request.data.messages.filter(msg => msg.content.trim());
-    request.data.messages.push(...await addExternalResourcesToUserInput(theExternalResources, binaryFormData));
+    let extData = await addExternalResourcesToUserInput(theExternalResources, binaryFormData);
+    extData.forEach(res => data = data.replace(`!#${res?.resource}#!`, res?.content));
 
-    const url = request?.url ?? laiOptions.aiUrl;
-    fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request.data),
-        signal: controller.signal,
-    })
-    .then(response => {
+    request.data.messages.push(...splitInputToChunks(data, 4096));
+    request.data.messages = request.data.messages.filter(msg => msg.content.trim());
+
+    const url = request?.url ?? laiOptions?.aiUrl;
+    if(!url){
+        let msg = `Faild to compose the request URL - ${url}`;
+        await showUIMessage(sender.tab, msg, 'error');
+        console.error(`${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+        return {"status": "error", "message": msg};
+    }
+
+    try{
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request.data),
+            signal: controller.signal,
+        });
+
         if(response.status > 299){
             throw new Error(`${response.status}: ${response.statusText}`);
         }
+
         if(shouldAbort && controller){
             controller.abort();
             chrome.tabs.sendMessage(senderTabId, { action: "streamAbort" });
-            return;
+            return  {"status": "aborted", "message": "Aborted"};
         }
-        handleStreamingResponse(response?.body?.getReader(), sender.tab.id);
-    })
-    .catch(error => {
-        if (error.name === 'AbortError') {
+
+        await handleStreamingResponse(response?.body?.getReader(), sender.tab.id);
+    }
+    catch(e) {
+        if (e.name === 'AbortError') {
             chrome.tabs.sendMessage(sender.tab.id, { action: "streamAbort"});
         } else {
-            chrome.tabs.sendMessage(sender.tab.id, { action: "streamError", error: error.toString()});
+            chrome.tabs.sendMessage(sender.tab.id, { action: "streamError", error: e.toString()});
+            return {"status": "error", "message": e.message};
         }
-        delete controller;
-    });
+    }
+
+    return {"status": "success", "message": "Request sent. Awaiting response."};
 }
 
-async function composeUserImput(userInputText, sender) {
+async function addSystemCommandsToUserInput(userInputText, sender) {
     if (!userInputText && resources.length < 1) {  return '';  }
 
     var combinedResult = [];
@@ -339,30 +389,33 @@ async function composeUserImput(userInputText, sender) {
         userCommands = [...userInputText.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
     }
 
-    if (userCommands.length < 1) return userInputText;
+    if (userCommands.length < 1){ return userInputText;  }
 
     for (const cmd of userCommands) {
         if (cmd && cmd.length > 1 && cmd[1]) {
             let additionalInfo = await fetchUserCommandResult(cmd[1], sender);
             if(cmd[1] && cmd[1] === 'page'){
-                additionalInfo = `This is the content of the ${cmd[1]}:\n${additionalInfo}`
+                additionalInfo = `${cmd[1]} content is between [PAGE] and [/PAGE]:\n[PAGE] ${additionalInfo} [/PAGE]`;
             }
             combinedResult.push(additionalInfo);
-            userInputText = userInputText.replace(`@{{${cmd[1]}}}`, ``);
         }
     }
 
-    combinedResult.push(userInputText);
-    return combinedResult.join('\n');
+    for (let i = 0; i < userCommands.length; i++) {
+        const cmd = userCommands[i];
+        userInputText = userInputText.replace(cmd[0], combinedResult[i]);
+    }
+
+    return userInputText;
 }
 
 function getBinaryFormData(formData){
-    if(!formData){  return;  }
+    if(!formData || Object.keys(formData).length < 1){  return;  }
     const theFormData = new FormData();
 
-    formData?.forEach(item => {
-        theFormData.append(item.key, item.value);
-    });
+    for (const [key, value] of Object.entries(formData)) {
+        theFormData.append(key, value);
+    }
 
     return theFormData;
 }
@@ -384,19 +437,15 @@ async function addExternalResourcesToUserInput(externalResources, binaryFormData
             content = res;
         }
 
-        const inputChunks = splitInputToChunks(content, 4096);
-        for (let x = 0; x < inputChunks.length; x++) {
-            if(!inputChunks[i]) {  continue;  }
-            messages.push({ "role": "user", "content": inputChunks[i] });
-        }
-
-        if(messages.length > 0){
             const re = /\//g;
             const startTag = `${resource.replace(re, '_').toUpperCase()}_RESOURCE_START`;
             const endTag = `${resource.replace(re, '_').toUpperCase()}_RESOURCE_END`;
-            messages.unshift({ "role": "user", "content": `The following content, enclosed between "[${startTag}]" and "[${endTag}]" is this extenral resource content: ${resource} ${parameters ? 'called with parameter(s): ': ''}${parameters}. Leverage this information to enhance the quality and relevance of the response to the given prompt.[${startTag}]` });
-            messages.push({ "role": "user", "content": `[${endTag}] ` });
-        }
+        messages.push({"resource": externalResources[i], "content":
+            `The following content, enclosed between "[${startTag}]" and "[${endTag}]" is this extenral resource content:
+            ${resource} ${parameters ? 'called with parameter(s): ': ''}${parameters}.
+            Leverage this information to enhance the quality and relevance of the response to the given prompt.
+            [${startTag}] ${content} [${endTag}] `
+        });
     }
 
     return messages;
@@ -405,7 +454,7 @@ async function addExternalResourcesToUserInput(externalResources, binaryFormData
 function splitInputToChunks(str, chunkSize) {
     const chunks = [];
     for (let i = 0; i < str.length; i += chunkSize) {
-        chunks.push(str.slice(i, i + chunkSize));
+        chunks.push({ "role": "user", "content": str.slice(i, i + chunkSize) });
     }
     return chunks;
 }
@@ -445,12 +494,11 @@ async function fetchExternalResource(endpoint, params) {
         response = await fetch(url, options);
         return await response.text();
     } catch (e) {
-        showUIMessage(e.message, 'error');
-        console.log(`>>> ERROR: ${manifest.name} - ${e.message}`);
+        await showUIMessage(null, e.message, 'error');
+        console.log(`>>> ${manifest.name} - ERROR:`, e);
         console.log(`>>> ${manifest.name} - url: ${url}; params`, params ?? '');
-        console.log(`>>> ${manifest.name} - error:`, e);
         console.log(`>>> ${manifest.name} - response:`, response);
-        return `Error: ${e.message}`;
+        return;
     }
 }
 
@@ -536,13 +584,47 @@ async function getOptions() {
 
 async function showUIMessage(tab, message, type = '') {
     if (!/^http/i.test(tab.url)) { return; }
+    if(!tab) {  tab = await getCurrentTab();  }
+    chrome.tabs.sendMessage(tab.id, {"action": "showMessage", message: message, messageType: type})
+        .catch(e => console.error(`>>> ${manifest.name}`, e));
+    }
+
+async function getCurrentTab() {
+    let queryOptions = { active: true, lastFocusedWindow: true };
+    // `tab` will either be a `tabs.Tab` instance or `undefined`.
+    let [tab] = await chrome.tabs.query(queryOptions);
+
+    return tab;
+}
+
+async function getModels(){
+    let urlVal = laiOptions.aiUrl;
+    if(!urlVal){
+        showUIMessage(`No API endpoint found - ${urlVal}!`, 'error');
+        return false;
+    }
+
+    if(!urlVal.startsWith('http')){
+        showUIMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
+        return false;
+    }
+
+    if(urlVal.indexOf('/api/') < 0){  return;  }
+
+    urlVal = urlVal.replace(/\/api\/.+$/i, '/api/tags');
+    let response;
+    let models;
     try {
-        await chrome.scripting.executeScript({
-            target: { tabId: tab.id, frameIds: [0] },
-            func: (message, type) => { showMessage(message, type); },
-            args: [message, type]
-        });
+      response = await fetch(urlVal, {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+      });
+
+      models = await response.json();
+      if(models.models && Array.isArray(models.models)) {  return {"status":"success", "models": models.models};  }
     } catch (e) {
-        console.error(`>>> ${manifest.name ?? ''}`, e)
+      console.error(e);
+      return {"status": "error", "message": e.message};
     }
 }

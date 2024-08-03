@@ -112,7 +112,7 @@
 	padding: 5px 15px;
 	opacity: 1;
 	top: 28px;
-	left: 30px;
+    left: 20px;
 	cursor: pointer;
 	z-index: 100;
 	width: 250px;
@@ -175,6 +175,19 @@
     white-space: nowrap;
     border: 1px solid gray;
     background-color: #FFE;
+}
+
+.available-model-list{
+    border: 1px solid #999;
+    position: absolute;
+    top: 90px;
+    padding: 5px 15px;
+    line-height: 25px;
+}
+
+.available-model-list div:hover{
+    cursor: pointer;
+    background-color: #ccc;
 }
 
 .version{

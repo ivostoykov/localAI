@@ -1,6 +1,15 @@
 # Local AI - Changelog
 
-## [1.13.3] 2024-07-27 - latest
+## []  - latest
+
+- Fixed file type check when dropped
+- Refactored request JSON composition reducing the itterations
+- Improved error reporting
+- Extgernal resource missing content bug fixed
+- Facilitated model change for Ollama API
+- Added more menus in the cog button.
+
+## [1.13.3] 2024-07-27
 
 - fixed issue with context menu
 - fixed permission issue for external resources call

@@ -67,6 +67,19 @@ function laiInitSidebar() {
         shadowRoot.querySelector('#cogBtn').click();
         showHelp();
     });
+    shadowRoot.querySelector('#createSessionCmdMenu').addEventListener('click', e => {
+        shadowRoot.querySelector('#cogBtn').click();
+        ribbon.querySelector('#newSession')?.click();
+    });
+    shadowRoot.querySelector('#delSessionsCmdMenu').addEventListener('click', e => {
+        shadowRoot.querySelector('#cogBtn').click();
+        const element = shadowRoot.getElementById('laiRecycleAll');
+        if (!element) {  return; }
+        const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+        element.dispatchEvent(event);
+        // shadowRoot.getElementById('laiRecycleAll')?.click();
+    });
+
     shadowRoot.querySelector('#optionsMenu')?.addEventListener('click', function (e) {
         if (!checkExtensionState()) { return; }
         const cogMenu = shadowRoot.querySelector('#cogMenu');
@@ -130,6 +143,12 @@ function laiInitSidebar() {
         restoreLastSession();
     }
 
+    const modelLabel = shadowRoot.getElementById('laiModelName');
+    if(modelLabel){
+        modelLabel.addEventListener('mouseenter', async (e) => await modelLabelMouseOver(e));
+    }
+    shadowRoot.getElementById('availableModelList')?.addEventListener('mouseleave', modelLabelMouseOut);
+
     setModelNameLabel({ "model": laiOptions.aiModel });
     buildMenuDropdowns();
 };
@@ -154,6 +173,7 @@ function createNewSession(e, shadowRoot) {
     shadowRoot.getElementById('laiChatMessageList').replaceChildren();
     messages = [];
     shadowRoot.getElementById('laiUserInput')?.focus();
+    showMessage('New session created.', 'success');
 }
 
 function onCloseSidebarClick(e, shadowRoot) {
@@ -169,7 +189,11 @@ function onCloseSidebarClick(e, shadowRoot) {
 function recycleSession(e, shadowRoot) {
     aiSessions.splice(activeSessionIndex, 1);
     createNewSession(e, shadowRoot)
-    setAiSessions().then().catch(e => console.error('>>>', e));
+    setAiSessions().then(res => {
+        if(res){
+            showMessage('Session history deleted.', 'success');
+        }
+    }).catch(e => console.error('>>>', e));
 }
 
 function laiShowSystemInstructions(e) {
@@ -270,7 +294,8 @@ function onUserInputDragLeave(e) {
 }
 
 function isPlainText(type) {
-    const painTextTypes = ["txt", "csv", "json", "log", "md", "xml", "html", "htm", "yaml", "yml", "ini"];
+    if(!type) {  return true;  }
+    const painTextTypes = ['text/plain', 'text/csv', 'application/json', 'text/xml', 'text/html', 'application/javascript', 'text/css', 'application/xhtml+xml', 'application/rtf', 'application/x-yaml', 'application/x-www-form-urlencoded'];
     for (let i = 0; i < painTextTypes.length; i++) {
         if (type.indexOf(painTextTypes[i].toLowerCase()) > -1) { return true; }
     }
@@ -306,7 +331,7 @@ function onUserInputFileDropped(e) {
         const reader = new FileReader();
         reader.onload = function (e) {
             if (!Array.isArray(attachments)) { attachments = []; }
-            attachments.push(`attached file name: ${fileName}; attached file content: ${e.target.result}`);
+            attachments.push(`Attached file name is: ${fileName}; The file content is between [FILE] and [/FILE]\n[FILE] ${e.target.result} [/FILE]`);
             showAttachment(fileName);
         };
         reader.readAsText(file);
@@ -422,9 +447,10 @@ function onPromptTextAreaKeyUp(e) {
             return;
         }
 
-        const inputChunks = splitInputToChunks(e.target.value, 4096);
+        // const inputChunks = splitInputToChunks(e.target.value, 4096);
         checkForDump(e.target.value);
-        addUserInputIntoMessageQ(inputChunks);
+        // addUserInputIntoMessageQ(inputChunks);
+        addUserInputIntoMessageQ(e.target.value);
 
         updateChatHistoryWithUserInput(e.target.value, 'user', messages.length - 1);
         updateChatHistoryWithUserInput('', 'ai');
@@ -446,15 +472,17 @@ function onPromptTextAreaKeyUp(e) {
 function addAttachmentsToUserInput() {
     if (attachments.length < 1) { return false; }
     for (let i = 0; i < attachments.length; i++) {
-        const inputChunks = splitInputToChunks(attachments[i], 4096);
+        messages.push({ "role": "user", "content": attachments[i] });
+/*         const inputChunks = splitInputToChunks(attachments[i], 4096);
         for (let i = 0; i < inputChunks.length; i++) {
             messages.push({ "role": "user", "content": inputChunks[i] });
-        }
+        } */
     }
 }
 
 function addUserInputIntoMessageQ(inputChunks, omitFromSession = false) {
     if (aiSessions.length < 1) { aiSessions[0] = []; }
+    if(!Array.isArray(inputChunks)) {  inputChunks = [inputChunks];  }
     for (let i = 0; i < inputChunks.length; i++) {
         messages.push({ "role": "user", "content": inputChunks[i] });
         if (omitFromSession) { continue; }
@@ -709,12 +737,12 @@ function laiCopyElementContent(e, type) {
 
 function editUserInput(e, type) {
     let el = e.target.closest('span[data-index]');
-    const idx = el.getAttribute('data-index') || -1;
-    if (idx < 0) { return; }
+    const idx = parseInt(el.getAttribute('data-index') || "-1");
+    if (isNaN(idx) || idx < 0) { return; }
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const userInputField = shadowRoot.getElementById('laiUserInput')
-    userInputField.value = messages[idx].content;
+    userInputField.value = messages[idx]?.content || '';
 }
 
 // handle code snippets clicks in AI response
@@ -835,7 +863,11 @@ function queryAI() {
         binaryFormData: binaryFormData
     };
 
-    chrome.runtime.sendMessage(requestData);
+    chrome.runtime.sendMessage(requestData, (response) => {
+        if(response?.status === 'error' && response?.message){
+            showMessage(response.message, 'error');
+        }
+    });
 }
 
 function setModelNameLabel(data) {
@@ -846,7 +878,6 @@ function setModelNameLabel(data) {
     const model = data?.model;
     if (!model) { return; }
     modelName.textContent = (/\\|\//.test(model) ? model.split(/\\|\//).pop().split('.').slice(0, -1).join('.') : model) ?? '';
-    // modelName.textContent = (/[^a-zA-Z:]/g.test(data.model) ? model.split(/\\|\//).pop().split('.').slice(0, -1).join('.') : data?.model) ?? '';
 }
 
 function laiFinalPreFormat() {
@@ -931,6 +962,11 @@ chrome.runtime.onMessage.addListener((response) => {
             break;
         case "toggleSelectElement":
             isElementSelectionActive = response.selection;
+            break;
+        case "showMessage":
+            if(response.message){
+                showMessage(response.message, response.messageType);
+            }
             break;
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
@@ -1038,7 +1074,7 @@ function ask2ExplainSelection(response) {
     if (!userInput) { return; }
 
     const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
-    attachments.push(`Use this page for context:\n${getPageTextContent()}`);
+    attachments.push(`Page content is between [PAGE] and [/PAGE]:\n[PAGE] ${getPageTextContent()} [/PAGE]`);
 
     const enterEvent = new KeyboardEvent('keydown', {
         bubbles: true,
@@ -1548,4 +1584,69 @@ function adjustFontSize(elm, direction) {
     if (isNaN(fontSizeNumber)) { return; }
     elm.style.fontSize = `${fontSizeNumber + scaleFactor}px`;
     Array.from(elm.children).forEach(child => adjustFontSize(child, direction));
+}
+
+async function modelLabelMouseOver(e){
+    let response;
+    try {
+        response = await chrome.runtime.sendMessage({ action: "getModels" });
+        if(response.status !== 'success'){  throw new Error(response?.message || 'Unknown error!');  }
+        laiOptions.modelList = response.models?.map(m => m.name).sort() || [];
+        await chrome.storage.sync.set({[storageOptionKey]: laiOptions});
+        fillAndShowModelList(response.models?.sort());
+    } catch (e) {
+        showMessage(e.message, 'error');
+        console.log(`>>> ${manifest.name} ERROR:`, response);
+    }
+
+}
+
+async function modelLabelMouseOut(e){
+    e.stopPropagation();
+    e.target.classList.add('invisible');
+}
+
+function fillAndShowModelList(models){
+    const shadowRoot = getShadowRoot();
+    const modelList = shadowRoot.querySelector('#availableModelList');
+    const modelsDropDown = shadowRoot.querySelector('#modelList');
+    let opt = modelsDropDown.options[0];
+    if(!modelList){
+        showMessage('Failed to find model list!', 'error');
+        return;
+    }
+
+    modelList.replaceChildren();
+    modelsDropDown.replaceChildren();
+    modelsDropDown.appendChild(opt);
+    models.forEach((model, idx) => {
+        const m = document.createElement('div');
+        m.textContent = `${model.name}${model.name === laiOptions.aiModel ? ' ✔': ''}`;
+        m.addEventListener('click', async e => {
+            e.stopPropagation();
+            modelsDropDown.selectedIndex = idx+1; // there is an extra empty option
+            await swapActiveModel(e, model.name);
+        });
+        modelList.appendChild(m);
+
+        opt = document.createElement('option');
+        opt.text = opt.value = model.name;
+        opt.selected = model.name === laiOptions.aiModel;
+        modelsDropDown.appendChild(opt);
+    });
+
+    modelList.classList.remove('invisible');
+}
+
+async function swapActiveModel(e, modelName){
+    const activatedModel = e.target;
+    if(!activatedModel){  return;  }
+    laiOptions.aiModel = modelName;
+    await chrome.storage.sync.set({[storageOptionKey]: laiOptions});
+
+    setModelNameLabel({ "model": modelName });
+    const parent = activatedModel.parentElement;
+    Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
+    e.target.textContent = `${e.target.textContent} ✔`;
+    parent.classList.add('invisible');
 }

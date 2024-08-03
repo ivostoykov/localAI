@@ -1,4 +1,13 @@
-var DONE = 'DONE';
+const DONE = 'DONE';
+const storageOptionKey = 'laiOptions';
+const commandPlacehoders = {
+  "@{{page}}": "Include page into the prompt",
+  "@{{dump}}": "Dump LLM response into the console",
+  "@{{now}}": "Include current date and time",
+  "@{{today}}": "Include cuddent date without the time",
+  "@{{time}}": "Include current time without the date"
+};
+
 var laiOptions = {};
 var aiSessions = [];
 var aiUserCommands = [];
@@ -14,13 +23,6 @@ var dumpStream = false;
 var lastRegisteredErrorMessage = [];
 lastRegisteredErrorMessage.lastLength = 0;
 var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
-const commandPlacehoders = {
-  "@{{page}}": "Include page into the prompt",
-  "@{{dump}}": "Dump LLM response into the console",
-  "@{{now}}": "Include current date and time",
-  "@{{today}}": "Include cuddent date without the time",
-  "@{{time}}": "Include current time without the date"
-};
 var userPredefinedCmd = [
   {"commandName": "add", "commandDescription":"Create a new predefined prompt"},
   {"commandName": "edit(command_name)", "commandDescription":"Edit the command corresponding to name, provided in the brackets"},
@@ -295,7 +297,7 @@ async function getLaiOptions() {
     };
 
     try {
-      const obj = await chrome.storage.sync.get('laiOptions');
+      const obj = await chrome.storage.sync.get(storageOptionKey);
       const laiOptions = Object.assign({}, defaults, obj?.laiOptions ?? {});
       if(laiOptions.systemInstructions) {
         messages.push({ role: "system", content: laiOptions.systemInstructions });
@@ -315,6 +317,7 @@ async function getAiSessions(){
 
 async function setAiSessions(){
   await chrome.storage.local.set({['aiSessions']: aiSessions});
+    return true;
 }
 
 async function getAiUserCommands(){
