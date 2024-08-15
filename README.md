@@ -268,5 +268,5 @@ Environment="OLLAMA_ORIGINS=*"
 4. restart the service
 
 ```
-sudo systemctl daemon-reload && systemctl restart ollama
+sudo systemctl daemon-reload && sudo systemctl restart ollama
 ```
