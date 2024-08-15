@@ -23,10 +23,14 @@ function laiInitSidebar() {
     if (!shadowRoot) { return; }
 
     shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => {
+        let feedbackMessage = e.target;
+        if(feedbackMessage?.id !== 'feedbackMessage'){
+            feedbackMessage = e.target.closest('div#feedbackMessage');
+        }
         lastRegisteredErrorMessage = Array.from(e.target.children).map(el => el.textContent);
         handleErrorButton();
-        e.target.replaceChildren();
-        e.target.classList.remove('feedback-message-active')
+        feedbackMessage.replaceChildren();
+        feedbackMessage.classList.remove('feedback-message-active')
     });
 
     shadowRoot.querySelector('#version').textContent = `${manifest.name} - ${manifest.version}`;
@@ -1593,7 +1597,7 @@ async function modelLabelMouseOver(e){
         if(response.status !== 'success'){  throw new Error(response?.message || 'Unknown error!');  }
         laiOptions.modelList = response.models?.map(m => m.name).sort() || [];
         await chrome.storage.sync.set({[storageOptionKey]: laiOptions});
-        fillAndShowModelList(response.models?.sort());
+        fillAndShowModelList(response.models?.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (e) {
         showMessage(e.message, 'error');
         console.log(`>>> ${manifest.name} ERROR:`, response);

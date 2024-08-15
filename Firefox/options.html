@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title></title>
-    <link rel="stylesheet" href="options.css">
+    <link rel="stylesheet" href="css/options.css">
+    <link rel="stylesheet" href="css/options_dlg.css">
 </head>
 <body>
     <h1 id="pageTitle">Test</h1>
@@ -37,56 +38,56 @@
             </div>
             <div class="el-holder">
                 <label for="aiUrl">End point:</label>
-<!--                 <select name="aiUrl" id="aiUrl">
-                    <option value="">Select API Endpoint</option>
-                    <option value="http://localhost:1234/v1/chat/completions">LM Studio</option>
-                    <option value="http://localhost:11434/api/chat">Ollama</option>
-                </select> -->
-                <input type="text" id="aiUrl" name="aiUrl" value="" class="url" placeholder="http://localhost:1111/api/" list="urlList">
+                <select name="aiUrl" id="aiUrl" class="url" data-list="urlList">
+                    <option value="" selected="selected">Select End Point</option>
+                </select>
+                <!-- <input type="text" id="aiUrl" name="aiUrl" value="" class="url" placeholder="http://localhost:1111/api/" list="urlList"> -->
                 <div id="urlButtons">
-                    <img src="img/edit2.svg" class="model-icon-button" data-action="add" alt="Edit selected" title="Edit selected">
+                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
                     <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
                     <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
                     <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
                     <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
                     <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                 </div>
-                <datalist id="urlList"></datalist>
+                <!-- <datalist id="urlList"></datalist> -->
             </div>
             <div class="el-holder">
                 <label for="aiModel">Model:</label>
-                <input type="text" id="aiModel" name="aiModel" value="" class="url" placeholder="llama3" list="modelList">
+                <select name="aiModel" id="aiModel" class="url" data-list="modelList">
+                    <option value="" selected="selected">Select Model</option>
+                </select>
+                <!-- <input type="text" id="aiModel" name="aiModel" value="" class="url" placeholder="llama3" list="modelList"> -->
                 <div id="modelButtons">
-                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
+                    <!-- <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
                     <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
-                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
+                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list"> -->
                     <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
                     <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                 </div>
-                <datalist id="modelList"></datalist>
+                <!-- <datalist id="modelList"></datalist> -->
             </div>
             <div class="el-holder">
                 <label for="webHook">Webhook URL</label>
-                <input type="text" name="webHook" id="webHook" list="webHookList" class="url" placeholder="http://localhost:port/endpoint">
+                <select name="webHook" id="webHook" class="url" data-list="webHookList">
+                    <option value="" selected="selected">Select Web Hook</option>
+                </select>
+                <!-- <input type="text" name="webHook" id="webHook" list="webHookList" class="url" placeholder="http://localhost:port/endpoint"> -->
                 <div id="hookButtons">
+                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
                     <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
                     <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
                     <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
                     <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
                     <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                 </div>
-                <datalist id="webHookList"></datalist>
+                <!-- <datalist id="webHookList"></datalist> -->
             </div>
-<!--
-            <div class="el-holder folded">
-                <div id="advancedSettings" class="advance-settings-title">
-                    Advanced Model Settings
-                    <img src="img/fold.svg" class="model-icon-button fold-icon-button" title="Show advanced settings">
-                </div>
-                <div id="advancedSettingsContainer" class="advance-settings-container invisible">Additional settings</div>
-            </div>
-            <hr>
- -->
+
             <div class="el-holder">
                 <label for="localPort">System Instructions:</label>
                 <div class="tooltip">
@@ -121,7 +122,34 @@
         </form>
         <div id="message" class="message-box invisible"></div>
     </div>
+
+    <dialog id="laiDialog">
+        <div class="dialog-container">
+            <div class="dialog-title">
+                <h2 id="dlgTitle">Enter Your Text</h2>
+            </div>
+            <div class="dialog-body">
+                <div class="input-group">
+                    <label for="dlgValue" id="dlgValueLabel">Your Text</label>
+                    <input id="dlgValue" name="dlgValue" type="text" class="url" />
+                </div>
+                <div class="checkbox-group">
+                    <label for="dlgIsSelected" id="dlgActiveLabel">Active</label>
+                    <input id="dlgIsSelected" type="checkbox" />
+                </div>
+            </div>
+            <div class="dialog-buttons">
+                <menu>
+                    <button id="dlgBtnOK">OK</button>
+                    <button id="dlgBtnCancel">Cancel</button>
+                </menu>
+            </div>
+        </div>
+    </dialog>
+    <div id="laiCopyHint" class="lai-copy-hint invisible">Copied!</div>
     <input id="fileInput" type="file" class="invisible">
+    <img src="img/reload.svg" id="spinner" class="loading invisible"/>
+
     <script src="options.js"></script>
 </body>
 </html>

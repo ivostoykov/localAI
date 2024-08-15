@@ -312,9 +312,9 @@ async function fetchDataAction(request, sender) {
         laiOptions = await getOptions();
     }
 
-    if(!laiOptions.aiUrl){
+    if(!laiOptions?.aiUrl){
         let msg = 'Missing API endpoint!';
-        await showUIMessage(sender.tab, `${msg} - ${laiOptions.aiUrl}`, 'error');
+        await showUIMessage(sender.tab, `${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
         console.error(msg, laiOptions);
         return {"status": "error", "message": msg};
     }
@@ -356,7 +356,7 @@ async function fetchDataAction(request, sender) {
 
         if(shouldAbort && controller){
             controller.abort();
-            chrome.tabs.sendMessage(senderTabId, { action: "streamAbort" });
+            chrome.tabs.sendMessage(sender.tab, { action: "streamAbort" });
             return  {"status": "aborted", "message": "Aborted"};
         }
 
@@ -598,7 +598,7 @@ async function getCurrentTab() {
 }
 
 async function getModels(){
-    let urlVal = laiOptions.aiUrl;
+    let urlVal = laiOptions?.aiUrl;
     if(!urlVal){
         showUIMessage(`No API endpoint found - ${urlVal}!`, 'error');
         return false;

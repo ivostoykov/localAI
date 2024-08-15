@@ -180,33 +180,39 @@
 .available-model-list{
     border: 1px solid #999;
     position: absolute;
-    top: 90px;
+    top: 23px;
     padding: 5px 15px;
     line-height: 25px;
+    background-color: #ffe;
+    z-index: 100;
+}
+
+.available-model-list div{
+	padding: 0 5px;
 }
 
 .available-model-list div:hover{
     cursor: pointer;
-    background-color: #ccc;
+    background-color: #eee;
 }
 
 .version{
-    top: -8px;
+    bottom: -8px;
     background-color: #ffe;
     border: 1px solid #888;
 }
 
 .version:hover{
-    top: -5px;
+    bottom: -5px;
 }
 
 .lai-model {
-    bottom: -5px;
-    transition: bottom .5s ease;
+    top: -3px;
+    transition: top .5s ease;
 }
 
 .lai-model:hover {
-    bottom: -15px;
+    top: 0px;
 }
 
 .lai-ribbon-pin-button,
@@ -287,12 +293,14 @@
     display: block;
     background-color: #e4e4e4;
     padding: 0 .25rem;
+    color: black;
 }
 
 .lai-input-text{
     font-weight: normal;
     padding: .25rem;
     overflow-x: auto;
+    color: black;
 }
 
 .lai-input-label::first-letter {

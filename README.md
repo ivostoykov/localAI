@@ -249,7 +249,15 @@ After installing or updating [Ollama](https://ollama.com/) it is likely to hit [
 
 ### 403 Error
 
-1. sudo nano /etc/systemd/system/ollama.service
+1. Edit Ollama service
+```
+sudo nano /etc/systemd/system/ollama.service
+```
+or with the preferable editor, i.e.:
+```
+sudo vim /etc/systemd/system/ollama.service
+```
+
 2. Add this line in the mentioned section
 
 ```
@@ -260,6 +268,5 @@ Environment="OLLAMA_ORIGINS=*"
 4. restart the service
 
 ```
-sudo systemctl daemon-reload
-sudo systemctl restart ollama
+sudo systemctl daemon-reload && systemctl restart ollama
 ```

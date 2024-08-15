@@ -146,6 +146,7 @@ function laiBuildMainButton(){
     title: "Click to open the panel.",
   });
 
+  theMainButton.style.zIndex = getHighestZIndex();
   const img = document.createElement('img');
   img.src = chrome.runtime.getURL('img/icon128.svg');
   img.classList.add('img-btn');
@@ -181,6 +182,7 @@ function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
         className: "lai-fixed-parent",
         innerHTML: data
       });
+      theSideBar.style.zIdex = getHighestZIndex();
       const shadowRoot = getShadowRoot();
       if(!shadowRoot) {  return;  }
 

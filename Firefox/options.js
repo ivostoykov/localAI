@@ -1,4 +1,5 @@
 const manifest = chrome.runtime.getManifest();
+var laiOptions = {};
 
 document.addEventListener('DOMContentLoaded', e => {
     loadSettings(e);
@@ -20,6 +21,9 @@ document.getElementById('cleartUserCmd').addEventListener('click', deleteUserCom
 document.getElementById('fileInput').addEventListener('change', importFromFile);
 document.getElementById('aiUrl').addEventListener('input', loadModels)
 
+document.getElementById("dlgBtnOK").addEventListener('click', closeDialog);
+document.getElementById("dlgBtnCancel").addEventListener('click', closeDialog);
+
 function saveSettings(e) {
     e.preventDefault();
 
@@ -28,7 +32,7 @@ function saveSettings(e) {
 
     for (let i = 0; i < elements.length; i++) {
         const element = elements[i];
-        if(['checkbox', 'text', 'textarea'].indexOf(element.type) < 0){
+        if (['select', 'checkbox', 'text', 'textarea'].indexOf(element.type) < 0) {
             continue;
         }
         optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
@@ -37,25 +41,37 @@ function saveSettings(e) {
     const dataLists = ['modelList', 'urlList', 'webHookList'];
     for (let i = 0; i < dataLists.length; i++) {
         const list = dataLists[i];
-        const options = document.querySelectorAll(`#${list} option`) ?? [];
-        let attributeValues = Array.from(options)?.map(e => e.getAttribute('value'));
+        const el = document.querySelector(`select[data-list="${list}"]`);
+        const options = Array.from(el.options);
+        if (/^Select/i.test(options[0].text)) { options.shift(); }
+        optionsData[el.id] = el.options[el.selectedIndex].value;
+        let attributeValues = Array.from(options)?.map(e => e.getAttribute('value')).sort();
         optionsData[list] = attributeValues ?? [];
     }
 
-    chrome.storage.sync.set({'laiOptions': optionsData}, function() {
+    laiOptions = optionsData;
+    chrome.storage.sync.set({ 'laiOptions': optionsData }, function () {
         showMessage('Settings saved', 'success');
     });
 }
 
 function loadSettings(e) {
-    chrome.storage.sync.get('laiOptions', function(obj) {
+    chrome.storage.sync.get('laiOptions', function (obj) {
         const formData = obj.laiOptions || {};
+        laiOptions = formData;
 
         const dataLists = ['modelList', 'urlList', 'webHookList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
-            if(!formData[list]){  continue;  }
-            formData[list]?.forEach(value => extenddList(e, document.querySelector(`#${list}`), value));
+            if (!formData[list]) { continue; }
+
+            const el = document.querySelector(`select[data-list="${list}"]`);
+            if (!el) { continue; }
+            const op0 = el.options[0];
+            el.replaceChildren();
+            el.appendChild(op0);
+            formData[list]?.forEach(value => addSelectOptions(el, { "val": value, "isSelected": (value === formData.aiUrl ?? '') }));
+            if (el.options.length === 1) { el.selectedIndex = 0; }
         }
 
         Object.keys(formData)?.forEach(key => {
@@ -71,23 +87,23 @@ function loadSettings(e) {
     });
 }
 
-function attachListeners(e){
+function attachListeners(e) {
     document.getElementById('showEmbeddedButton').addEventListener('click', onshowEmbeddedButtonClicked);
     document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
     document.querySelector('#advancedSettings img')?.addEventListener('click', toggleFold);
 }
 
-function onshowEmbeddedButtonClicked(e){
+function onshowEmbeddedButtonClicked(e) {
     const el = e?.target || document.getElementById('showEmbeddedButton');
     const mainButtonIcon = document.getElementById('mainButtonIcon');
-    if(document.getElementById('showEmbeddedButton').checked){
+    if (document.getElementById('showEmbeddedButton').checked) {
         mainButtonIcon.classList.remove('invisible');
     } else {
         mainButtonIcon.classList.add('invisible');
     }
 }
 
-function showMessage(message, type){
+function showMessage(message, type) {
     const msg = document.querySelector('.message-box');
     msg.innerHTML = message;
     msg.classList.remove('invisible', 'success', 'error', 'warning', 'info');
@@ -99,16 +115,16 @@ function cancelOptions() {
     window.close(); // Closes the options page
 }
 
-function deleteAllAiSessions(e){
-   chrome.storage.local.remove(['aiSessions']).then(() =>{
+function deleteAllAiSessions(e) {
+    chrome.storage.local.remove(['aiSessions']).then(() => {
     showMessage('All sessions have been deleted.', 'success');
    }).catch(e => {
     console.error('>>>', e)
    });
 }
 
-function deleteUserCommands(e){
-    chrome.storage.local.remove(['aiUserCommands']).then(() =>{
+function deleteUserCommands(e) {
+    chrome.storage.local.remove(['aiUserCommands']).then(() => {
         showMessage('All User commands have been deleted.', 'success');
     }).catch(e => {
         console.error('>>>', e)
@@ -131,7 +147,7 @@ async function exportAsFile(e) {
             break;
     }
 
-    if(!storageKey){  return;  }
+    if (!storageKey) { return; }
 
     const obj = await chrome.storage.local.get([storageKey]);
     const json = obj[storageKey] || [];
@@ -148,13 +164,13 @@ function importUserCommand(e) {
     fileInput.click();
 }
 
-function importFromFile(e){
+function importFromFile(e) {
     const file = e.target.files[0];
     var reader = new FileReader();
-    reader.onloadend = function() {
+    reader.onloadend = function () {
         try {
             var json = JSON.parse(reader.result);
-            chrome.storage.local.set({['aiUserCommands']: json})
+            chrome.storage.local.set({ ['aiUserCommands']: json })
             .then(() => showMessage('User Commands imported successfully.', 'success'))
             .catch(e => console.error('>>>', e));
         } catch (err) {
@@ -166,21 +182,28 @@ function importFromFile(e){
 }
 
 
-async function loadModels(e){
-    const aiUrl = e.target || document.querySelector('#aiUrl');
-    if(!aiUrl){
+async function loadModels(e) {
+    showSpinner();
+    const aiUrl = e?.target || document.querySelector('#aiUrl');
+    if (!aiUrl) {
         showMessage(`No API endpoint found - ${aiUrl?.value}!`, 'error');
+        hideSpinner();
         return false;
     }
 
-    let urlVal = aiUrl.value.trim();
-    if(urlVal === ''){  return;  }
-    if(!urlVal.startsWith('http')){
+    // let urlVal = aiUrl.value.trim();
+    let urlVal = aiUrl.options[aiUrl.selectedIndex].value.trim();
+    if (urlVal === '') { return; }
+    if (!urlVal.startsWith('http')) {
         showMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
+        hideSpinner();
         return false;
     }
 
-    if(urlVal.indexOf('/api/') < 0){  return;  }
+    if (urlVal.indexOf('/api/') < 0) {
+        hideSpinner();
+        return false;
+    }
 
     urlVal = urlVal.replace(/\/api\/.+/i, '/api/tags');
     let response;
@@ -193,117 +216,222 @@ async function loadModels(e){
       });
 
       models = await response.json();
-      if(models.models && Array.isArray(models.models)) {  fillModelList( models.models);  }
+        if (models.models && Array.isArray(models.models)) { fillModelList(models.models); }
     } catch (e) {
       console.error(e);
+        console.error('response', response);
+    } finally {
+        hideSpinner();
+        showMessage("Model list successfully updated.", "success");
     }
 }
 
-function fillModelList(models = []){
-    if(models.length < 1){  return;  }
-    let modelDataList = document.querySelector('#modelList');
-    if(!modelDataList){
+function fillModelList(models = []) {
+    if (models.length < 1) { return; }
+    let modelDataList = document.querySelector('#aiModel');
+    if (!modelDataList) {
         console.error('Cannot find modelList element!');
         return;
-    //   const el = document.createElement('datalist');
-    //   el.id = 'modelList'
-    //   document.body.appendChild(el);
-    //   modelDataList = document.querySelector('#models');
-    // } else {
     }
+
+    let op = modelDataList.options[0];
     modelDataList.replaceChildren();
+    modelDataList.appendChild(op);
+    op.setAttribute('selected', 'selected');
 
     for (let i = 0; i < models.length; i++) {
-      const option = document.createElement('option');
-      option.value = models[i].name;
-      modelDataList.appendChild(option);
+        op = document.createElement('option');
+        op.value = op.text = models[i].name;
+        if (models[i].name === laiOptions?.aiModel) { op.setAttribute('selected', 'selected'); }
+        modelDataList.appendChild(op);
     }
 }
 
-function toggleFold(e){
+function toggleFold(e) {
     const src = e.target.src.indexOf('/unfold') > -1 ? '/unfold' : '/fold';
     const target = src === '/unfold' ? '/fold' : '/unfold';
     e.target.src = e.target.src.replace(src, target);
     e.target.title = `${target === '/fold' ? 'Show' : 'Hide'} advanced settings`;
     const advancedSettingsContainer = document.getElementById('advancedSettingsContainer');
-    if(e.target.src.indexOf('/fold') > -1){
+    if (e.target.src.indexOf('/fold') > -1) {
         advancedSettingsContainer.classList.add('invisible');
     } else {
         advancedSettingsContainer.classList.remove('invisible');
     }
 }
 
-// model field function
-
 function sortDatalist(e) {
-    const datalist = e.target.parentElement.nextElementSibling;
+    let datalist = e.target.closest('div.el-holder');
+    datalist = datalist?.querySelector('select');
+    if (!datalist) { return; }
+    const optionId = datalist?.id;
     const direction = e.target.getAttribute('data-action');
-    if(!['asc', 'desc'].includes(direction)){  return;  }
+    if (!['asc', 'desc'].includes(direction)) { return; }
 
     const options = Array.from(datalist.options);
-    if(!options || options?.length === 0)  {  return;  }
-    if(direction === 'desc'){
+    if (options?.length === 1) { return; }
+
+    var op0;
+    if (/^Select/i.test(options[0].text)) { op0 = options.shift(); }
+
+    if (direction === 'desc') {
         options.sort((a, b) => b.value.localeCompare(a.value));
     }
-    if(direction === 'asc'){
+    if (direction === 'asc') {
         options.sort((a, b) => a.value.localeCompare(b.value));
     }
 
     datalist.replaceChildren();
-
+    datalist.appendChild(op0);
     options.forEach(option => datalist.appendChild(option));
+    const idx = options.findIndex(e => e.value === laiOptions[optionId]);
+    datalist.selectedIndex = idx < 0 ? idx : idx + 1;
+    showMessage("List sorted successfully.", "success");
 }
 
-function extenddList(e, datalist, valueEl){
-    datalist = datalist ?? e.target.parentElement.nextElementSibling;
-    valueEl = valueEl ?? e.target.parentElement.previousElementSibling;
-    if(!valueEl || !datalist){ return;  }
-    const op = document.createElement('option');
-    if(typeof(valueEl) === 'string'){
-        op.value = valueEl
+function extenddList(e) {
+    //    datalist = datalist ?? e.target.parentElement.nextElementSibling;
+    let datalist = e.target.closest('div.el-holder');
+    datalist = datalist?.querySelector('select');
+    if (!datalist) { return; }
+    const options = {};
+
+    options.action = e.target.getAttribute('data-action')?.toLowerCase();
+    options.targetId = datalist.id;
+    if (options.action === 'edit') {
+        options.selectedIndex = datalist.selectedIndex;
+        options.selectedValue = datalist.selectedIndex > 0 ? datalist.options[datalist.selectedIndex]?.value : '';
     } else {
-        op.value = valueEl?.value?.trim();
-        valueEl.value = '';
-        valueEl.focus();
+        options.selectedValue = '';
     }
 
-    datalist.appendChild(op);
+    showDialog('test', options);
 }
 
-function shrinkList(e){
-    const datalist = e.target.parentElement.nextElementSibling;
-    const valueEl = e.target.parentElement.previousElementSibling;
-    if(!valueEl || !datalist){ return;  }
-    const action = e.target.getAttribute('data-action')?.toLowerCase();
-    if(action === 'removeall'){
-        datalist.replaceChildren();
+function showDialog(title, options) {
+    const dialog = document.getElementById('laiDialog');
+    const dlgTitle = document.getElementById('dlgTitle');
+    if (dlgTitle) { dlgTitle.textContent = title; }
+
+    const userInput = document.getElementById('dlgValue');
+    if (options.selectedValue) { userInput.value = options.selectedValue; };
+    userInput.setAttribute("data-options", JSON.stringify(options));
+
+    dialog.showModal();
+}
+
+function closeDialog(e) {
+    const elId = e.target.id;
+    const dialog = document.getElementById('laiDialog');
+    const userInput = document.getElementById('dlgValue');
+    const dlgIsSelected = document.getElementById('dlgIsSelected');
+    if (elId === 'dlgBtnCancel') {
+        resetDialog(userInput, dialog);
         return;
     }
 
-    const options = datalist.querySelectorAll('option');
-    if(!options || options.length === 0){
-        valueEl.value = '';
-        valueEl.focus();
+    try {
+        var options = userInput.getAttribute("data-options");
+        options = JSON.parse(options);
+        options.newValue = userInput.value.trim();
+        options.dlgIsSelected = dlgIsSelected.checked || false;
+        refreshTarget(options);
+    } catch (e) {
+        showMessage(e.message, "error");
         return;
+    } finally {
+        resetDialog(userInput, dlgIsSelected, dialog);
     }
+}
 
-    for (let i = 0; i < options.length; i++) {
-        const option = options[i];
-        if(option.value === valueEl?.value){
-            datalist.removeChild(option);
-            valueEl.value = '';
-            valueEl.focus();
-            break;
+function resetDialog(userInput, dlgIsSelected, dialog) {
+    dlgIsSelected.checked = false;
+    userInput.value = '';
+    userInput.removeAttribute("data-options");
+    dialog.close();
+}
+
+function refreshTarget(gldValues) {
+    if (Object.keys(gldValues).length < 1) { return; }
+    const target = document.querySelector(`#${gldValues.targetId || ''}`);
+    if (!target || !gldValues?.newValue) { return; }
+    if (gldValues?.selectedIndex) {
+        target.options[gldValues.selectedIndex].value = gldValues.newValue;
+        if(gldValues.dlgIsSelected || false) {
+            target.options[gldValues.selectedIndex].setAttribute('selected', 'selected');
         }
+    } else {
+        const op = document.createElement('option');
+        op.text = op.value = gldValues.newValue;
+        if(gldValues.dlgIsSelected || false) {
+            op.setAttribute('selected', 'selected');
+        }
+        target.appendChild(op);
+        // target.selectedIndex = target.options.lenght - 1;
     }
 }
 
-function attachDataListListeners(e){
+function addSelectOptions(selectEl, objData) {
+    try {
+        if (!selectEl || !Object.keys(objData).length === 0) { return; }
+        const op = document.createElement('option');
+        if (!op) { return; }
+        op.text = objData?.text ?? objData?.val;
+        op.value = objData?.val ?? 'unknown!';
+        if (objData?.isSelected) { op.setAttribute('selected', 'selected'); }
+        selectEl.appendChild(op);
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function copyValue(e) {
+    let datalist = e.target.closest('div.el-holder');
+    datalist = datalist?.querySelector('select');
+    const getParentEvent = () => e;
+    navigator.clipboard.writeText(datalist.options[datalist.selectedIndex].value || '')
+        .then(() => { showHint(getParentEvent()); })
+        .catch(err => console.error('Failed to copy text: ', err));
+}
+
+function showHint(e) {
+    const hint = document.querySelector('#laiCopyHint');
+    if (!hint) { return; }
+    hint.style.left = `${e.clientX}px`;
+    hint.style.top = `${e.clientY}px`;
+    hint.style.opacity = '1';
+    hint.classList.remove('invisible');
+    setTimeout(() => {
+        hint.style.opacity = '0';
+        setTimeout(() => { hint.classList.add('invisible'); }, 500);  // 500ms matches the transition duration
+    }, 3000);
+}
+
+function shrinkList(e) {
+    let datalist = e.target.closest('div.el-holder');
+    datalist = datalist?.querySelector('select');
+    if (!datalist || datalist?.options.lenght < 2) { return; }
+
+    const action = e.target.getAttribute('data-action')?.toLowerCase();
+    if (action === 'removeall') {
+        const op0 = datalist.options[0];
+        datalist.replaceChildren();
+        datalist.appendChild(op0);
+        showMessage("The whole list was removed.", "success");
+    } else {
+        const idx = datalist.selectedIndex;
+        if (idx < 1) { return; }
+        datalist.remove(idx);
+        showMessage("The element was removed from the list.", "success");
+    }
+}
+
+function attachDataListListeners(e) {
 
     const containers = ['modelButtons', 'urlButtons', 'hookButtons'];
     for (let x = 0; x < containers.length; x++) {
         const container = document.querySelector(`#${containers[x]}`);
-        if(!container) {  continue;  }
+        if (!container) { continue; }
         const buttons = container.querySelectorAll('img');
 
         for (let i = 0; i < buttons.length; i++) {
@@ -311,7 +439,11 @@ function attachDataListListeners(e){
             const action = b.getAttribute('data-action')?.toLowerCase();
             switch (action) {
                 case 'add':
+                case 'edit':
                     b.addEventListener('click', e => extenddList(e));
+                    break;
+                case 'copy':
+                    b.addEventListener('click', e => copyValue(e));
                     break;
                 case 'remove':
                 case 'removeall':
@@ -321,44 +453,22 @@ function attachDataListListeners(e){
                 case 'desc':
                     b.addEventListener('click', e => sortDatalist(e));
                     break;
+                case 'reload':
+                    b.addEventListener('click', e => loadModels());
+                    break;
             }
         }
     }
 }
-/* function attachDataListListeners(e){
 
-    const containers = ['modelButtons', 'urlButtons', 'hookButtons'];
-    const modelButtonsContainer = document.querySelector('#modelButtons');
-    if(!modelButtonsContainer) {  return;  }
-    containers.push({
-        "container": modelButtonsContainer,
-        "datalist": document.getElementById('modelList'),
-        "valueEl": document.getElementById('aiModel')
-    });
+function showSpinner() {
+    const spinner = document.querySelector('#spinner');
+    if (!spinner) { return; }
+    spinner.classList.remove('invisible');
+}
 
-    const urlButtons = document.querySelector('#urlButtons');
-    if(!urlButtons) {  return;  }
-    containers.push({
-        "container": urlButtons,
-        "datalist": document.getElementById('urlList'),
-        "valueEl": document.getElementById('aiUrl')
-    });
-
-    for (let i = 0; i < containers.length; i++) {
-        containers[i].container.querySelectorAll('img').forEach(b => {
-            const action = b.getAttribute('data-action')?.toLowerCase();
-            switch (action) {
-                case 'add':
-                    b.addEventListener('click', e => addModel(e, containers[i].datalist, containers[i].valueEl));
-                    break;
-                case 'remove':
-                    b.addEventListener('click', e => removeModel(e, containers[i].datalist, containers[i].valueEl));
-                    break;
-                case 'asc':
-                case 'desc':
-                    b.addEventListener('click', e => sortDatalist(e, action.toLowerCase(), containers[i].datalist));
-                    break;
-            }
-        });
-    }
-} */
+function hideSpinner() {
+    const spinner = document.querySelector('#spinner');
+    if (!spinner) { return; }
+    spinner.classList.add('invisible');
+}
