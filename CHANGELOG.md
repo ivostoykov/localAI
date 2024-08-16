@@ -8,6 +8,10 @@
 - Extgernal resource missing content bug fixed
 - Facilitated model change for Ollama API
 - Added more menus in the cog button.
+- Added `/hook` command to list the available functions available on the given webHook server
+- Command `/hook` added to the predefined commands
+- Added a status bar providing information about various statuses
+
 
 ## [1.13.3] 2024-07-27
 

@@ -92,11 +92,13 @@ function laiInitSidebar() {
         }
 
         try {
+            updateStatusBar('Opening Option Page ...');
             chrome.runtime.sendMessage({ action: "openOptionsPage" })
             .then()
             .catch(e => {
                 console.error(`>>> ${manifest.name}`, e);
-            });
+                })
+                .finally(() => resetStatusbar());
         } catch (e) {
             if (e.message.indexOf('Extension context invalidated.') > -1) {
                 showMessage(`${e.message}. Please reload the page.`, 'warning');
@@ -451,9 +453,7 @@ function onPromptTextAreaKeyUp(e) {
             return;
         }
 
-        // const inputChunks = splitInputToChunks(e.target.value, 4096);
         checkForDump(e.target.value);
-        // addUserInputIntoMessageQ(inputChunks);
         addUserInputIntoMessageQ(e.target.value);
 
         updateChatHistoryWithUserInput(e.target.value, 'user', messages.length - 1);
@@ -477,10 +477,6 @@ function addAttachmentsToUserInput() {
     if (attachments.length < 1) { return false; }
     for (let i = 0; i < attachments.length; i++) {
         messages.push({ "role": "user", "content": attachments[i] });
-/*         const inputChunks = splitInputToChunks(attachments[i], 4096);
-        for (let i = 0; i < inputChunks.length; i++) {
-            messages.push({ "role": "user", "content": inputChunks[i] });
-        } */
     }
 }
 
@@ -838,8 +834,6 @@ function queryAI() {
         return;
     }
 
-    const shadowRoot = getShadowRoot();
-
     if (laiOptions.aiUrl.trim() === '') {
         showMessage('Please choose API endpoint');
         return;
@@ -867,9 +861,11 @@ function queryAI() {
         binaryFormData: binaryFormData
     };
 
+    updateStatusBar('Sending the prompt to the model...');
     chrome.runtime.sendMessage(requestData, (response) => {
         if(response?.status === 'error' && response?.message){
             showMessage(response.message, 'error');
+            resetStatusbar();
         }
     });
 }
@@ -929,6 +925,7 @@ chrome.runtime.onMessage.addListener((response) => {
         return;
     }
 
+ 
     switch (response.action) {
         case "streamData":
 
@@ -936,8 +933,10 @@ chrome.runtime.onMessage.addListener((response) => {
             try {
                 dataChunk = laiExtractDataFromResponse(response);
                 if (!dataChunk) { return; }
+                updateStatusBar('Receiving and processing data...');
                 StreamMarkdownProcessor.processStreamChunk(dataChunk, laiGetRecipient);
             } catch (err) {
+                resetStatusbar();
                 laiHandleStreamActions(`${err}`, recipient)
                 console.error(err);
                 console.log(dataChunk, response);
@@ -984,6 +983,7 @@ chrome.runtime.onMessage.addListener((response) => {
 
     if (response.error) {
         showMessage(response.error, 'error');
+        resetStatusbar();
     }
 });
 
@@ -1017,6 +1017,7 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
         dumpStream = false;
     }
     StreamMarkdownProcessor.dispose();
+    resetStatusbar();
     setAiSessions().then().catch(e => console.error(e));
 }
 
@@ -1136,6 +1137,52 @@ function laiResizeContainer(e) {
     window.addEventListener('mouseup', onMouseUp);
 }
 
+function checkForHooksCmd(e){
+    const userInput = e.target?.value?.trim() || '';
+    if (!userInput || !/(?<!\\)\/(web)?hooks?\s*/i.test(userInput.toLowerCase())) {  return false;  }
+    e.target.value = userInput.replace(/(?<!\\)\/(web)?hooks?\s*/g, '');
+    updateStatusBar('Loading defined hooks...');
+    chrome.runtime.sendMessage({ action: "getHooks" })
+    .then(res => {
+        showHooks(res);
+        return true;
+    })
+    .catch(e => {
+        console.error(`>>> ${manifest.name}`, e);
+    })
+    .finally(() => resetStatusbar());
+    return true;
+}
+
+function showHooks(res){
+    if(!res || !res?.hooks) {  return;  }
+    if(res && res?.status !== 'success'){
+        showMessage(`${res.status}: ${res?.message || "Unknow error"}`);
+        return;
+    }
+
+    const container = document.createElement('div');
+    container.id = 'hookContainer';
+
+    const hooks = res.hooks;
+    const hookArray = hooks.split('\n');
+
+    hookArray.forEach(hook => {
+      const p = document.createElement('p');
+      p.textContent = hook.trim();
+      container.appendChild(p);
+    });
+
+    const closeButton = document.createElement('button');
+    closeButton.textContent = 'Close';
+    closeButton.onclick = () => container.remove();
+    container.appendChild(closeButton);
+
+    const sideBar = getSideBar();
+    sideBar.appendChild(container);
+    closeButton?.focus();
+}
+
 /**
  * Populate external resources if any.
  *
@@ -1175,6 +1222,7 @@ function checkCommandHandler(e) {
     const userInput = e.target;
     if (!userInput || (userInput?.value?.trim() || '') === '') { return res; }
 
+    if(checkForHooksCmd(e)){  return true;  }
     externalResourcesHandler(e);
 
     const matches = getRegExpMatches(/\/(\w+)(?:\((\w+)\))?[\t\n\s]?/gi, userInput);
@@ -1184,10 +1232,8 @@ function checkCommandHandler(e) {
     for (let i = 0; i < matches.length; i++) {
         const cmd = matches[i][1]?.toLowerCase();
         const param = matches[i][2]?.toLowerCase();
-        // userInput.value = userInput.value?.replace(matches[i][0], '');
         switch (cmd) {
             case 'add':
-                // userInput.value = userInput.value?.replace(matches[i], '');
                 popUserCommandEditor();
                 continueLoop = false;
                 res = true;
@@ -1197,6 +1243,9 @@ function checkCommandHandler(e) {
                 showMessage(lastRegisteredErrorMessage.toReversed().slice(0, 5), 'error');
                 continueLoop = false;
                 res = true;
+                break;
+            case 'hooks':
+                showHooks();
                 break;
             case 'list':
                 continueLoop = false;
@@ -1534,8 +1583,9 @@ function userCmdItemBtnClicked(e) {
             popUserCommandEditor(index);
             break;
         case 'execute':
-            e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click()
-            userInput.value += aiUserCommands[index]?.commandBody;
+            e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click();
+            let exVal = index < 0 ? `/${userPredefinedCmd.slice(index)[0]?.commandName}` : aiUserCommands[index]?.commandBody
+            userInput.value += exVal === '/' ? '' : exVal;
             const enterEvent = new KeyboardEvent('keydown', {
                 bubbles: true,
                 cancelable: true,
@@ -1544,7 +1594,8 @@ function userCmdItemBtnClicked(e) {
             userInput.dispatchEvent(enterEvent);
             break;
         case 'paste':
-            userInput.value += aiUserCommands[index].commandBody;
+            let val = index < 0 ? `/${userPredefinedCmd.slice(index)[0]?.commandName}` : aiUserCommands[index]?.commandBody
+            userInput.value += val === '/' ? '' : val;
             break;
         case 'delete':
             aiUserCommands.splice(index, 1);
@@ -1592,8 +1643,10 @@ function adjustFontSize(elm, direction) {
 
 async function modelLabelMouseOver(e){
     let response;
+    updateStatusBar('Loading model list...')
     try {
         response = await chrome.runtime.sendMessage({ action: "getModels" });
+        if(typeof(response) === 'boolean' && !response) {  return;  }
         if(response.status !== 'success'){  throw new Error(response?.message || 'Unknown error!');  }
         laiOptions.modelList = response.models?.map(m => m.name).sort() || [];
         await chrome.storage.sync.set({[storageOptionKey]: laiOptions});
@@ -1601,7 +1654,7 @@ async function modelLabelMouseOver(e){
     } catch (e) {
         showMessage(e.message, 'error');
         console.log(`>>> ${manifest.name} ERROR:`, response);
-    }
+    } finally {  resetStatusbar();  }
 
 }
 
@@ -1653,4 +1706,16 @@ async function swapActiveModel(e, modelName){
     Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
     e.target.textContent = `${e.target.textContent} ✔`;
     parent.classList.add('invisible');
+}
+
+function updateStatusBar(status){
+    if(!status) {  return;  }
+    const sidebar = getSideBar();
+    const statusbar = sidebar.querySelector('div.statusbar');
+    if(!statusbar) {  return;  }
+    statusbar.textContent = status;
+}
+
+function resetStatusbar(){
+    updateStatusBar('Ready.');
 }

@@ -53,6 +53,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
+        case "getHooks":
+            getHooks()
+            .then(response => sendResponse(response) )
+            .catch(error => {
+                sendResponse({ status: 'error', message: error.toString() });
+            });
+            break;
         case 'abortFetch':
             shouldAbort = true;
             break;
@@ -598,6 +605,7 @@ async function getCurrentTab() {
 }
 
 async function getModels(){
+    if(!laiOptions) {  laiOptions = await getOptions();  }
     let urlVal = laiOptions?.aiUrl;
     if(!urlVal){
         showUIMessage(`No API endpoint found - ${urlVal}!`, 'error');
@@ -611,20 +619,46 @@ async function getModels(){
 
     if(urlVal.indexOf('/api/') < 0){  return;  }
 
-    urlVal = urlVal.replace(/\/api\/.+$/i, '/api/tags');
     let response;
     let models;
     try {
-      response = await fetch(urlVal, {
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-        },
-      });
+        urlVal = new URL('/api/tags', (new URL(urlVal)).origin).href;
+        response = await fetch(urlVal, {
+            headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            },
+        });
 
       models = await response.json();
       if(models.models && Array.isArray(models.models)) {  return {"status":"success", "models": models.models};  }
     } catch (e) {
       console.error(e);
       return {"status": "error", "message": e.message};
+    }
+}
+
+async function getHooks(){
+    let urlVal = laiOptions?.webHook;
+    if(!urlVal){
+        let msg = `No API endpoint found - ${urlVal}!`;
+        return {"status":"error", "messsage": msg};
+    }
+
+    if(!urlVal.startsWith('http')){
+        let msg = `Invalid API endpoint - ${urlVal}!`;
+        return {"status":"error", "messsage": msg};
+    }
+
+    let response;
+    let hooks;
+    try {
+        urlVal = (new URL(urlVal)).origin
+        response = await fetch(urlVal);
+
+        hooks = await response.text();
+        if(!hooks) {  return {"status":"error", "messsage": "No hooks returned. Is server running?"};  }
+        return {"status":"success", "hooks": hooks};
+    } catch (err) {
+        return {"status":"error", "messsage": `webHook seems invalud - ${urlVal}! Error: ${err.message}`};
     }
 }

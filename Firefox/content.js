@@ -27,7 +27,8 @@ var userPredefinedCmd = [
   {"commandName": "add", "commandDescription":"Create a new predefined prompt"},
   {"commandName": "edit(command_name)", "commandDescription":"Edit the command corresponding to name, provided in the brackets"},
   {"commandName": "error", "commandDescription":"Show last error"},
-  {"commandName":"list", "commandDescription":"Show all defined commands"}
+  {"commandName":"list", "commandDescription":"Show all defined commands"},
+  {"commandName":"hooks", "commandDescription":"Show all defined hooks"}
 ];
 
 document.addEventListener('DOMContentLoaded', async function (e) {
