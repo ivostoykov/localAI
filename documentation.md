@@ -103,7 +103,10 @@ Click <img src="Chrome/img/black_pushpin.svg" height="30" alt="New Session"/> to
 
 If the pannel is not pinned (default) then clicking outside the panel will hide it. This behaviour can be changed from the [Options](#options) page.
 
-<img src="Chrome/img/close.svg" height="30" alt="New Session"/> - Hide the panel. **Note:** Clicking the hide button will unpin the panel first, then close it. This means it won’t be pinned the next time you open it.
+<img src="Chrome/img/close.svg" height="30" alt="New Session"/> - Hide the panel.
+
+> [!Note]
+> Clicking the hide button will unpin the panel first, then close it. This means it won’t be pinned the next time you open it.
 
 ## Prompt area
 
@@ -111,7 +114,10 @@ When empty, it provides a short information about the available options.
 
 ### Attach file
 
-Just drag and drop a file. **Note:** only plain text files can be used currently.
+Just drag and drop a file.
+
+> [!Note] 
+> Only plain text files can be used currently.
 
 <img src="media/attach.gif" height="600" alt="attach"/>
 
@@ -154,7 +160,10 @@ Pressing `Enter` will execute it as if it has been typed as a prompt text follow
 
 <img src="Chrome/img/paste.svg" height="26" alt="Edit"/> - copy and paste command's content into the prompt area.
 
-<img src="Chrome/img/delete.svg" height="26" alt="Edit"/> - delete this command. **Note:** No `Undo` is available,
+<img src="Chrome/img/delete.svg" height="26" alt="Edit"/> - delete this command.
+
+> [!Warning]
+> No `Undo` is available,
 
 To view available custom commands, type `/list` in the prompt.
 
@@ -211,7 +220,9 @@ To add web resources as prompt contexts, consider this example project. A script
 
 The result will be the text content added to the rest of the prompt. The purpose is for this retrieved content to be used as context by the model.
 
-**Note:** If another API is used, it must abide by two rules:
+> [!Note]
+>  If another API is used, it must abide by two rules:
+
 * Understand the content enclosed between `!#...#!`.
 * Return plain text.
 
