@@ -11,7 +11,7 @@
 - Added `/hook` command to list the available functions available on the given webHook server
 - Command `/hook` added to the predefined commands
 - Added a status bar providing information about various statuses
-
+- Added separate documentation
 
 ## [1.13.3] 2024-07-27
 

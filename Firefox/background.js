@@ -638,6 +638,7 @@ async function getModels(){
 }
 
 async function getHooks(){
+    if(!laiOptions) {  laiOptions = await getOptions();  }
     let urlVal = laiOptions?.webHook;
     if(!urlVal){
         let msg = `No API endpoint found - ${urlVal}!`;
