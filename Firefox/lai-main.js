@@ -18,6 +18,7 @@ function getSideBar() {
 }
 
 function laiInitSidebar() {
+    if(!chrome.runtime.id){  chrome.runtime.reload();  }
     const root = getRootElement();
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
@@ -1614,6 +1615,7 @@ function userCmdItemBtnClicked(e) {
 }
 
 function checkExtensionState() {
+    if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
     if (!chrome.runtime.id) {
         if (typeof (showMessage) === 'function') {
             showMessage(`${manifest.name} - Extension context invalidated. Please reload the tab.`, 'error');

@@ -96,6 +96,7 @@ document.addEventListener('DOMContentLoaded', async function (e) {
 });
 
 function init() {
+  if(!chrome.runtime.id){  chrome.runtime.reload();  }
   const localAI = Object.assign(document.createElement('local-ai'), {
     id: "localAI"
   });
@@ -137,6 +138,7 @@ if(!shadowRoot) {  return;  }
 }
 
 function laiBuildMainButton(){
+  if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
   if(!chrome.runtime.id){
     console.error(`${manifest.name} - Extension context invalidated. Please reload the tab.`);
     return;
@@ -171,6 +173,7 @@ function laiMainButtonClicked(e){
 }
 
 function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
+  if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
   if(!chrome.runtime.id){
     console.error(`${manifest.name} - Extension context invalidated. Please reload the tab.`);
     return;
@@ -227,6 +230,7 @@ function laiSetImg(el) {
 function showMessage(messages, type) {
   if(!messages){  return;  }
   if(!Array.isArray(messages)){  messages = [messages];  }
+  messages = [...new Set(messages)];
   if(messages.length < 1) {  return;  }
   const shadowRoot = getShadowRoot();
   if(!shadowRoot) {  return;  }

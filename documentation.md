@@ -186,7 +186,9 @@ This will send the content of the page from current active tab to the AI with a 
 
 ## End Points
 
-Add the end point used to query the LLM. Use the buttons to add ( <img src="Chrome/img/add.svg" height="25" alt="Add" title="Add"/> ), delete ( <img src="Chrome/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), delete all ( <img src="Chrome/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ), and sort ascending ( <img src="Chrome/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or descending ( <img src="Chrome/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ).
+Add the end point used to query the LLM. Use the buttons to add ( <img src="Chrome/img/add.svg" height="25" alt="Add" title="Add"/> ), delete ( <img src="Chrome/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), delete all ( <img src="Chrome/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ) sort ascending ( <img src="Chrome/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or descending ( <img src="Chrome/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ), and copy ( <img src="Chrome/img/copy.svg" height="25" alt="Copy" title="Copy"/> ).
+
+The model list, determined by the endpoint, includes an additional reload button ( <img src="Chrome/img/reload.svg" height="25" alt="Reload" title="Reload"/> ). Deleting or adding models is not possible within this interface and depends on the associated tool.
 
 ### Models
 
