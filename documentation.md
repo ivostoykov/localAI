@@ -116,6 +116,9 @@ A speech-to-text feature is available to dictate prompts in English. This can be
 
 ![Speech Recognition](media/speech_icon.png)
 
+> [!IMPORTANT]
+> For speach recognition with Firefox browser look [here](ff.md#speech-recognition-doesnt-work-in-firefox)
+
 ### Attach file
 
 Just drag and drop a file.

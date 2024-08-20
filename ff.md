@@ -23,3 +23,7 @@ If you're using Firefox >= 158 it probably worth to keep reading.
 <img src="media/04_data.png" height="150" alt="data" title="data"/>
 
 This will allow add-on to interact with the `activeTab`.
+
+## Speech Recognition doesn't work in Firefox
+
+For instructions on enabling Web Speech API in Firefox,  check the linked article [here](https://hacks.mozilla.org/2016/01/firefox-and-the-web-speech-api/). Focus on the **"Browser support in more detail"** section.

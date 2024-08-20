@@ -1,5 +1,5 @@
 function createSpeechRecognizer(resultArea) {
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    const recognition = new (SpeechRecognition || window.SpeechRecognition || window.webkitSpeechRecognition)();
     let isRunning = false;
 
     recognition.lang = 'en-GB';

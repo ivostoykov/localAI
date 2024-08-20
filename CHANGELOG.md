@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.16.35] 2024-08-20 - latest
+## [1.16.36] 2024-08-20 - latest
 
 - Added Speech recognition (sount-to-text or STT)
 - Updated documentation
