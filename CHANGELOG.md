@@ -1,6 +1,11 @@
 # Local AI - Changelog
 
-## []  - latest
+## [1.16.35] 2024-08-20 - latest
+
+- Added Speech recognition (sount-to-text or STT)
+- Updated documentation
+
+## [1.15.86] 2024-08-15
 
 - Fixed file type check when dropped
 - Refactored request JSON composition reducing the itterations

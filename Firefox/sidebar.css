@@ -434,6 +434,57 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
 	padding: 0 3px;
 }
 
+.mic-container{
+    border-radius: 50px;
+    background-color: #eee;
+    border: 1px solid #bbb;
+    position: absolute;
+    bottom: 15px;
+    left: 50%;
+    z-index: 1;
+    margin: auto;
+    padding: 5px;
+    cursor: pointer;
+}
+
+.mic-container:hover{
+    background-color: #fefcdc;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.7);
+    }
+    70% {
+        transform: scale(1.1);
+        box-shadow: 0 0 10px 10px rgba(0, 0, 0, 0);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+    }
+}
+
+.mic-container.recording {
+    animation: pulse 1s infinite;
+}
+
+.mic-container:hover .mic{
+    width: 25px;
+    opacity: 1;
+}
+
+.mic {
+    width: 14px;
+    height: auto;
+    opacity: .7;
+}
+
+#micOff {
+    width: 25px !important;
+}
+
 #laiUserInput {
     width: 100%;
     z-index: 0;

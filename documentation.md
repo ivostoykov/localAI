@@ -108,15 +108,19 @@ If the pannel is not pinned (default) then clicking outside the panel will hide 
 > [!Note]
 > Clicking the hide button will unpin the panel first, then close it. This means it won’t be pinned the next time you open it.
 
-## Prompt area
+## User Input (Prompt Area)
 
-When empty, it provides a short information about the available options.
+When empty, the field provides a brief overview of the available options.
+
+A speech-to-text feature is available to dictate prompts in English. This can be activated by clicking the button located at the bottom center of the field. Each click toggles the feature on and off. Once activated, the system will attempt to recognize spoken English words until it is deactivated. Transcriptions will appear in the prompt field.
+
+![Speech Recognition](media/speech_icon.png)
 
 ### Attach file
 
 Just drag and drop a file.
 
-> [!Note] 
+> [!Note]
 > Only plain text files can be used currently.
 
 <img src="media/attach.gif" height="600" alt="attach"/>

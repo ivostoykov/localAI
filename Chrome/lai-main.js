@@ -156,6 +156,11 @@ function laiInitSidebar() {
     }
     shadowRoot.getElementById('availableModelList')?.addEventListener('mouseleave', modelLabelMouseOut);
 
+    shadowRoot.querySelectorAll('img.mic').forEach(img => {
+        img.closest('div.mic-container').addEventListener('click', micClicked);
+        laiSetImg(img);
+    });
+
     setModelNameLabel({ "model": laiOptions.aiModel });
     buildMenuDropdowns();
 };
@@ -1720,4 +1725,34 @@ function updateStatusBar(status){
 
 function resetStatusbar(){
     updateStatusBar('Ready.');
+}
+
+function micClicked(e){
+    const activeMic = e.target;
+    switch (activeMic.getAttribute('data-type') || '') {
+        case 'mic':
+            updateStatusBar('Working...');
+            break;
+        case 'mic-off':
+            updateStatusBar('Completed.');
+            setTimeout(() => {updateStatusBar('Ready.');  }, 1000);
+            break;
+        default:
+            updateStatusBar('Ready.');
+            break;
+    }
+
+    const sideBar = getSideBar();
+    if(typeof(toggleRecording) === 'function'){
+        const userInput = sideBar.querySelector('#laiUserInput');
+        toggleRecording(userInput)
+    }
+
+    sideBar.querySelectorAll('.mic-container').forEach(el => {
+        if(el.classList.contains('invisible')){
+            el.classList.remove('invisible');
+        } else {
+            el.classList.add('invisible');
+        }
+    });
 }
