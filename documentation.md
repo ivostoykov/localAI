@@ -11,7 +11,8 @@
         - [Session](#session)
 - [System Instructions](#system-instructions)
     - [Other](#other)
-    - [Prompt area](#prompt-area)
+    - [User Input (Prompt Area)](#user-input-prompt-area)
+        - [Speech Recognition](#speech-recognition)
         - [Attach file](#attach-file)
         - [Commands](#commands)
             - [System commands](#system-commands)
@@ -111,6 +112,8 @@ If the pannel is not pinned (default) then clicking outside the panel will hide 
 ## User Input (Prompt Area)
 
 When empty, the field provides a brief overview of the available options.
+
+### Speech Recognition
 
 A speech-to-text feature is available to dictate prompts in English. This can be activated by clicking the button located at the bottom right corner of the statusbar. Each click toggles the feature on and off. Once activated, the system will attempt to recognize spoken English words until it is deactivated. Transcriptions will appear in the prompt field.
 
