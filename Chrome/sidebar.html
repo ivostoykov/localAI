@@ -62,13 +62,13 @@
     <textarea id="laiUserInput" placeholder="Type your message here or type...&#13;'/' to add commands;&#13;'/list' available commands;&#13;'@' to add context;&#13;/help for more.&#13;Shift+Enter or Numpad Enter for a new line&#13;&#13;Enter to send" rows="12"></textarea>
     <div id="laiSuggestionBox" class="invisible lai-suggestion-box"></div>
     <button id="laiAbort" class="lai-button-abort invisible">Abort</button>
-    <div class="mic-container invisible recording">
-        <img id="micOff" src="" alt="Mic Off" title="Mic Off" class="mic" data-type="mic-off">
+    <div class="statusbar">
+        <div class="notification">Ready.</div>
+        <div class="mic-container">
+            <img id="mic" src="" alt="Mic" title="Mic" class="mic" data-type="mic">
+            <img id="micOff" src="" alt="Mic Off" title="Mic Off" class="mic invisible" data-type="mic-off">
+        </div>
     </div>
-    <div class="mic-container">
-        <img id="mic" src="" alt="Mic" title="Mic" class="mic" data-type="mic">
-    </div>
-    <div class="statusbar">Ready.</div>
 </div>
 <div id="feedbackMessage" class="feedback-message">&nbsp;</div>
 <div id="laiCopyHint" class="lai-copy-hint invisible">Copied!</div>

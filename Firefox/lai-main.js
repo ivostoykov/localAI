@@ -884,6 +884,7 @@ function setModelNameLabel(data) {
     const model = data?.model;
     if (!model) { return; }
     modelName.textContent = (/\\|\//.test(model) ? model.split(/\\|\//).pop().split('.').slice(0, -1).join('.') : model) ?? '';
+    resetStatusbar();
 }
 
 function laiFinalPreFormat() {
@@ -1704,6 +1705,7 @@ function fillAndShowModelList(models){
 
 async function swapActiveModel(e, modelName){
     const activatedModel = e.target;
+    const oldModel = laiOptions.aiModel;
     if(!activatedModel){  return;  }
     laiOptions.aiModel = modelName;
     await chrome.storage.sync.set({[storageOptionKey]: laiOptions});
@@ -1713,6 +1715,7 @@ async function swapActiveModel(e, modelName){
     Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
     e.target.textContent = `${e.target.textContent} ✔`;
     parent.classList.add('invisible');
+    showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
 }
 
 function updateStatusBar(status){
@@ -1720,22 +1723,35 @@ function updateStatusBar(status){
     const sidebar = getSideBar();
     const statusbar = sidebar.querySelector('div.statusbar');
     if(!statusbar) {  return;  }
-    statusbar.textContent = status;
+    // statusbar.textContent = status;
+    const notificationBlock = statusbar.querySelector('.notification');
+    if(!notificationBlock) {  return;  }
+    notificationBlock.textContent = status;
 }
 
 function resetStatusbar(){
     updateStatusBar('Ready.');
 }
 
-function micClicked(e){
-    const activeMic = e.target;
+function micClicked(e) {
+    let activeMic = e.target;
+    let micContainer;
+    if (activeMic.tagName === 'DIV' && activeMic.classList.contains('mic-container')) {
+        micContainer = e.target;
+        activeMic = activeMic.querySelector(':not(.invisible) img');
+    } else {
+        micContainer = activeMic.closest('div.mic-container');
+    }
+
     switch (activeMic.getAttribute('data-type') || '') {
         case 'mic':
             updateStatusBar('Working...');
+            micContainer.classList.add('recording');
             break;
         case 'mic-off':
             updateStatusBar('Completed.');
-            setTimeout(() => {updateStatusBar('Ready.');  }, 1000);
+            micContainer.classList.remove('recording');
+            setTimeout(() => { resetStatusbar(); }, 1000);
             break;
         default:
             updateStatusBar('Ready.');
@@ -1743,16 +1759,23 @@ function micClicked(e){
     }
 
     const sideBar = getSideBar();
-    if(typeof(toggleRecording) === 'function'){
+    if (typeof (toggleRecording) !== 'function') { return; }
+
         const userInput = sideBar.querySelector('#laiUserInput');
-        toggleRecording(userInput)
+    let status = toggleRecording(userInput)
+    if (!status) {
+        if (!micContainer?.classList?.contains('invisible')) {
+            micContainer?.classList?.add('invisible');
+        }
+        resetStatusbar();
+        return;
     }
 
-    sideBar.querySelectorAll('.mic-container').forEach(el => {
-        if(el.classList.contains('invisible')){
-            el.classList.remove('invisible');
+    micContainer.querySelectorAll('img').forEach(img => {
+        if (img.classList.contains('invisible')) {
+            img.classList.remove('invisible');
         } else {
-            el.classList.add('invisible');
+            img.classList.add('invisible');
         }
     });
 }

@@ -1,12 +1,25 @@
 function createSpeechRecognizer(resultArea) {
-    const recognition = new (SpeechRecognition || window.SpeechRecognition || window.webkitSpeechRecognition)();
+    let recognition;
+    try {
+        if(typeof(SpeechRecognition) !== 'undefined') {  recognition = new SpeechRecognition();  }
+        else if(typeof(window.SpeechRecognition) !== 'undefined') {  recognition = new window.SpeechRecognition();  }
+        else if(typeof(window.webkitSpeechRecognition) !== 'undefined') {  recognition = new window.webkitSpeechRecognition();  }
+        if(!recognition){
+            showMessage('Failed to attach SpeechRecognition', 'error');
+            return false;
+        }
+    } catch (err) {
+        showMessage(`SpeechRecognition error: ${err.message}`, 'error');
+
+        return false;
+    }
+
     let isRunning = false;
 
     recognition.lang = 'en-GB';
     recognition.interimResults = false;
     recognition.continuous = false;
 
-    // Handle speech recognition results
     recognition.onresult = function (event) {
         const transcript = event.results[0][0].transcript;
         resultArea.value += `${transcript} `;
@@ -47,8 +60,11 @@ function toggleRecording(resultArea) {
     if (stt && stt.isRunning()) {
         stt.stop();
         stt = null;
-    } else {
-        stt = createSpeechRecognizer(resultArea); // Create a new instance
-        stt.start();
+        return true;
     }
+
+    stt = createSpeechRecognizer(resultArea);
+    if (!stt) { return false; }
+    stt.start();
+    return true;
 }

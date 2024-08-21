@@ -112,12 +112,14 @@ If the pannel is not pinned (default) then clicking outside the panel will hide 
 
 When empty, the field provides a brief overview of the available options.
 
-A speech-to-text feature is available to dictate prompts in English. This can be activated by clicking the button located at the bottom center of the field. Each click toggles the feature on and off. Once activated, the system will attempt to recognize spoken English words until it is deactivated. Transcriptions will appear in the prompt field.
+A speech-to-text feature is available to dictate prompts in English. This can be activated by clicking the button located at the bottom right corner of the statusbar. Each click toggles the feature on and off. Once activated, the system will attempt to recognize spoken English words until it is deactivated. Transcriptions will appear in the prompt field.
 
 ![Speech Recognition](media/speech_icon.png)
 
 > [!IMPORTANT]
 > For speach recognition with Firefox browser look [here](ff.md#speech-recognition-doesnt-work-in-firefox)
+
+Additional information about which browser and how support it is available <a href="https://caniuse.com/speech-recognition" target="_blank">here</a> (will open in a new tab).
 
 ### Attach file
 
