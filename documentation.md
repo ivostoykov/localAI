@@ -119,7 +119,7 @@ A speech-to-text feature is available to dictate prompts in English. This can be
 > [!IMPORTANT]
 > For speach recognition with Firefox browser look [here](ff.md#speech-recognition-doesnt-work-in-firefox)
 
-Additional information about which browser and how support it is available <a href="https://caniuse.com/speech-recognition" target="_blank">here</a> (will open in a new tab).
+Additional information about which browser and how support it is available <a href="https://caniuse.com/speech-recognition">here</a> (`Ctrl + click` (Windows/Linux) or `Cmd + click` (macOS) to open the link in a new tab manually).
 
 ### Attach file
 
