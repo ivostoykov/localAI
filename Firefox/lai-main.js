@@ -1743,25 +1743,26 @@ function micClicked(e) {
         micContainer = activeMic.closest('div.mic-container');
     }
 
+    const sideBar = getSideBar();
+    const userInput = sideBar.querySelector('#laiUserInput');
     switch (activeMic.getAttribute('data-type') || '') {
         case 'mic':
             updateStatusBar('Working...');
             micContainer.classList.add('recording');
             break;
         case 'mic-off':
+            userInput?.focus();
             updateStatusBar('Completed.');
             micContainer.classList.remove('recording');
-            setTimeout(() => { resetStatusbar(); }, 1000);
+            setTimeout(() => {  resetStatusbar();  }, 1000);
             break;
         default:
             updateStatusBar('Ready.');
             break;
     }
 
-    const sideBar = getSideBar();
     if (typeof (toggleRecording) !== 'function') { return; }
 
-        const userInput = sideBar.querySelector('#laiUserInput');
     let status = toggleRecording(userInput)
     if (!status) {
         if (!micContainer?.classList?.contains('invisible')) {
