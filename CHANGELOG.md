@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.16.36] 2024-08-20 - latest
+## [1.17.33] 2024-08-27 - latest
+
+- copy to clipboard looses formatting was fixed
+- AI response now stored as a row content and could be reviewed in the console
+- added new predefined user command - `dump` - sending the raw content to the console
+- minor bugs fixed
+- added information specific for the Firefox speach settings in case of problems
+
+## [1.16.36] 2024-08-20
 
 - Added Speech recognition (sount-to-text or STT)
 - Updated documentation

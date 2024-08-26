@@ -150,11 +150,11 @@ function laiInitSidebar() {
         restoreLastSession();
     }
 
-    const modelLabel = shadowRoot.getElementById('laiModelName');
+    const modelLabel = shadowRoot.getElementById('modelNameContainer');
     if(modelLabel){
-        modelLabel.addEventListener('mouseenter', async (e) => await modelLabelMouseOver(e));
+        modelLabel.addEventListener('click', async (e) => await modelLabelClicked(e));
+        laiSetImg(modelLabel.querySelector('img'));
     }
-    shadowRoot.getElementById('availableModelList')?.addEventListener('mouseleave', modelLabelMouseOut);
 
     shadowRoot.querySelectorAll('img.mic').forEach(img => {
         img.closest('div.mic-container').addEventListener('click', micClicked);
@@ -630,6 +630,7 @@ function updateChatHistoryWithUserInput(inputText, type, index = -1) {
     }];
 
     const actionIconsDiv = document.createElement('div');
+    if(type === 'ai'){  actionIconsDiv.rawContent = '';  } // add custom attribute to keep the raw content
     actionIconsDiv.classList.add('lai-action-icons', 'invisible');
     actionIconsDiv.appendChild(buildElements(type !== 'ai' && index > -1 ? [...arrButtons, ...arrEditButton] : arrButtons));
     lastChatElement.appendChild(lastChatlabel)
@@ -728,15 +729,7 @@ function laiShowCopyHint(e) {
 function laiCopyElementContent(e, type) {
     const element = e.target.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
 
-    let htmlContent = element.innerHTML;
-    const modifiedHtml = htmlContent.replace(/<br\s*\/?>/gi, '\n');
-
-    const tempElement = document.createElement('div');
-    tempElement.innerHTML = modifiedHtml;
-
-    const textToCopy = tempElement.textContent;
-
-    navigator.clipboard.writeText(textToCopy)
+    navigator.clipboard.writeText(element?.rawContent || element?.innerText || 'Failed to copy the content!')
         .then(() => laiShowCopyHint(e))
         .catch(err => console.error('Failed to copy text: ', err));
 }
@@ -907,7 +900,9 @@ function laiExtractDataFromResponse(response) {
     try {
         data = JSON.parse(jsonPart);
     } catch (err) {
-        throw err;
+        showMessage(err.message, 'error');
+        console.error(`>>> ${manifest.name}`, err);
+        return '';
     }
 
     if (data?.error && data.error.length > 0) {
@@ -932,7 +927,7 @@ chrome.runtime.onMessage.addListener((response) => {
         return;
     }
 
- 
+
     switch (response.action) {
         case "streamData":
 
@@ -941,7 +936,9 @@ chrome.runtime.onMessage.addListener((response) => {
                 dataChunk = laiExtractDataFromResponse(response);
                 if (!dataChunk) { return; }
                 updateStatusBar('Receiving and processing data...');
-                StreamMarkdownProcessor.processStreamChunk(dataChunk, laiGetRecipient);
+                const aiRecipient = laiGetRecipient();
+                aiRecipient.rawContent += dataChunk || '';
+                StreamMarkdownProcessor.processStreamChunk(dataChunk, aiRecipient);
             } catch (err) {
                 resetStatusbar();
                 laiHandleStreamActions(`${err}`, recipient)
@@ -950,6 +947,7 @@ chrome.runtime.onMessage.addListener((response) => {
             }
             break;
         case "streamEnd":
+            resetStatusbar();
             laiHandleStreamActions("Stream Ended", recipient);
             break;
         case "streamError":
@@ -1024,7 +1022,6 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
         dumpStream = false;
     }
     StreamMarkdownProcessor.dispose();
-    resetStatusbar();
     setAiSessions().then().catch(e => console.error(e));
 }
 
@@ -1273,6 +1270,10 @@ function checkCommandHandler(e) {
                 }
                 res = true;
                 break;
+            case 'dump':
+                dumpAIRawContent();
+                res = true;
+                break
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
                 if (idx > -1) {
@@ -1649,7 +1650,26 @@ function adjustFontSize(elm, direction) {
     Array.from(elm.children).forEach(child => adjustFontSize(child, direction));
 }
 
-async function modelLabelMouseOver(e){
+async function modelLabelClicked(e){
+    e.stopPropagation();
+    let container = e.target;
+    if(container.id !== 'modelNameContainer'){  container = e.target.closest('div#modelNameContainer');  }
+    if(!container){  return;  }
+
+    const isOpen = container.classList.contains('open');
+    if(!isOpen){
+        getAndShowModels();
+        container.classList.add('open');
+        return;
+    }
+
+    const shadowRoot = getShadowRoot();
+    const availableModelsList = shadowRoot.querySelector('#availableModelList');
+    availableModelsList.classList.add('invisible');
+    container.classList.remove('open');
+}
+
+async function getAndShowModels(){
     let response;
     updateStatusBar('Loading model list...')
     try {
@@ -1664,11 +1684,6 @@ async function modelLabelMouseOver(e){
         console.log(`>>> ${manifest.name} ERROR:`, response);
     } finally {  resetStatusbar();  }
 
-}
-
-async function modelLabelMouseOut(e){
-    e.stopPropagation();
-    e.target.classList.add('invisible');
 }
 
 function fillAndShowModelList(models){
@@ -1715,6 +1730,8 @@ async function swapActiveModel(e, modelName){
     Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
     e.target.textContent = `${e.target.textContent} ✔`;
     parent.classList.add('invisible');
+    const sideBar = getSideBar();
+    sideBar.querySelector('div#modelNameContainer')?.classList.remove('open')
     showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
 }
 
@@ -1723,7 +1740,6 @@ function updateStatusBar(status){
     const sidebar = getSideBar();
     const statusbar = sidebar.querySelector('div.statusbar');
     if(!statusbar) {  return;  }
-    // statusbar.textContent = status;
     const notificationBlock = statusbar.querySelector('.notification');
     if(!notificationBlock) {  return;  }
     notificationBlock.textContent = status;
@@ -1779,4 +1795,17 @@ function micClicked(e) {
             img.classList.add('invisible');
         }
     });
+}
+
+function dumpAIRawContent(){
+    const sideBar = getSideBar();
+    if(!sideBar){
+        console.error('SideBar not found!');
+        return;
+    }
+
+    const aiInputs = sideBar.querySelectorAll('.lai-ai-input .lai-input-text');
+    let content = '';
+    aiInputs.forEach(el => content += el.rawContent || '');
+    console.log(` >>> ${manifest.name} - raw content: ${content}`);
 }

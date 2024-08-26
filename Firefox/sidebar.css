@@ -167,11 +167,11 @@
     padding: 0 1rem;
     text-wrap: nowrap;
     z-index: 99;
-    transition: font-size .5s ease;
+    transition: top, font-size .5s ease;
 }
 
 .ribbon-label:hover {
-    font-size: 1.2rem;
+    font-size: 1.2rem !important;
     white-space: nowrap;
     border: 1px solid gray;
     background-color: #FFE;
@@ -207,8 +207,31 @@
 }
 
 .lai-model {
-    top: -3px;
-    transition: top .5s ease;
+    cursor: pointer;
+    display: inline-block;
+    font-size: inherit;
+}
+
+.mode-label-container{
+    top: -8px;
+}
+
+.mode-label-container img{
+    width: 12px !important;
+    height: auto;
+    display: inline-block;
+    transition: transform 0.3s ease;
+    vertical-align: top;
+}
+
+.mode-label-container:hover img{
+    width: 20px !important;
+    padding-top: 2px;
+}
+
+.mode-label-container.open img{
+    width: 20px !important;
+    transform: rotate(-90deg);
 }
 
 .lai-model:hover {

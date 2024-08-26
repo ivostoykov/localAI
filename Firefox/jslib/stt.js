@@ -22,7 +22,7 @@ function createSpeechRecognizer(resultArea) {
 
     recognition.onresult = function (event) {
         const transcript = event.results[0][0].transcript;
-        resultArea.value += `${transcript} `;
+        resultArea.value += `${(resultArea.value?.length || 0) > 0 ? ' ' : ''}${transcript}`;
     };
 
     recognition.onerror = function (event) {

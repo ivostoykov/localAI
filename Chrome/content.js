@@ -28,7 +28,8 @@ var userPredefinedCmd = [
   {"commandName": "edit(command_name)", "commandDescription":"Edit the command corresponding to name, provided in the brackets"},
   {"commandName": "error", "commandDescription":"Show last error"},
   {"commandName":"list", "commandDescription":"Show all defined commands"},
-  {"commandName":"hooks", "commandDescription":"Show all defined hooks"}
+  {"commandName":"hooks", "commandDescription":"Show all defined hooks"},
+  {"commandName":"dump", "commandDescription": "Dump AI raw content into the console"}
 ];
 
 document.addEventListener('DOMContentLoaded', async function (e) {
