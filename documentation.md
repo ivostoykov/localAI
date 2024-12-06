@@ -194,19 +194,31 @@ This will send the content of the page from current active tab to the AI with a 
 
 # Options
 
+## General Settings
+
 ![Options](media/options.png)
 
-## End Points
+### End Points
 
-Add the end point used to query the LLM. Use the buttons to add ( <img src="Chrome/img/add.svg" height="25" alt="Add" title="Add"/> ), delete ( <img src="Chrome/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), delete all ( <img src="Chrome/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ) sort ascending ( <img src="Chrome/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or descending ( <img src="Chrome/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ), and copy ( <img src="Chrome/img/copy.svg" height="25" alt="Copy" title="Copy"/> ).
+Add the end point used to query the LLM. Use the buttons to `add` ( <img src="Chrome/img/add.svg" height="25" alt="Add" title="Add"/> ), `delete` ( <img src="Chrome/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), `delete all` ( <img src="Chrome/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ) `sort ascending` ( <img src="Chrome/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or `descending` ( <img src="Chrome/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ), and `copy` ( <img src="Chrome/img/copy.svg" height="25" alt="Copy" title="Copy"/> ).
+
+Check if the provided url is accessible using the `test connection` button ( <img src="Chrome/img/testnet.svg" height="25" alt="test connection" title="test connection"/> )
 
 The model list, determined by the endpoint, includes an additional reload button ( <img src="Chrome/img/reload.svg" height="25" alt="Reload" title="Reload"/> ). Deleting or adding models is not possible within this interface and depends on the associated tool.
 
-### Models
+#### Models
 
 If [Ollama](https://ollama.com/) is defined as [End Point](#end-points), Model list will be automatically populated. Open the list and click the preferable model. You can temporary change it from the [Menu](#menu) in the [Ribbon](#ribbon).
 
-## Web Hooks
+### Document Converter
+
+If a valid URL is provided, documents dropped into the panel will be converted based on the API used. One particularly capable option available for local use is [tika](https://hub.docker.com/r/apache/tika), which supports multiple languages and can be easily installed as a Docker or Podman image. Users can choose any other tool that returns plain text, based on their preference.
+
+-----
+> [!IMPORTANT]
+> **Web Hooks** will be removed in favor of the document converter.
+
+### Web Hooks
 
 Allows adding a list of predefined API end points to be called before sending the prompt to the model. The resource used must return plain text. Any other type will either be treated as text or throw an error, potentially misleading the model.
 
@@ -216,7 +228,7 @@ The user has complete freedom to choose the type of service they want to use, bu
 
 **Example Project**: An example project is available on GitHub [here](https://github.com/ivostoykov/localAI_webhook). It provides a simple HTTP server and an option to extend it.
 
-### Format
+#### Format
 
 To embed a Web Hook, follow this structure:
 
@@ -240,6 +252,22 @@ The result will be the text content added to the rest of the prompt. The purpose
 * Understand the content enclosed between `!#...#!`.
 * Return plain text.
 
+> [!IMPORTANT]
+> **Web Hooks** will be removed in favor of the document converter.
+
+-----
+
+## User Commands
+
+![User Commands](media/options.png)
+
+Each command is listed as a card.
+
+In the top right corrner there are edit and delete buttons
+
+![User Commands](media/cmd_actions.png)
+
+Each user command nas a `Name`, `Description` and `Body`. The command itselt is the name in lowercase with underscore for the spaces (see [Commands](#Commands) for more information)
 
 # Troubleshoot
 
