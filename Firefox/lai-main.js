@@ -1,6 +1,8 @@
 const laiWordEndings = /(?:\w+'(?:m|re|ll|s|d|ve|t))\s/;  // 'm, 're, 's, 'd, 'll, 've, 't
 const laiWordFormations = /(?:'(?:clock|til|bout|cause|em))/; // 'clock, 'til, 'bout, 'cause, 'em
 const manifest = chrome.runtime.getManifest();
+let restartCounter = 0;
+const RESTART_LIMIT = 5;
 
 function getRootElement() {
     return document.getElementById('localAI');
@@ -21,7 +23,14 @@ function laiInitSidebar() {
     if(!chrome.runtime.id){  chrome.runtime.reload();  }
     const root = getRootElement();
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
+    if (!shadowRoot) {
+        if(restartCounter < RESTART_LIMIT){
+            restartCounter++;
+            console.log(`>>> ${manifest.name} restarting: ${restartCounter}`);
+            start();
+        }
+        return;
+    }
 
     shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => {
         let feedbackMessage = e.target;
@@ -52,7 +61,7 @@ function laiInitSidebar() {
             e.preventDefault();
             return false;
         });
-        root.addEventListener('drop', onUserInputFileDropped);
+        root.addEventListener('drop', async e => await onUserInputFileDropped(e));
     }
 
     ribbon.querySelectorAll('img').forEach(el => laiSetImg(el));
@@ -115,6 +124,10 @@ function laiInitSidebar() {
     ribbon.querySelector('#apiUrlList').addEventListener('change', selectMenuChanged);
     ribbon.querySelector('#modelList').addEventListener('change', selectMenuChanged);
     ribbon.querySelector('#hookList').addEventListener('change', selectMenuChanged);
+    ribbon.querySelector('#laiModelName').addEventListener('mouseenter', e => {
+      updateStatusBar('Click to toggle the list with available models.');
+      setTimeout(resetStatusbar, 10000);
+    });
 
     shadowRoot.getElementById('laiRecycleAll').addEventListener('click', e => recycleSession(e, shadowRoot));
     shadowRoot.querySelector('#closeSidebarBtn')?.addEventListener('click', e => onCloseSidebarClick(e, shadowRoot));
@@ -305,48 +318,88 @@ function onUserInputDragLeave(e) {
     setTimeout(() => dropzone.classList.add('invisible'), 750); // wait transition to complete
 }
 
-function isPlainText(type) {
-    if(!type) {  return true;  }
-    const painTextTypes = ['text/plain', 'text/csv', 'application/json', 'text/xml', 'text/html', 'application/javascript', 'text/css', 'application/xhtml+xml', 'application/rtf', 'application/x-yaml', 'application/x-www-form-urlencoded'];
-    for (let i = 0; i < painTextTypes.length; i++) {
-        if (type.indexOf(painTextTypes[i].toLowerCase()) > -1) { return true; }
+function handleFileRead(fileName, result, isImageFile) {
+    if (isImageFile) {
+        const base64String = result.split(',')[1];
+        images.push(base64String);
+    } else {
+        attachments.push(`Attached file name is: ${fileName}; The file content is:\n[FILE] ${result} [/FILE]`);
     }
-
-    return false;
+    showAttachment(fileName);
 }
 
-function onUserInputFileDropped(e) {
-    e.stopImmediatePropagation()
-    e.preventDefault();
+function processAttachmentFile(file) {
+    const fileName = file.name.split(/\\\//).pop();
+    const reader = new FileReader();
+    const isImageFile = isImage(file.type);
 
+    reader.onload = function (e) {
+        handleFileRead(fileName, e.target.result, isImageFile);
+    };
+
+    if (isImageFile) {  reader.readAsDataURL(file); }
+    else {  reader.readAsText(file);  }
+}
+
+function readFileContent(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            resolve(event.target.result);
+        };
+        reader.onerror = function(error) {
+            reject(error); // Reject with the error
+        };
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+async function onUserInputFileDropped(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    try{
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
-    const userInput = shadowRoot.getElementById('laiUserInput');
+
     const dropzone = shadowRoot.getElementById('dropzone');
     dropzone.classList.remove('hover');
     setTimeout(() => dropzone.classList.add('invisible'), 750);
 
-    const files = e.dataTransfer.files;
-    binaryFormData = new FormData();
-    for (const file of files) {
-        if (!isPlainText(file.type)) {
-            if (!laiOptions?.webHook) {
-                showMessage(`File type of ${file.type} is not a plain text and need a web hook to handle it. Skipping it.`, 'warning');
-                continue;
-            }
+        console.log('event files:', e?.dataTransfer?.files);
 
-            binaryFormData.append('file', file, fileName);
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+            const file = e.dataTransfer.files[i];
+            console.log(`File ${i}:`);
+            console.log(`  Name: ${file.name}`);
+            console.log(`  Type: ${file.type}`);
+            console.log(`  Size: ${file.size}`);
+            const fileContent = await readFileContent(file);
+            if (!fileContent) {
+                showMessage(`Failed to get content of ${file.name}.`, 'error');
             continue;
         }
+            let response;
+            try {
+                response = await chrome.runtime.sendMessage( {
+                        action: 'extractText',
+                        fileName: file.name,
+                        fileContent: btoa(String.fromCharCode(...new Uint8Array( fileContent)))});
+            } catch (be) {
+                console.error(be);
+                return;
+            }
 
-        const fileName = file.name.split(/\\\//).pop();
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            if (!Array.isArray(attachments)) { attachments = []; }
-            attachments.push(`Attached file name is: ${fileName}; The file content is between [FILE] and [/FILE]\n[FILE] ${e.target.result} [/FILE]`);
-            showAttachment(fileName);
-        };
-        reader.readAsText(file);
+            const docText = typeof response === 'string' ? response : (typeof response.text === 'function' ? await response.text() : '');
+            if (docText) {
+                attachments.push(`File name is ${file.name}. Its content is between [FILE_${file.name}] and [/FILE_${file.name}]:\n[FILE_${file.name}] ${docText} [/FILE_${file.name}]. Use this as a context of your respond.`);
+                showAttachment(file.name);
+            } else {
+                showMessage(`${file.name} is either empty or extraction of its content failed!`, 'error');
+            }
+        }
+        console.log('==============================', onUserInputFileDropped);
+    } catch (err){
+        console.log('error', err);
     }
 }
 
@@ -459,19 +512,20 @@ function onPromptTextAreaKeyUp(e) {
             return;
         }
 
+        messages = []; // each prompt starts a new array.
         checkForDump(e.target.value);
-        addUserInputIntoMessageQ(e.target.value);
 
         updateChatHistoryWithUserInput(e.target.value, 'user', messages.length - 1);
         updateChatHistoryWithUserInput('', 'ai');
         addAttachmentsToUserInput();
+        addUserInputIntoMessageQ(e.target.value);
         try {
         queryAI();
         } catch (e) {
             showMessage(`ERROR: ${e.message}`, error);
         } finally {
             clearAttachments();
-            externalResources = [];
+            // externalResources = [];
             e.target.value = '';
             e.target.classList.add('invisible');
             shadowRoot.getElementById('laiAbort')?.classList.remove('invisible');
@@ -481,8 +535,10 @@ function onPromptTextAreaKeyUp(e) {
 
 function addAttachmentsToUserInput() {
     if (attachments.length < 1) { return false; }
-    for (let i = 0; i < attachments.length; i++) {
-        messages.push({ "role": "user", "content": attachments[i] });
+    const l = attachments.length;
+    messages.push({ "role": "user", "content": `Following ${l === 1 ? 'is a': 'are'} user selection${l === 1 ? '': 's'} enclosed between [SELECTION X] and [/SELECTION X], whene X is a sequencial number. Use them as a context for your response to the user promt.` });
+    for (let i = 0; i < l; i++) {
+        messages.push({ "role": "user", "content": `[SELECTION ${i}]${attachments[i]}[/SELECTION ${i}]` });
     }
 }
 
@@ -494,14 +550,6 @@ function addUserInputIntoMessageQ(inputChunks, omitFromSession = false) {
         if (omitFromSession) { continue; }
         aiSessions[activeSessionIndex].push({ "role": "user", "content": inputChunks[i] });
     }
-}
-
-function splitInputToChunks(str, chunkSize) {
-    const chunks = [];
-    for (let i = 0; i < str.length; i += chunkSize) {
-        chunks.push(str.slice(i, i + chunkSize));
-    }
-    return chunks;
 }
 
 function transformTextInHtml(inputText) {
@@ -606,6 +654,12 @@ function updateChatHistoryWithUserInput(inputText, type, index = -1) {
         },
         {
             "span": {
+                "class": "lai-chat-item-button", "data-type": "insert", "title": "Insert in page",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/insert.svg') } }]
+            }
+        },
+        {
+            "span": {
                 "class": "lai-chat-item-button", "data-type": "increase", "title": "Increase font",
                 "children": [{ "img": { "src": chrome.runtime.getURL('img/fontup.svg') } }]
             }
@@ -676,6 +730,9 @@ function updateChatHistoryWithUserInput(inputText, type, index = -1) {
                 case 'edit':
                     editUserInput(e, type);
                     break;
+                case 'insert':
+                    insertIntoDocument(e, type)
+                    break;
                 case "increase":
                 case "decrease":
                     adjustFontSize(e.target.closest('.lai-chat-history'), action === 'increase' ? 1 : -1);
@@ -691,6 +748,55 @@ function updateChatHistoryWithUserInput(inputText, type, index = -1) {
     }
 
     chatHist.scrollTop = chatHist.scrollHeight;
+}
+
+function insertIntoDocument(e, type){
+    const txt = e.target.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
+    showMessage('Copied. Click on the target to paste.');
+
+    const insertIntoDocumentClickListener = event => {
+        click2insert(event, txt, () => document.removeEventListener('click', insertIntoDocumentClickListener));
+    };
+
+    document.addEventListener('click', insertIntoDocumentClickListener);
+}
+
+function click2insert(e, textEl, callback){
+    const shadowRoot = getShadowRoot();
+    if (!document.hasFocus() || document.visibilityState !== 'visible') {
+        console.warn('Page is not active.');
+        return;
+    }
+
+    if (shadowRoot && (e.target.shadowRoot === shadowRoot || shadowRoot.contains(e.target))) {
+        if(typeof(callback) === 'function'){
+            setTimeout(callback, 60000);
+        }
+        return;
+    }
+
+    try {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            e.target.value += textEl.innerText;
+        }else if (e.target.isContentEditable) {
+            const lines = textEl.innerText.split('\n');
+            lines.forEach((line, index) => {
+                const p = document.createElement('p');
+                if(!line){
+                    p.appendChild(document.createElement('br'));
+                } else {
+                    p.textContent = line;
+                }
+                e.target.appendChild(p);
+            });
+        }
+    } catch (error) {
+        console.error(`>>> ${manifest.name} error!`, error);
+    } finally{
+        if(typeof(callback) === 'function'){
+            callback();
+        }
+    }
 }
 
 function laiShowCopyHint(e) {
@@ -729,7 +835,14 @@ function laiShowCopyHint(e) {
 function laiCopyElementContent(e, type) {
     const element = e.target.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
 
-    navigator.clipboard.writeText(element?.rawContent || element?.innerText || 'Failed to copy the content!')
+    let textContent;
+    if(type === 'user'){
+        textContent = element.rawContent.messages.map(e => e.content).join('\n');
+    } else {
+        textContent = element?.rawContent || element?.innerText || 'Failed to copy the content!';
+    }
+
+    navigator.clipboard.writeText(textContent)
         .then(() => laiShowCopyHint(e))
         .catch(err => console.error('Failed to copy text: ', err));
 }
@@ -752,7 +865,10 @@ function laiSourceTextClicked(e) {
     if (!thePre) { return; }
     const theCode = thePre.cloneNode(true);
     theCode.querySelector('span')?.remove();
-    const textToCopy = theCode.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+    const parser = new DOMParser();
+    const parsedEl = parser.parseFromString(theCode.textContent, 'text/html');
+    const textToCopy = parsedEl.documentElement.textContent;
+    // const textToCopy = theCode.innerHTML.replace(/<br\s*\/?>/gi, '\n');
 
     navigator.clipboard.writeText(textToCopy)
         .then(() => {
@@ -838,10 +954,15 @@ function queryAI() {
         return;
     }
 
+    if(images.length > 0){
+        messages[messages.length - 1]["images"] = images;
+    }
+
     const data = {
         "messages": messages,
         "stream": true
     }
+
 
     if (laiOptions.aiUrl.indexOf('api') > -1) {
         if (laiOptions.aiModel.trim() === '') {
@@ -856,11 +977,11 @@ function queryAI() {
         action: "fetchData",
         url: laiOptions.aiUrl,
         data: data,
-        externalResources: externalResources,
-        binaryFormData: binaryFormData
+        // externalResources: externalResources,
+        // binaryFormData: binaryFormData
     };
 
-    updateStatusBar('Sending the prompt to the model...');
+    updateStatusBar('Prompt sent to the model, awaiting response...');
     chrome.runtime.sendMessage(requestData, (response) => {
         if(response?.status === 'error' && response?.message){
             showMessage(response.message, 'error');
@@ -895,7 +1016,7 @@ function laiFinalPreFormat() {
 function laiExtractDataFromResponse(response) {
     const parts = (response?.data?.split(': ') || []).slice(-1);
     const jsonPart = parts[0];
-    if (jsonPart.toUpperCase() === '[DONE]') { return; }
+    if (jsonPart.toUpperCase() === '[DONE]') { return  ''; }
     let data = '';
     try {
         data = JSON.parse(jsonPart);
@@ -916,7 +1037,15 @@ function laiExtractDataFromResponse(response) {
 
 chrome.runtime.onMessage.addListener((response) => {
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
+    if (!shadowRoot) {
+        if(restartCounter < RESTART_LIMIT){
+            restartCounter++;
+            console.log(`>>> ${manifest.name} restarting: ${restartCounter}`);
+            start();
+        }
+        return;
+    }
+
     let recipient = shadowRoot.getElementById('laiActiveAiInput');
     if (!recipient) {
         recipient = Array.from(shadowRoot.querySelectorAll('.lai-ai-input .lai-input-text')).pop();
@@ -935,10 +1064,9 @@ chrome.runtime.onMessage.addListener((response) => {
             try {
                 dataChunk = laiExtractDataFromResponse(response);
                 if (!dataChunk) { return; }
+                aiRawResponse.push(dataChunk);
                 updateStatusBar('Receiving and processing data...');
-                const aiRecipient = laiGetRecipient();
-                aiRecipient.rawContent += dataChunk || '';
-                StreamMarkdownProcessor.processStreamChunk(dataChunk, aiRecipient);
+                StreamMarkdownProcessor.processStreamChunk(dataChunk, laiGetRecipient());
             } catch (err) {
                 resetStatusbar();
                 laiHandleStreamActions(`${err}`, recipient)
@@ -975,6 +1103,9 @@ chrome.runtime.onMessage.addListener((response) => {
             if(response.message){
                 showMessage(response.message, response.messageType);
             }
+            break;
+        case "userPrompt":
+            storeLastGeneratedPrompt(response.data)
             break;
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
@@ -1021,6 +1152,8 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
         console.log(`Dumping stream content:\n${StreamMarkdownProcessor.getRawContent()}`);
         dumpStream = false;
     }
+    recipient.rawContent = StreamMarkdownProcessor.getRawContent();
+
     StreamMarkdownProcessor.dispose();
     setAiSessions().then().catch(e => console.error(e));
 }
@@ -1048,8 +1181,10 @@ function laiAppendSelectionToUserInput(text) {
     if (!sideBar.classList.contains('active')) {
         laiSwapSidebarWithButton();
     }
-    const userInput = sideBar.querySelector('#laiUserInput');
-    userInput.value += `${currentSelection}`;
+
+    attachments.push(currentSelection);
+    showMessage('Element picked up successfully.', 'info')
+    updateStatusBar('Selected content added to the context.');
 }
 
 function getPageTextContent() {
@@ -1066,7 +1201,7 @@ function getPageTextContent() {
 function ask2ExplainSelection(response) {
     if (!response) {
         showMessage('Nothing received to explain!', 'warning');
-        console.warn(`>>> {manifest.name}: `, response);
+        console.warn(`>>> ${manifest.name}: `, response);
         return;
     }
 
@@ -1083,7 +1218,7 @@ function ask2ExplainSelection(response) {
     if (!userInput) { return; }
 
     const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
-    attachments.push(`Page content is between [PAGE] and [/PAGE]:\n[PAGE] ${getPageTextContent()} [/PAGE]`);
+    attachments.push(`Page content is between [PAGE] and [/PAGE]:\n[PAGE] ${getPageTextContent()} [/PAGE]. If needed, use this content as a context of your respond. Omit it if you can reply directly.`);
 
     const enterEvent = new KeyboardEvent('keydown', {
         bubbles: true,
@@ -1095,7 +1230,7 @@ function ask2ExplainSelection(response) {
         laiSwapSidebarWithButton();
     }
 
-    userInput.value = `Below is a text snippet. Please, explain what it means. Here is the snippet:\n${selection}`;
+    userInput.value = `Please, explain the meaning briefly. Focus on abbreviations non common content. A short explanation is required for:\n- ${selection}`;
     userInput.dispatchEvent(enterEvent);
 }
 
@@ -1187,25 +1322,6 @@ function showHooks(res){
     closeButton?.focus();
 }
 
-/**
- * Populate external resources if any.
- *
- * @param {Event} e - The event object.
- *
- * @returns {boolean} Whether the resource is found or not.
- */
-function externalResourcesHandler(e) {
-    const userInput = e.target;
-    if (!userInput || (userInput?.value?.trim() || '') === '') { return; }
-
-    const matches = getRegExpMatches(/!#(.+)#!/g, userInput);
-    if (matches.length < 1) { return; }
-
-    for (let i = 0; i < matches.length; i++) {
-        externalResources.push(matches[i][1]);
-    }
-}
-
 function getRegExpMatches(regex, userInput) {
     if (!regex instanceof RegExp) { return; }
 
@@ -1227,7 +1343,6 @@ function checkCommandHandler(e) {
     if (!userInput || (userInput?.value?.trim() || '') === '') { return res; }
 
     if(checkForHooksCmd(e)){  return true;  }
-    externalResourcesHandler(e);
 
     const matches = getRegExpMatches(/\/(\w+)(?:\((\w+)\))?[\t\n\s]?/gi, userInput);
     if (matches.length < 1) { return res; }
@@ -1271,9 +1386,15 @@ function checkCommandHandler(e) {
                 res = true;
                 break;
             case 'dump':
-                dumpAIRawContent();
+                let pos = parseInt(param, 10);
+                dumpRawContent('ai', isNaN(pos) ? undefined : pos);
                 res = true;
-                break
+                break;
+            case 'udump':
+                let i = parseInt(param, 10);
+                dumpRawContent('user', isNaN(i) ? undefined : i);
+                res = true;
+                break;
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
                 if (idx > -1) {
@@ -1503,7 +1624,7 @@ function hideSessionHistoryMenu() {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const headerSection = shadowRoot.querySelector('.lai-header');
-    headerSection.querySelector('#sessionHistMenu')?.remove();
+    headerSection?.querySelector('#sessionHistMenu')?.remove();
 }
 
 function popUserCommandList(e) {
@@ -1738,7 +1859,7 @@ async function swapActiveModel(e, modelName){
 function updateStatusBar(status){
     if(!status) {  return;  }
     const sidebar = getSideBar();
-    const statusbar = sidebar.querySelector('div.statusbar');
+    const statusbar = sidebar?.querySelector('div.statusbar');
     if(!statusbar) {  return;  }
     const notificationBlock = statusbar.querySelector('.notification');
     if(!notificationBlock) {  return;  }
@@ -1797,15 +1918,52 @@ function micClicked(e) {
     });
 }
 
-function dumpAIRawContent(){
+/**
+ * type may be "ai" or "user" defining which imput will be dumped
+ * i is optional zero based index of the required block
+ */
+function dumpRawContent(type = 'ai', i) {
     const sideBar = getSideBar();
-    if(!sideBar){
+    if (!sideBar) {
         console.error('SideBar not found!');
         return;
     }
 
-    const aiInputs = sideBar.querySelectorAll('.lai-ai-input .lai-input-text');
-    let content = '';
-    aiInputs.forEach(el => content += el.rawContent || '');
-    console.log(` >>> ${manifest.name} - raw content: ${content}`);
+    const aiInputs = sideBar.querySelectorAll(`.lai-${type}-input .lai-input-text`);
+    let content;
+    if (i && i >= 0 && i < aiInputs.length) {
+        content = aiInputs[i]?.rawContent.messages ? aiInputs[i]?.rawContent.messages.map(e => e.content).join('') : aiInputs[i]?.rawContent || '';
+        console.log(` >>> ${manifest.name} - raw content:}`, content);
+    } else {
+        aiInputs.forEach((el, idx) => {
+            content =  el.rawContent.messages ? el.rawContent?.messages.map(e => e.content).join('') : el.rawContent || '';
+            console.log(` >>> ${manifest.name} - raw content: ${idx}`, content);
+        });
+    }
+}
+
+function storeLastGeneratedPrompt(data) {
+    if (!data) {
+        console.error("No prompt received!");
+        return;
+    }
+
+    let promptData;
+    try {
+        promptData = typeof (data) === 'string' ? JSON.parse(data) : data;
+    } catch (error) {
+        console.error("Error parsing received prompt", data);
+        return;
+    }
+
+    const sideBar = getSideBar();
+    if (!sideBar) {
+        console.error('SideBar not found!');
+        return;
+    }
+
+    let usrInputs = Array.from(sideBar.querySelectorAll('.lai-user-input .lai-input-text'));
+    if(usrInputs.length < 0){  return;  }
+    usrInputs = usrInputs.slice(-1)[0];
+    usrInputs.rawContent = promptData;
 }

@@ -1,243 +1,199 @@
-const StreamMarkdownProcessor = (function() {
-    const triggerBlockChars = "*_`'#-+";
-
+const StreamMarkdownProcessor = (function () {
+    const triggerBlockChars = "*_`'#-=+";
     var processedStreamData = '';
-    // const wordEndings = /(?:\w'(?:m|re|ll|s|d|ve|t))[\s.,;:!?]/; // 'm, 're, 's, 'd, 'll, 've, 't and puntuation
-    // const wordFormations = /(?:\s'(?:clock|til|bout|cause|em))/; // 'clock, 'til, 'bout, 'cause, 'em
+    var triggerStack = '';
+    var isPre = false;
 
-    function closeActiveTag(recipient){
+    function setRecipientId(recipient, id) {
+        recipient.setAttribute("id", id);
+        return recipient;
+    }
+
+    function createElementWithId(tag, id, className) {
+        const element = document.createElement(tag);
+        element.id = id;
+        if (className) element.classList.add(className);
+        return element;
+    }
+
+    function closeActiveTag(recipient) {
+        if (recipient.tagName === 'PRE') {
+            isPre = false;
+        }
+
+        const previous = recipient.closest('#laiPreviousAiInput') || recipient.parentElement;
         recipient.removeAttribute("id");
-        recipient = recipient.closest('#laiPreviousAiInput');
-        recipient.setAttribute("id", "laiActiveAiInput");
+        return setRecipientId(previous, "laiActiveAiInput");
+    }
+
+    function switchToPreTag(recipient) {
+        const pre = createElementWithId('pre', "laiPreviousAiInput", 'lai-source');
+        recipient.removeAttribute('id');
+        const preTitle = createElementWithId('span', "laiActiveAiInput", 'lai-source-title');
+
+        pre.appendChild(preTitle);
+        recipient.appendChild(pre);
+        isPre = true;
+
+        return preTitle;
+    }
+
+    function switchToCodeTag(recipient) {
+        recipient = setRecipientId(recipient, "laiPreviousAiInput");
+        const code = createElementWithId('code', "laiActiveAiInput", 'lai-code');
+        recipient.appendChild(code);
+
+        return code;
+    }
+
+    function switchToBold(recipient) {
+        recipient = setRecipientId(recipient, "laiPreviousAiInput");
+        const b = createElementWithId('b', "laiActiveAiInput");
+        recipient.appendChild(b);
+
+        return b;
+    }
+
+    function transformNewLines(recipient, newlines) {
+        switch (newlines) {
+            case 0:
+                break;
+            case 1:
+                if (recipient.tagName.indexOf('H') === 0) {
+                    recipient = closeActiveTag(recipient);
+                } else {
+                    let tag = 'br';
+                    if(/<br>$/i.test(recipient.innerHTML)){
+                        recipient.removeChild(recipient.lastChild);
+                        tag = 'p';
+                    }
+                    recipient.appendChild(document.createElement(tag));
+                }
+                break;
+            default:
+                recipient.innerHTML = '&nbsp;';
+                recipient.appendChild(document.createElement('p'));
+        }
+    }
+
+    function changeRecipient(recipient) {
+        const recipientTagName = recipient.tagName.toLowerCase();
+        const last4StreamChars = processedStreamData.slice(-4);
+
+        switch (true) {
+            case /^(\*\*|__)*$/.test(triggerStack):
+                const newlines = (triggerStack.match(/\n/g) || []).length;
+                recipient = recipientTagName === 'b' ? closeActiveTag(recipient) : switchToBold(recipient);
+                triggerStack = '';
+                transformNewLines(recipient, newlines);
+                break;
+            case triggerStack === "'" || triggerStack === '`':
+                recipient = recipientTagName === 'code' ? closeActiveTag(recipient) : switchToCodeTag(recipient);
+                triggerStack = '';
+                break;
+            case triggerStack === "'''" || triggerStack === '```':
+                recipient = recipientTagName === 'code' ? closeActiveTag(recipient) : switchToPreTag(recipient);
+                triggerStack = '';
+                break;
+            case /^\-{3,}|={3,}$/.test(triggerStack):
+                recipient.appendChild(document.createElement('hr'));
+                triggerStack = '';
+                break;
+        }
+
         return recipient;
     }
 
-    function handlePreTagTitle(char, recipient){
-        const streamLastLine = processedStreamData.split('\n')?.slice(-3).join('\n');
-        let match = /(?:\n)(?:`{3}|'{3})([^\n]+)(?:\n)$/.exec(streamLastLine) || [];
-        if(match?.[1]){
-            recipient.innerHTML = recipient.innerHTML.replace(new RegExp(match[1] + '$', 'ig'), '');
-            const sourceTitle = recipient.querySelector('.lai-source-title');
-            sourceTitle.innerHTML = sourceTitle.innerHTML.replace(new RegExp('Code', 'gi'), match[1]);
-            char = '';
+    function fixFaulseCodeTag(recipient) {
+        const wordEndings = /(?:\w+'(?:m|re|ll|s|d|ve|t))[\s.,;:!?]?/i;
+        const wordFormations = /(?:\s+'(?:clock|til|bout|cause|em))/i;
+        const possessions = /\w{1,}s'[\s\.,\?!]{0,1}/i;
+        var html;
+        switch (true) {
+            case wordFormations.test(processedStreamData.slice(-10)):
+            case wordEndings.test(processedStreamData.slice(-10)):
+            case possessions.test(processedStreamData.slice(-10)):
+                html = recipient.innerHTML;
+                break;
+            default:
+                html = undefined;
         }
 
-        return char;
-    }
-
-    function switchToPreTag(recipient){
-        recipient.setAttribute("id", "laiPreviousAiInput");
-        const pre = Object.assign(document.createElement('pre'), {
-            id: "laiActiveAiInput",
-            className: 'lai-source',
-            innerHTML: `<span class="lai-source-title">Code</span>\n`
-        });
-        // recipient.innerHTML += pre.outerHTML;
-        recipient.appendChild(pre); // ??? or previous line
-        return recipient.querySelector('#laiActiveAiInput');
-    }
-
-    function handlePreTag(recipient){
-        const recipientTagName = recipient.tagName.toLowerCase();
-        if(recipientTagName === 'pre'){
-            return closeActiveTag(recipient);
-        } else {
-            if(recipientTagName === 'code'){
-                recipient = fixPreToCodeMissmatch(recipient);
-            }
-            return switchToPreTag(recipient);
-        }
-    }
-
-    function fixPreToCodeMissmatch(recipient){
-        let codeHtml = recipient.innerHTML;
-        const matches = codeHtml.match(/^(`{1,3}|'{1,3}|~{1,3})/);
-        if(matches && matches[1]){
-            codeHtml = codeHtml.replace(matches[1], '');
-        }
-        recipient = recipient.closest('#laiPreviousAiInput');
-        recipient.querySelector("#laiActiveAiInput").remove();
-        recipient.setAttribute("id", "laiActiveAiInput");
-        recipient.innerHTML += `${codeHtml}`;
-        return recipient;
-    }
-
-    function switchOrChangeHTag(rawData, recipient){
-        const recipientTagName = recipient.tagName.toLowerCase();
-        const level = (rawData.match(/#+/) || [''])[0].length;
-        if(recipientTagName.charAt(0) !== 'h'){
-            recipient.setAttribute("id", "laiPreviousAiInput");
-            recipient.innerHTML += `<h${level} id="laiActiveAiInput"></h${level}>`;
-            return recipient.querySelector('#laiActiveAiInput');
-        }
-
-        if(recipientTagName === `h${level}`){
+        if (!html) {
             return recipient;
         }
 
-        const parent = recipient.parentElement;
-        recipient.remove();
-        parent.setAttribute("id", "laiPreviousAiInput");
-        parent.innerHTML += `<h${level} id="laiActiveAiInput"></h${level}>`;
-        return parent.querySelector('#laiActiveAiInput');
-    }
-
-    function checkAndReplaceLinks(recipient, matches){
-        const link = `<a href="${matches?.[2] || ''}">${matches?.[1] || ''}</a>`;
-        recipient.innerHTML = recipient.innerHTML.replace(matches[0], link);
-        return recipient;
-    }
-
-    function shitchToCodeTag(recipient, char){
-        recipient.setAttribute("id", "laiPreviousAiInput");
-        recipient.innerHTML += `<code id="laiActiveAiInput" class="lai-code" data-char="${char}"></code>`;
-        return recipient.querySelector('#laiActiveAiInput');
-    }
-
-    function switchToItalic(recipient, char){
-        recipient.setAttribute("id", "laiPreviousAiInput");
-        recipient.innerHTML += `<i id="laiActiveAiInput" data-char="${char}"></i>`;
-        return recipient.querySelector('#laiActiveAiInput');
-    }
-
-    function switchItalicToBold(recipient, char){
-        let currentHtml = recipient.outerHTML;
-        let parent = recipient.parentElement;
-        recipient.remove();
-        parent.innerHTML += currentHtml.replace(/^\<i/, '<b').replace(/i\>$/, 'b>');
-        return parent.querySelector('#laiActiveAiInput');
-    }
-
-    function changeRecipient(char, recipient){
-        let recipientTagName = recipient.tagName.toLowerCase();
-        const last4StreamChars = processedStreamData.slice(-4);
-
-        if(recipientTagName.charAt(0) === 'h' && char === '\n'){
-            return closeActiveTag(recipient);
-        }
-
-        if(recipientTagName !== 'pre') {
-            let matches = processedStreamData.match(/\[(.*?)\]\((.*?)\)$/); // links
-            if(matches){
-                return checkAndReplaceLinks(recipient, matches);
-            }
-
-            const pattern = /\n-{3,}\n$/;
-            if(pattern.test(processedStreamData + char)){
-                recipient.innerHTML = recipient.innerHTML.replace(/-{1,}$/, '<hr>');
-                return recipient;
-            }
-
-            if(['b', 'strong', 'i', 'em'].includes(recipientTagName) && '*_'.indexOf(char) < 0 && '*_'.indexOf(last4StreamChars.slice(-1)) > -1){
-                return closeActiveTag(recipient);
-            } else if(!['b', 'strong', 'i', 'em'].includes(recipientTagName) && '*_'.indexOf(char) > -1 && '*_'.indexOf(last4StreamChars.slice(-1)) < 0){
-                return switchToItalic(recipient, char);
-            } else if(recipientTagName === 'i' && char === last4StreamChars.slice(-1) && '*_'.indexOf(char) > -1){
-                return switchItalicToBold(recipient, char);
-            } else if(['b', 'strong', 'i', 'em'].includes(recipientTagName)){
-                return recipient;
-            }
-        }
-
-        if(/\n(`{3}|'{3})$/.test(last4StreamChars + char)){
-            return handlePreTag(recipient);
-        }
-
-        // if(/\n#{1,}[ \t]+$/.test(last4StreamChars) || char === '#'){
-        if(recipientTagName !== 'pre' && /\n?#{1,}[ \t]+$/.test(last4StreamChars + char)){
-            return switchOrChangeHTag(processedStreamData.slice(-8) + char, recipient);
-        }
-
-        if(recipientTagName !== 'pre' && /[\n\s<({\[][`']/.test(last4StreamChars.slice(-1) + char)){
-            return shitchToCodeTag(recipient, char);
-        }
-
-        if(recipientTagName === 'code' && /[`'][\n\s.,;:!?)\]}>]/.test(last4StreamChars.slice(-1) + char)){
-            const openingChar = recipient.getAttribute('data-char') || '';
-            if(last4StreamChars.slice(-1) !== openingChar) {  return recipient;  }
-            recipient.removeAttribute('data-char');
-            recipient.innerHTML = recipient.innerHTML.replace(openingChar, '');
-            return closeActiveTag(recipient);
-        }
+        recipient.classList.add('delete');
+        recipient = closeActiveTag(recipient);
+        const forDelete = recipient.querySelector('code.delete');
+        recipient.removeChild(forDelete);
+        recipient.innerHTML += `'${html}`;
 
         return recipient;
     }
 
-    function cleanTrailingTriggerChars(recipient){
-        const activeTagName = recipient.tagName.toLowerCase();
-        let html = recipient.innerHTML;
+    function handleIsPre(triggerStack, char, recipient) {
+        const recipientTagName = recipient.tagName.toLowerCase();
+        if (recipientTagName === 'pre') {
+            if (/(```|''')\n*$/.test(`${triggerStack.slice(-10)}${char}`)) {
+                recipient.innerHTML = recipient.innerHTML.replace(/('|`)*$/, '');
+                recipient = closeActiveTag(recipient);
+                triggerStack = '';
+            } else {
+                recipient.innerHTML += char;
+            }
+        } else {
+            if (char === '\n') {
+                if (!recipient.textContent) { recipient.textContent = 'Code'; }
+                recipient = closeActiveTag(recipient);
+            }
 
-        if(activeTagName === 'code') {  return html;  }
-
-        if(activeTagName === 'pre'){
-            return html.replace(/[`']{1,}$/, '');
+            recipient.innerHTML += char;
         }
-
-        if(/#\s/.test(html)){
-            return html;
-        }
-
-        return html.replace(/[`'#*_]{1,}$/, '');
     }
 
-    function checkForTrigger(char, lastStreamChar, recipientTagName){
-        // const triggerBlockChars = "`'#-+";
-        // if(['b', 'strong', 'i', 'em'].includes(recipientTagName) && triggerBlockChars.indexOf(char) < 0){  return false;  }
-        if(lastStreamChar === '' && triggerBlockChars.indexOf(char) > -1){  return true;  }
-        if(triggerBlockChars.indexOf(lastStreamChar) > -1 && /\s/.test(char)){  return true;  }
-        if(/\s/.test(lastStreamChar) && triggerBlockChars.indexOf(char) > -1){  return true;  }
-        if((/^h|pre/i.test(recipientTagName) && char === '\n')){  return true;  }
-        if(lastStreamChar === ')' || lastStreamChar === '-'){  return true;  }
-        if(/[`'][\s.,;:!?)\]}>]|[\s<({\[][`']/.test(lastStreamChar + char)) {  return true;  }
-        // if(/[`'][\s.,;:!?]| [`']/.test(lastStreamChar + char)) {  return true;  }
-        if(triggerBlockChars.indexOf(lastStreamChar) > -1 && triggerBlockChars.indexOf(char) > -1 && lastStreamChar === char){  return true;  }
-        return false;
-    }
-
-    function processDataChunk(dataChunk, recipient){
-        // const triggerBlockChars = "`'#-+";
-        let recipientTagName = recipient.tagName.toLowerCase();
+    function processDataChunk(dataChunk, recipient) {
+        processedStreamData += dataChunk;
 
         dataChunk.split('').forEach(char => {
-            const rawChar = char;
-            // processedStreamData += char;
-            const lastStreamChar = processedStreamData.slice(-1)
-
-            let shouldTrigger = checkForTrigger(char, lastStreamChar, recipientTagName);
-
-            if(shouldTrigger){
-                let currentRecipientTagName = recipientTagName;
-
-                recipient.innerHTML = cleanTrailingTriggerChars(recipient);
-                recipient = changeRecipient(char, recipient);
-                recipientTagName = recipient.tagName.toLowerCase();
-                if(currentRecipientTagName !== recipientTagName && triggerBlockChars.indexOf(char) > -1){
-                    currentRecipientTagName = recipientTagName;
-                    char = '';
-                }
+            if (triggerBlockChars.includes(char)) {
+                triggerStack += char;
+                if (!isPre) { return; }
             }
 
-            processedStreamData += rawChar;
-            if(recipientTagName === 'pre' && char === '\n'){
-                char = handlePreTagTitle(char, recipient);
+            if (isPre) {
+                return handleIsPre(triggerStack, char, recipient);
             }
-            recipient.innerHTML +=  recipientTagName === 'pre' ? char : (char === '\n' ? '<br/>' : char);
-            recipient.innerHTML = recipient.innerHTML.replace(/<br\s*\/?>\s*<br\s*\/?>$/, '<p/>');
+
+            if (triggerStack) {
+                recipient = changeRecipient(recipient);
+                triggerStack = '';
+            }
+
+            if (char === '\n') {
+                transformNewLines(recipient, 1);
+            } else {
+                recipient.innerHTML += `${triggerStack}${char}`;
+            }
+
+            if (recipient.tagName === 'CODE') {
+                recipient = fixFaulseCodeTag(recipient);
+            }
         });
     }
 
-    // main point
-    // recipient is either the element itself or function returning a valid element
-    function processStreamChunk(dataChunk, recipient){
-        if(!recipient) {  return;  }
-        if(typeof(recipient) === 'function'){
+    function processStreamChunk(dataChunk, recipient) {
+        console.log(`>>>\n${dataChunk}`);
+        if (!recipient) { return; }
+        if (typeof (recipient) === 'function') {
             recipient = recipient();
         }
-        if(!recipient) {  return;  }
+        if (!recipient) { return; }
+
         processDataChunk(dataChunk, recipient);
     }
 
-    function dispose(){
+    function dispose() {
         processedStreamData = '';
     }
 
@@ -248,3 +204,7 @@ const StreamMarkdownProcessor = (function() {
     };
 
 })();
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = StreamMarkdownProcessor;
+}

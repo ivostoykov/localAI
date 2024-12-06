@@ -1,6 +1,33 @@
 # Local AI - Changelog
 
-## [1.17.33] 2024-08-27 - latest
+## [1.20.68] 2024-12-6 - latest
+### Options page
+- Added `test connection` button
+- Added converting binary to text service and point
+- Added list of user prompt
+- Added ability to add, edit and delete prompts
+- Added user prompts import and export
+- Added connection check
+
+### Side panel
+- Improved injecting active tab's page into the context
+- Removed binary content handler and replaced it with converting it to text
+- Fixed issues with `Ask AI To Explain Selected` action
+- Fixed issues with `Select and Send Element`
+- Selected element is not added in the context rather in the user input field
+- More than one selection may be added to the context.
+- The response is possible to be inserted in element allowing input by point-and-click
+- Response formatting parser has some improvements
+- Added endpoint for document processing
+
+## [1.17.68] 2024-09-01
+
+- added a new predefined user command - `udump` - sending the raw content to the console with the generated prompt combining all included resources
+- added check if any broken extension prevents loading
+- added a finitive (5) attempts to rebuilt the extension in case anything external breaks it.
+- several small bugs fixed
+
+## [1.17.33] 2024-08-27
 
 - copy to clipboard looses formatting was fixed
 - AI response now stored as a row content and could be reviewed in the console

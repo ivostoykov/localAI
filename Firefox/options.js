@@ -1,8 +1,10 @@
 const manifest = chrome.runtime.getManifest();
 var laiOptions = {};
 
-document.addEventListener('DOMContentLoaded', e => {
+document.addEventListener('DOMContentLoaded', async e => {
     loadSettings(e);
+    await attachDataListListeners(e);
+    await getAiUserCommands(e);
     attachListeners(e);
     attachDataListListeners(e);
 });
@@ -15,9 +17,6 @@ document.getElementById('laiOptionsForm').addEventListener('submit', saveSetting
 document.getElementById('cancelButton').addEventListener('click', cancelOptions);
 document.getElementById('deleteAllSessions').addEventListener('click', deleteAllAiSessions);
 document.getElementById('exportSessions').addEventListener('click', exportAsFile);
-document.getElementById('importUserCmd').addEventListener('click', importUserCommand);
-document.getElementById('exportUserCmd').addEventListener('click', exportAsFile);
-document.getElementById('cleartUserCmd').addEventListener('click', deleteUserCommands);
 document.getElementById('fileInput').addEventListener('change', importFromFile);
 document.getElementById('aiUrl').addEventListener('input', loadModels)
 
@@ -91,6 +90,17 @@ function attachListeners(e) {
     document.getElementById('showEmbeddedButton').addEventListener('click', onshowEmbeddedButtonClicked);
     document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
     document.querySelector('#advancedSettings img')?.addEventListener('click', toggleFold);
+
+    document.querySelectorAll('.navbar-item')?.forEach(item => {  item.addEventListener('click', switchSection);  });
+    document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
+    document.querySelector('#newPromptBtn')?.addEventListener('click', async e => {  await createNewPrompt(e);  })
+
+    document.getElementById('importUserCmd')?.addEventListener('click', importUserCommand);
+    document.getElementById('exportUserCmd')?.addEventListener('click', exportAsFile);
+    document.getElementById('cleartUserCmd')?.addEventListener('click', deleteUserCommands);
+    document.querySelector('#exportPromptBtn')?.addEventListener('click', exportAsFile);
+    document.querySelector('#importPromptBtn')?.addEventListener('click', importUserCommand);
+    document.querySelector('#deletePromptBtn')?.addEventListener('click', deleteUserCommands);
 }
 
 function onshowEmbeddedButtonClicked(e) {
@@ -426,9 +436,9 @@ function shrinkList(e) {
     }
 }
 
-function attachDataListListeners(e) {
+async function attachDataListListeners(e) {
 
-    const containers = ['modelButtons', 'urlButtons', 'hookButtons'];
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons'];
     for (let x = 0; x < containers.length; x++) {
         const container = document.querySelector(`#${containers[x]}`);
         if (!container) { continue; }
@@ -454,10 +464,40 @@ function attachDataListListeners(e) {
                     b.addEventListener('click', e => sortDatalist(e));
                     break;
                 case 'reload':
-                    b.addEventListener('click', e => loadModels());
+                    b.addEventListener('click', async e => await loadModels());
+                    break;
+                case 'test-connection':
+                    b.addEventListener('click', async e => await testConnection(e));
                     break;
             }
         }
+    }
+}
+
+async function testConnection(e){
+    showSpinner();
+    let response;
+    let url;
+    try {
+        const container = e.target.closest('.el-holder')
+        if(!container){ throw new Error(`Faild to find main element!`); }
+        const el = container.querySelector('input[type="text"]') || container.querySelector('select');
+        // const tikaEl = document.querySelector('#tika');
+        if (!el) { throw new Error(`No API endpoint value found - ${el?.value}!`); }
+
+        url = el.tagName === 'INPUT' ? el.value.trim() : el.options[el.selectedIndex].value;
+        if (!url || !url.startsWith('http')) { throw new Error(`Invalid API endpoint - ${url}!`); }
+        url = (new URL(url)).origin;
+
+        response = await fetch(url);
+        if(!response.ok){   throw new Error(`Server returned status code ${response.status}`);  }
+        showMessage(`Connection to ${url} successfull.`, "success");
+    } catch (e) {
+        showMessage(`Connection to ${url} failed! - ${e.message}`, "error");
+        console.error(e);
+        console.error('response', response);
+    } finally {
+        hideSpinner();
     }
 }
 
@@ -471,4 +511,120 @@ function hideSpinner() {
     const spinner = document.querySelector('#spinner');
     if (!spinner) { return; }
     spinner.classList.add('invisible');
+}
+
+function switchSection(e){
+    const el = e.target;
+    const navbar = el?.closest('#tabMenu');
+    const tabBodyId = el?.getAttribute('data-tabBody');
+    if(!el || !navbar){
+        showMessage(`Navbar element not found!`);
+        return;
+    }
+
+    document.querySelector('.active-navebar-item')?.classList?.remove('active-navebar-item');
+    el.classList.add('active-navebar-item');
+    if(tabBodyId === 'prompts'){  document.querySelector('#promptRibbon')?.classList.remove('invisible');  }
+    else {  document.querySelector('#promptRibbon')?.classList.add('invisible');  }
+
+    document.querySelectorAll('.js-tab-body')?.forEach(el => {
+        if(el.id === tabBodyId){  el?.classList.remove('invisible');  }
+        else {  el?.classList.add('invisible');  }
+    });
+}
+
+async function getAiUserCommands(){
+    const commands = await chrome.storage.local.get(['aiUserCommands']);
+    const generalSection = document.getElementById('general');
+    const height = generalSection?.offsetHeight || -1;
+    const aiUserCommands = commands.aiUserCommands || [];
+    if(aiUserCommands.length < 1){  return;  }
+
+    const promptTemplate = document.getElementById('promptTemplate').content;
+    const promptContainer = document.querySelector('#prompts');
+    if(!promptTemplate || !promptContainer){  return;  }
+    if(height > 0){  promptContainer.style.height = `${height}px`;  }
+
+    for (let x=0, l=aiUserCommands.length; x<l; x++) {
+        const cmd = aiUserCommands[x];
+        for(let i = 0; i < 4; i++) {
+            const clone = document.importNode(promptTemplate, true);
+            clone.querySelector('.prompt-title').textContent = cmd.commandName;
+            clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
+            clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
+            clone.querySelector('.prompt-body').textContent = cmd.commandBody;
+            promptContainer.appendChild(clone);
+        }
+    }
+}
+
+async function applyPromptCardAction(e){
+    const parent = e.target.closest('.prompt-item');
+    const action = e.target.getAttribute('data-action');
+    if(!parent || !action){  return;  }
+
+    switch(action) {
+        case 'edit':
+            parent.classList.add('prompt-item-edit');
+            e.target.setAttribute('data-action', 'save');
+            parent.querySelectorAll('.js-ptompt-card-item').forEach(el => el.setAttribute('contenteditable', true));
+            e.target.src = `img/tick.svg`;
+            break;
+        case 'save':
+            parent.classList.remove('prompt-item-edit');
+            e.target.setAttribute('data-action', 'edit');
+            parent.querySelectorAll('.js-ptompt-card-item').forEach(el => el.setAttribute('contenteditable', false));
+            e.target.src = `img/edit2.svg`;
+            await savePrompts(e);
+            break;
+
+        case 'delete':
+            if (!e.target.classList.contains('delete-active')) {
+                e.target.classList.add('delete-active');
+                setTimeout(() => { e.target.classList.remove('delete-active'); }, 30000);
+                showMessage('Click the same button again to delete it or wait to dismiss the action.');
+            } else {
+                parent.classList.remove('prompt-item-edit');
+                e.target.classList.remove('delete-active');
+                parent.remove();
+                await savePrompts(e);
+            }
+            break;
+    }
+}
+
+async function savePrompts(e){
+    const aiUserCommands = [];
+    document.querySelectorAll('.prompt-item')?.forEach(item => {
+        const cmd = {};
+        cmd['commandName'] = item.querySelector('.prompt-title').textContent.toLowerCase().replace(/\s+/g, '-');
+        cmd['commandDescription'] = item.querySelector('.prompt-description').textContent;
+        cmd['commandBody'] = item.querySelector('.prompt-body').textContent;
+        aiUserCommands.push(cmd);
+    });
+    await chrome.storage.local.set({['aiUserCommands']: aiUserCommands});
+    showMessage('Prompt updated successfully.', 'success');
+}
+
+async function createNewPrompt(e){
+    const promptSection = document.querySelector('#prompts');
+    if(!promptSection){  return;  }
+    const promptTemplate = document.getElementById('promptTemplate').content;
+    const clone = document.importNode(promptTemplate, true);
+    const promptItem1 = promptSection.querySelector('.prompt-item');
+    if(promptItem1){
+        promptSection.insertBefore(clone, promptItem1);
+    } else {
+        promptSection.appendChild(clone);
+    }
+    const newPromptItem = promptSection.querySelector('.prompt-item')
+    newPromptItem?.classList.add('prompt-item-edit');
+    newPromptItem.querySelectorAll('.prompt-buttons img')
+        ?.forEach(btn => {
+            if(btn.src.indexOf('edit2')> -1){
+                btn.src = btn.src.replace('edit2', 'tick');
+                btn.setAttribute('data-action', 'save');
+            }
+            btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); });
+    });
 }

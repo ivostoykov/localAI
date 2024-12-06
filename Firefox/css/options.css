@@ -2,10 +2,10 @@ body {
     font-family: Arial, sans-serif;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
     height: 100vh;
-    margin: 0;
+    margin: 25px 0 0 0;
 }
 
 .form-container {
@@ -68,6 +68,11 @@ label {
 .icon-button{
     width: 32px;
     height: auto;
+}
+
+input[type="text"].url {
+    height: 24px !important;
+    width: 492px !important;
 }
 
 .url {
@@ -204,4 +209,116 @@ button[type="submit"] {
     opacity: 0;
     transition: opacity 0.5s linear;
     pointer-events: none;
+}
+
+.navbar-ribbon{
+    margin-bottom: 15px;
+}
+
+ul.navbar {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    background-color: #f3f3f3;
+}
+
+li.navbar-item {
+    padding: 14px 20px;
+    cursor: pointer;
+    text-align: center;
+}
+
+li.navbar-item:hover {
+    background-color: #ddd;
+}
+
+.active-navebar-item{
+    border-bottom: 2px solid #777;
+}
+
+#promptRibbon ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 0 0 10px 0;
+    display: flex;
+}
+
+#promptRibbon li {
+    margin-right: 20px;
+    cursor: pointer;
+    padding: 8px;
+}
+
+#promptRibbon li:hover {
+    background-color: #ccc;
+}
+
+#promptRibbon li:last-child {
+    margin-right: 0;
+}
+
+.prompt-ribbon-button{
+    width: 32px;
+    height: auto;
+    padding: 0 1rem;
+    margin: 0 0 10px 0;
+}
+
+.prompt-section{
+    overflow: auto;
+}
+
+.prompt-item{
+    border: 1px solid #555;
+    padding: 0 10px;
+    margin: 0 10px 20px 0;
+    box-shadow: 10px 10px 10px #aaa;
+    position: relative;
+}
+
+.prompt-item-edit{
+    border: 2px solid orange;
+    zoom: 125%;
+}
+
+.prompt-title{
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.prompt-command{
+    color: #888;
+    font-size: 1rem;
+    margin: 7px 0;
+}
+.prompt-description{
+    font-style: italic;
+    font-size: 1rem;
+}
+.prompt-body{
+    font-family: monospace;
+    font-size: 0.9rem;
+    margin: 10px 0;
+}
+
+.prompt-buttons {
+    position: absolute;
+    top: 5px;
+    right: 10px;
+}
+
+.prompt-buttons img{
+    width: 25px;
+    height: auto;
+    opacity: 0.2;
+}
+
+.prompt-buttons img:hover {
+    opacity: 1;
+}
+
+.delete-active{
+    border: 2px solid red;
+    opacity: 1 !important;
 }

@@ -1,54 +1,54 @@
 {
-  "manifest_version": 3,
-  "name": "Local AI helper",
-  "version": "1.17.33",
-  "options_page": "options.html",
-  "permissions": [
-    "activeTab",
-    "storage",
-    "contextMenus",
-    "scripting",
-    "webRequest"
-  ],
-  "host_permissions": [
-    "*://*/*"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "jslib/stream_processor.js",
-        "jslib/utils.js",
-        "jslib/stt.js",
-        "lai-main.js",
-        "content.js"
-      ],
-      "run_at": "document_start"
-    }
-  ],
-  "action": {},
-  "icons": {
-    "16": "img/icon16.png",
-    "48": "img/icon48.png",
-    "128": "img/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "sidebar.html",
-        "button.css",
-        "sidebar.css",
-        "lai-main.js",
-        "img/*.svg"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+    "manifest_version": 3,
+    "name": "Local AI helper",
+    "version": "1.20.68",
+    "options_page": "options.html",
+    "permissions": [
+        "activeTab",
+        "storage",
+        "contextMenus",
+        "scripting",
+        "webRequest"
+    ],
+    "host_permissions": [
+        "*://*/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "jslib/stream_processor.js",
+                "jslib/utils.js",
+                "jslib/stt.js",
+                "lai-main.js",
+                "content.js"
+            ],
+            "run_at": "document_start"
+        }
+    ],
+    "action": {},
+    "icons": {
+        "16": "img/icon16.png",
+        "48": "img/icon48.png",
+        "128": "img/icon128.png"
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "sidebar.html",
+                "button.css",
+                "sidebar.css",
+                "lai-main.js",
+                "img/*.svg"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ]
 }

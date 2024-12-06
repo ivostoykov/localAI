@@ -8,15 +8,17 @@ const commandPlacehoders = {
   "@{{time}}": "Include current time without the date"
 };
 
+var aiRawResponse = [];
 var laiOptions = {};
 var aiSessions = [];
 var aiUserCommands = [];
-var externalResources = [];
+// var externalResources = [];
 var userCmdItemBtns = {'edit':null, 'execute': null, 'paste': null, 'delete': null};
 var activeSessionIndex = 0;
 var messages = [];
+var images = [];
 var attachments = [];
-var binaryFormData;
+// var binaryFormData;
 var userScrolled = false;
 var isElementSelectionActive = false;
 var dumpStream = false;
@@ -29,10 +31,23 @@ var userPredefinedCmd = [
   {"commandName": "error", "commandDescription":"Show last error"},
   {"commandName":"list", "commandDescription":"Show all defined commands"},
   {"commandName":"hooks", "commandDescription":"Show all defined hooks"},
-  {"commandName":"dump", "commandDescription": "Dump AI raw content into the console"}
+  {"commandName":"dump", "commandDescription": "Dump AI raw content into the console"},
+  {"commandName":"udump", "commandDescription": "Dump generated prompt including all data"}
 ];
 
 document.addEventListener('DOMContentLoaded', async function (e) {
+  await allDOMContentLoaded(e);
+});
+
+async function start(){
+  if (document.readyState !== 'complete') {
+    setTimeout(start, 1000);
+  } else {
+    await allDOMContentLoaded();
+  }
+}
+
+async function allDOMContentLoaded(e){
 
   document.addEventListener('click', function (event) {
     hideSessionHistoryMenu();
@@ -54,7 +69,19 @@ document.addEventListener('DOMContentLoaded', async function (e) {
   }, true);
 
   document.addEventListener('keydown', function (e) {
-    if (e.key !== "Escape") { return; }
+    if(isElementSelectionActive){
+      if (e.key === "Escape") {
+        isElementSelectionActive = false;
+        document.querySelectorAll(`[data-original-border]`)?.forEach(el => {
+            const currentBorder = el.getAttribute('data-original-border');
+            el.style.border = currentBorder;
+            el.removeAttribute('data-original-border');
+        });
+        return;
+      }
+    }
+
+    if (e.key !== "Escape") {  return;  }
     if (!laiOptions.closeOnClickOut) { return; }
 
     const pluginContainer = document.getElementById('localAI')?.shadowRoot?.getElementById('laiSidebar');
@@ -94,7 +121,7 @@ document.addEventListener('DOMContentLoaded', async function (e) {
     .catch(error => {
       console.error(`>>> ${manifest.name} - Error loading one or more styles`, error);
     });
-});
+}
 
 function init() {
   if(!chrome.runtime.id){  chrome.runtime.reload();  }
@@ -107,16 +134,17 @@ function init() {
 }
 
 function laiClearElementOver(e){
-  const el = e.target
+  let el = e.target;
   const currentBorder = el.getAttribute('data-original-border') || '';
   el.style.border = currentBorder;
+  el.removeAttribute('data-original-border');
 }
 
 function laiGetClickedSelectedElement(event){
   isElementSelectionActive = false;
   laiClearElementOver(event);
   let elementTextContent = event.target.innerText ?? ''; // get the visible text only
-  laiAppendSelectionToUserInput(elementTextContent.trim() || 'No content found');
+  laiAppendSelectionToUserInput(elementTextContent.trim() || '');
 }
 
 function laiBuiltMainButton() {
@@ -182,14 +210,17 @@ function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
   fetch(chrome.runtime.getURL('sidebar.html'))
     .then(response => response.text())
     .then(data => {
-      var theSideBar = Object.assign(document.createElement('div'), {
-        id: "laiSidebar",
-        className: "lai-fixed-parent",
-        innerHTML: data
-      });
-      theSideBar.style.zIdex = getHighestZIndex();
       const shadowRoot = getShadowRoot();
-      if(!shadowRoot) {  return;  }
+      if(!shadowRoot) {
+        console.error(`Failed to find the shadow root!`, shadowRoot);
+        return;
+      }
+
+      var theSideBar = document.createElement('div');
+      theSideBar.id = "laiSidebar";
+      theSideBar.classList.add("lai-fixed-parent")
+      theSideBar.innerHTML = data;
+      theSideBar.style.zIdex = getHighestZIndex();
 
       shadowRoot.appendChild(theSideBar);
 
@@ -228,11 +259,11 @@ function laiSetImg(el) {
   }
 }
 
-function showMessage(messages, type) {
-  if(!messages){  return;  }
-  if(!Array.isArray(messages)){  messages = [messages];  }
-  messages = [...new Set(messages)];
-  if(messages.length < 1) {  return;  }
+function showMessage(messagesToShow, type) {
+  if(!messagesToShow){  return;  }
+  if(!Array.isArray(messagesToShow)){  messagesToShow = [messagesToShow];  }
+  messagesToShow = [...new Set(messagesToShow)];
+  if(messagesToShow.length < 1) {  return;  }
   const shadowRoot = getShadowRoot();
   if(!shadowRoot) {  return;  }
   const sideBar = getSideBar();
@@ -246,9 +277,9 @@ function showMessage(messages, type) {
   const types = ['success', 'error', 'info', 'warning'];
   type = types.find(el => el===type) || 'info';
 
-  for (let i = 0; i < messages.length; i++) {
+  for (let i = 0; i < messagesToShow.length; i++) {
     const msgText = document.createElement('p');
-    msgText.textContent = messages[i];
+    msgText.textContent = messagesToShow[i];
     msg.appendChild(msgText);
   }
 

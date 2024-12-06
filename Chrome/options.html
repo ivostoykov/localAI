@@ -10,106 +10,152 @@
 <body>
     <h1 id="pageTitle">Test</h1>
     <div class="form-container">
+        <section id="tabs" class="navbar-ribbon">
+            <ul id="tabMenu" class="navbar">
+                <li class="navbar-item active-navebar-item" data-tabBody="general">General Settings</li>
+                <li class="navbar-item" data-tabBody="prompts">User Commands</li>
+            </ul>
+        </section>
         <form id="laiOptionsForm">
-            <div class="el-holder">
-                <input type="checkbox" name="showEmbeddedButton" id="showEmbeddedButton" />
-                <label for="showEmbeddedButton">Show embedded button</label>
-                <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon" title="Embedded button icon">
-            </div>
-            <div class="el-holder">
-                <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
-                <label for="openPanelOnLoad">Open panel on load</label>
-            </div>
-            <div class="el-holder">
-                <input type="checkbox" name="closeOnClickOut" id="closeOnClickOut" />
-                <label for="closeOnClickOut">Close Sidebar when click outside</label>
-            </div>
-            <div class="el-holder">
-                <input type="checkbox" name="closeOnSendTo" id="closeOnSendTo" />
-                <label for="closeOnSendTo">Close adter Send To</label>
-            </div>
-            <div class="el-holder">
-                <input type="checkbox" name="closeOnCopy" id="closeOnCopy" />
-                <label for="closeOnCopy">Close Sidebar after copy</label>
-            </div>
-            <div class="el-holder">
-                <input type="checkbox" name="loadHistoryOnStart" id="loadHistoryOnStart" />
-                <label for="loadHistoryOnStart">Load last history session on start</label>
-            </div>
-            <div class="el-holder">
-                <label for="aiUrl">End point:</label>
-                <select name="aiUrl" id="aiUrl" class="url" data-list="urlList">
-                    <option value="" selected="selected">Select End Point</option>
-                </select>
-                <div id="urlButtons">
-                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
-                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
-                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
-                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
-                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+<!-- main settings -->
+            <section id="general" class="js-tab-body">
+                <div class="el-holder">
+                    <input type="checkbox" name="showEmbeddedButton" id="showEmbeddedButton" />
+                    <label for="showEmbeddedButton">Show embedded button</label>
+                    <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon"
+                        title="Embedded button icon">
                 </div>
-            </div>
-            <div class="el-holder">
-                <label for="aiModel">Model:</label>
-                <select name="aiModel" id="aiModel" class="url" data-list="modelList">
-                    <option value="" selected="selected">Select Model</option>
-                </select>
-                <div id="modelButtons">
-                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
-                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                <div class="el-holder">
+                    <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
+                    <label for="openPanelOnLoad">Open panel on load</label>
                 </div>
-            </div>
-            <div class="el-holder">
-                <label for="webHook">Webhook URL</label>
-                <select name="webHook" id="webHook" class="url" data-list="webHookList">
-                    <option value="" selected="selected">Select Web Hook</option>
-                </select>
-                <div id="hookButtons">
-                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
-                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
-                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
-                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
-                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                <div class="el-holder">
+                    <input type="checkbox" name="closeOnClickOut" id="closeOnClickOut" />
+                    <label for="closeOnClickOut">Close Sidebar when click outside</label>
                 </div>
-            </div>
+                <div class="el-holder">
+                    <input type="checkbox" name="closeOnSendTo" id="closeOnSendTo" />
+                    <label for="closeOnSendTo">Close adter Send To</label>
+                </div>
+                <div class="el-holder">
+                    <input type="checkbox" name="closeOnCopy" id="closeOnCopy" />
+                    <label for="closeOnCopy">Close Sidebar after copy</label>
+                </div>
+                <div class="el-holder">
+                    <input type="checkbox" name="loadHistoryOnStart" id="loadHistoryOnStart" />
+                    <label for="loadHistoryOnStart">Load last history session on start</label>
+                </div>
+                <div class="el-holder">
+                    <label for="aiUrl">End point:</label>
+                    <select name="aiUrl" id="aiUrl" class="url" data-list="urlList">
+                        <option value="" selected="selected">Select End Point</option>
+                    </select>
+                    <div id="urlButtons">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                            title="Test connection">
+                        <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
+                            title="Edit selected">
+                        <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list"
+                            title="Add to list">
+                        <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
+                            title="Remove from list">
+                        <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
+                            title="Remove the list">
+                        <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                        <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                            title="Soft List Desc">
+                        <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                    </div>
+                </div>
+                <div class="el-holder">
+                    <label for="aiModel">Model:</label>
+                    <select name="aiModel" id="aiModel" class="url" data-list="modelList">
+                        <option value="" selected="selected">Select Model</option>
+                    </select>
+                    <div id="modelButtons">
+                        <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                        <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                            title="Soft List Desc">
+                        <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
+                            title="Reload models">
+                        <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                    </div>
+                </div>
+                <div class="el-holder">
+                    <label for="tika">Document Converter</label>
+                    <input type="text" name="tika" id="tika" class="url" size="1000" />
+                    <div id="tikaButtons">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                            title="Test connection">
+                    </div>
+                </div>
+                <div class="el-holder">
+                    <label for="webHook">Webhook URL</label>
+                    <select name="webHook" id="webHook" class="url" data-list="webHookList">
+                        <option value="" selected="selected">Select Web Hook</option>
+                    </select>
+                    <div id="hookButtons">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                            title="Test connection">
+                        <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
+                            title="Edit selected">
+                        <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list"
+                            title="Add to list">
+                        <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
+                            title="Remove from list">
+                        <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
+                            title="Remove the list">
+                        <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                        <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                            title="Soft List Desc">
+                        <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                    </div>
+                </div>
 
-            <div class="el-holder">
-                <label for="localPort">System Instructions:</label>
-                <div class="tooltip">
-                    <span class="info-circle">&#9432;</span>
-                    <span class="tooltip-text">Enter any specific instructions for the session.</span>
+                <div class="el-holder">
+                    <label for="localPort">System Instructions:</label>
+                    <div class="tooltip">
+                        <span class="info-circle">&#9432;</span>
+                        <span class="tooltip-text">Enter any specific instructions for the session.</span>
+                    </div>
+                    <textarea id="systemInstructions" name="systemInstructions" rows="8"></textarea>
                 </div>
-                <textarea id="systemInstructions" name="systemInstructions" rows="8"></textarea>
-            </div>
-            <div class="el-holder">
-                <label for="personalInfo">Personal Information:</label>
-                <div class="tooltip">
-                    <span class="info-circle">&#9432;</span>
-                    <span class="tooltip-text">
-                        Enter key/value pairs separated by semicolumn (";") or new line. Example: <br>
-                        name=John Dow<br>
-                        name: Jane Dow
-                    </span>
+                <div class="el-holder">
+                    <label for="personalInfo">Personal Information:</label>
+                    <div class="tooltip">
+                        <span class="info-circle">&#9432;</span>
+                        <span class="tooltip-text">
+                            Enter key/value pairs separated by semicolumn (";") or new line. Example: <br>
+                            name=John Dow<br>
+                            name: Jane Dow
+                        </span>
+                    </div>
+                    <textarea id="personalInfo" name="personalInfo" rows="8"></textarea>
                 </div>
-                <textarea id="personalInfo" name="personalInfo" rows="8"></textarea>
-            </div>
 
-            <div class="ext-container">
-                <button id="deleteAllSessions" type="button">Delete all previous sessions</button>
-                <button id="exportSessions" type="button">Export sessions</button>
-                <button id="importUserCmd" type="button">Import User Commands</button>
-                <button id="exportUserCmd" type="button">Export User Commands</button>
-                <button id="cleartUserCmd" type="button">Delete All User Commands</button>
-            </div>
+                <div class="ext-container">
+                    <button id="deleteAllSessions" type="button">Delete all previous sessions</button>
+                    <button id="exportSessions" type="button">Export sessions</button>
+                    <button id="importUserCmd" type="button">Import User Commands</button>
+                    <button id="exportUserCmd" type="button">Export User Commands</button>
+                    <button id="cleartUserCmd" type="button">Delete All User Commands</button>
+                </div>
 
-            <button type="submit">Save</button>
-            <button type="button" id="cancelButton">Cancel</button>
+                <button type="submit">Save</button>
+                <button type="button" id="cancelButton">Cancel</button>
+            </section>
+
+<!-- prompt settings -->
+            <div id="promptRibbon" class="invisible">
+                <ul>
+                    <li id="newPromptBtn">New User Commands</li>
+                    <li id="exportPromptBtn">Export User Commands</li>
+                    <li id="importPromptBtn">Import User Commands</li>
+                    <li id="deletePromptBtn">Delete All User Commands</li>
+                </ul>
+            </div>
+            <section id="prompts" class="js-tab-body invisible prompt-section">
+            </section>
         </form>
         <div id="message" class="message-box invisible"></div>
     </div>
@@ -141,6 +187,21 @@
     <input id="fileInput" type="file" class="invisible">
     <img src="img/reload.svg" id="spinner" class="loading invisible"/>
 
-    <script src="options.js"></script>
+    <template id="promptTemplate">
+        <div class="prompt-item">
+            <div class="prompt-buttons">
+                <!-- <button class="edit-button"><img src="img/edit2.svg" alt=""></button> -->
+                <img src="img/edit2.svg" data-action="edit">
+                <img src="img/remove-all.svg" data-action="delete">
+                <!-- <button class="delete-button">Delete</button> -->
+            </div>
+            <div class="prompt-title js-ptompt-card-item" contenteditable="false">Editable Title</div>
+            <div class="prompt-command js-ptompt-card-item" contenteditable="false">Non-editable Command</div>
+            <div class="prompt-description js-ptompt-card-item" contenteditable="false">Editable Title</div>
+            <div class="prompt-body js-ptompt-card-item" contenteditable="false">Editable Body</div>
+        </div>
+    </template>
+
+<script src="options.js"></script>
 </body>
 </html>

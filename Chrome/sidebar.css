@@ -178,6 +178,7 @@
 }
 
 .available-model-list {
+    display: block;
     border: 1px solid #999;
     position: absolute;
     top: 23px;
@@ -212,11 +213,13 @@
     font-size: inherit;
 }
 
-.mode-label-container{
+.model-label-container{
     top: -8px;
+    display: flex;
+    align-items: center;
 }
 
-.mode-label-container img{
+.model-label-container img{
     width: 12px !important;
     height: auto;
     display: inline-block;
@@ -224,12 +227,12 @@
     vertical-align: top;
 }
 
-.mode-label-container:hover img{
+.model-label-container:hover img{
     width: 20px !important;
     padding-top: 2px;
 }
 
-.mode-label-container.open img{
+.model-label-container.open img{
     width: 20px !important;
     transform: rotate(-90deg);
 }
@@ -704,7 +707,7 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
 }
 
 .feedback-message-active {
-    top: 5px;
+    top: 88px;
 }
 
 .success {

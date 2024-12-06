@@ -10,11 +10,20 @@
 <body>
     <h1 id="pageTitle">Test</h1>
     <div class="form-container">
+        <section id="tabs" class="navbar-ribbon">
+            <ul id="tabMenu" class="navbar">
+                <li class="navbar-item active-navebar-item" data-tabBody="general">General Settings</li>
+                <li class="navbar-item" data-tabBody="prompts">User Commands</li>
+            </ul>
+        </section>
         <form id="laiOptionsForm">
+<!-- main settings -->
+            <section id="general" class="js-tab-body">
             <div class="el-holder">
                 <input type="checkbox" name="showEmbeddedButton" id="showEmbeddedButton" />
                 <label for="showEmbeddedButton">Show embedded button</label>
-                <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon" title="Embedded button icon">
+                    <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon"
+                        title="Embedded button icon">
             </div>
             <div class="el-holder">
                 <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
@@ -42,12 +51,19 @@
                     <option value="" selected="selected">Select End Point</option>
                 </select>
                 <div id="urlButtons">
-                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
-                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
-                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
-                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                            title="Test connection">
+                        <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
+                            title="Edit selected">
+                        <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list"
+                            title="Add to list">
+                        <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
+                            title="Remove from list">
+                        <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
+                            title="Remove the list">
                     <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                        <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                            title="Soft List Desc">
                     <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                 </div>
             </div>
@@ -58,23 +74,40 @@
                 </select>
                 <div id="modelButtons">
                     <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
+                        <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                            title="Soft List Desc">
+                        <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
+                            title="Reload models">
                     <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                 </div>
             </div>
+                <div class="el-holder">
+                    <label for="tika">Document Converter</label>
+                    <input type="text" name="tika" id="tika" class="url" size="1000" />
+                    <div id="tikaButtons">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                            title="Test connection">
+                    </div>
+                </div>
             <div class="el-holder">
                 <label for="webHook">Webhook URL</label>
                 <select name="webHook" id="webHook" class="url" data-list="webHookList">
                     <option value="" selected="selected">Select Web Hook</option>
                 </select>
                 <div id="hookButtons">
-                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
-                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
-                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list" title="Remove from list">
-                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all" title="Remove the list">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                            title="Test connection">
+                        <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
+                            title="Edit selected">
+                        <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list"
+                            title="Add to list">
+                        <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
+                            title="Remove from list">
+                        <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
+                            title="Remove the list">
                     <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                        <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                            title="Soft List Desc">
                     <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                 </div>
             </div>
@@ -110,6 +143,19 @@
 
             <button type="submit">Save</button>
             <button type="button" id="cancelButton">Cancel</button>
+            </section>
+
+<!-- prompt settings -->
+            <div id="promptRibbon" class="invisible">
+                <ul>
+                    <li id="newPromptBtn">New User Commands</li>
+                    <li id="exportPromptBtn">Export User Commands</li>
+                    <li id="importPromptBtn">Import User Commands</li>
+                    <li id="deletePromptBtn">Delete All User Commands</li>
+                </ul>
+            </div>
+            <section id="prompts" class="js-tab-body invisible prompt-section">
+            </section>
         </form>
         <div id="message" class="message-box invisible"></div>
     </div>
@@ -140,6 +186,21 @@
     <div id="laiCopyHint" class="lai-copy-hint invisible">Copied!</div>
     <input id="fileInput" type="file" class="invisible">
     <img src="img/reload.svg" id="spinner" class="loading invisible"/>
+
+    <template id="promptTemplate">
+        <div class="prompt-item">
+            <div class="prompt-buttons">
+                <!-- <button class="edit-button"><img src="img/edit2.svg" alt=""></button> -->
+                <img src="img/edit2.svg" data-action="edit">
+                <img src="img/remove-all.svg" data-action="delete">
+                <!-- <button class="delete-button">Delete</button> -->
+            </div>
+            <div class="prompt-title js-ptompt-card-item" contenteditable="false">Editable Title</div>
+            <div class="prompt-command js-ptompt-card-item" contenteditable="false">Non-editable Command</div>
+            <div class="prompt-description js-ptompt-card-item" contenteditable="false">Editable Title</div>
+            <div class="prompt-body js-ptompt-card-item" contenteditable="false">Editable Body</div>
+        </div>
+    </template>
 
     <script src="options.js"></script>
 </body>
