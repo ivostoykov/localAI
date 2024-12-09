@@ -26,7 +26,9 @@ You’ll need enough hardware power, preferably with a GPU.
 
 A local AI tool—these are easy to set up, usually just download and run:
 
-* [LM Studio](https://lmstudio.ai/)
+* [LM Studio](https://lmstudio.ai/) - preffered
+
+Optionally:
 * [Ollama](https://ollama.com/)
 * [Mozilla LlamaFile](https://github.com/Mozilla-Ocho/llamafile)
 

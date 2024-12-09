@@ -17,10 +17,10 @@ function importFromFile(e) {
             var json = JSON.parse(reader.result);
             chrome.storage.local.set({ ['aiUserCommands']: json })
             .then(() => showMessage('User Commands imported successfully.', 'success'))
-            .catch(e => console.error('>>>', e));
+                .catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
             aiUserCommands = json;
         } catch (err) {
-            console.error('>>>', err);
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
         } finally {
             fileInput.remove();
         }

@@ -90,7 +90,7 @@ function attachListeners(e) {
     document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
     document.querySelector('#advancedSettings img')?.addEventListener('click', toggleFold);
 
-    document.querySelectorAll('.navbar-item')?.forEach(item => {  item.addEventListener('click', switchSection);  });
+    document.querySelectorAll('.navbar-item')?.forEach(item => {  item.addEventListener('click', async (e) => {  await switchSection(e);  });  });
     document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
     document.querySelector('#newPromptBtn')?.addEventListener('click', async e => {  await createNewPrompt(e);  })
 
@@ -128,7 +128,7 @@ function deleteAllAiSessions(e) {
     chrome.storage.local.remove(['aiSessions']).then(() => {
         showMessage('All sessions have been deleted.', 'success');
     }).catch(e => {
-        console.error('>>>', e)
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e)
     });
 }
 
@@ -136,7 +136,7 @@ function deleteUserCommands(e) {
     chrome.storage.local.remove(['aiUserCommands']).then(() => {
         showMessage('All User commands have been deleted.', 'success');
     }).catch(e => {
-        console.error('>>>', e)
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e)
     });
 }
 
@@ -149,6 +149,7 @@ async function exportAsFile(e) {
             fileName = `session_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
             break;
         case 'exportUserCmd':
+        case 'exportPromptBtn':
             storageKey = 'aiUserCommands';
             fileName = `user_commands_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
             break;
@@ -175,15 +176,24 @@ function importUserCommand(e) {
 
 function importFromFile(e) {
     const file = e.target.files[0];
+    if(!file){
+        showMessage("No file was selected!", "error");
+        return;
+    }
     var reader = new FileReader();
-    reader.onloadend = function () {
+    reader.onloadend = async function () {
+        showSpinner();
         try {
             var json = JSON.parse(reader.result);
-            chrome.storage.local.set({ ['aiUserCommands']: json })
-                .then(() => showMessage('User Commands imported successfully.', 'success'))
-                .catch(e => console.error('>>>', e));
+            await chrome.storage.local.set({ ['aiUserCommands']: json });
+
+            showMessage('User Commands imported successfully.', 'success');
+            await getAiUserCommands();
+
         } catch (err) {
-            console.error('>>>', err);
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        } finally {
+            hideSpinner();
         }
     };
 
@@ -227,8 +237,8 @@ async function loadModels(e) {
         models = await response.json();
         if (models.models && Array.isArray(models.models)) { fillModelList(models.models); }
     } catch (e) {
-        console.error(e);
-        console.error('response', response);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - response`, response);
     } finally {
         hideSpinner();
         showMessage("Model list successfully updated.", "success");
@@ -239,7 +249,7 @@ function fillModelList(models = []) {
     if (models.length < 1) { return; }
     let modelDataList = document.querySelector('#aiModel');
     if (!modelDataList) {
-        console.error('Cannot find modelList element!');
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Cannot find modelList element!`);
         return;
     }
 
@@ -390,7 +400,7 @@ function addSelectOptions(selectEl, objData) {
         if (objData?.isSelected) { op.setAttribute('selected', 'selected'); }
         selectEl.appendChild(op);
     } catch (e) {
-        console.error(e);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
     }
 }
 
@@ -400,7 +410,7 @@ function copyValue(e) {
     const getParentEvent = () => e;
     navigator.clipboard.writeText(datalist.options[datalist.selectedIndex].value || '')
         .then(() => { showHint(getParentEvent()); })
-        .catch(err => console.error('Failed to copy text: ', err));
+        .catch(err => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
 }
 
 function showHint(e) {
@@ -493,8 +503,8 @@ async function testConnection(e){
         showMessage(`Connection to ${url} successfull.`, "success");
     } catch (e) {
         showMessage(`Connection to ${url} failed! - ${e.message}`, "error");
-        console.error(e);
-        console.error('response', response);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - response`, response);
     } finally {
         hideSpinner();
     }
@@ -512,7 +522,7 @@ function hideSpinner() {
     spinner.classList.add('invisible');
 }
 
-function switchSection(e){
+async function switchSection(e){
     const el = e.target;
     const navbar = el?.closest('#tabMenu');
     const tabBodyId = el?.getAttribute('data-tabBody');
@@ -523,7 +533,16 @@ function switchSection(e){
 
     document.querySelector('.active-navebar-item')?.classList?.remove('active-navebar-item');
     el.classList.add('active-navebar-item');
-    if(tabBodyId === 'prompts'){  document.querySelector('#promptRibbon')?.classList.remove('invisible');  }
+    if(tabBodyId === 'prompts'){
+        showSpinner();
+        try {
+            await getAiUserCommands();
+        } catch (error) {
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${error.message}`, error);
+        } finally{  hideSpinner();  }
+
+        document.querySelector('#promptRibbon')?.classList.remove('invisible');
+    }
     else {  document.querySelector('#promptRibbon')?.classList.add('invisible');  }
 
     document.querySelectorAll('.js-tab-body')?.forEach(el => {
@@ -542,18 +561,19 @@ async function getAiUserCommands(){
     const promptTemplate = document.getElementById('promptTemplate').content;
     const promptContainer = document.querySelector('#prompts');
     if(!promptTemplate || !promptContainer){  return;  }
+    promptContainer.replaceChildren();
     if(height > 0){  promptContainer.style.height = `${height}px`;  }
 
     for (let x=0, l=aiUserCommands.length; x<l; x++) {
         const cmd = aiUserCommands[x];
-        for(let i = 0; i < 4; i++) {
+        // for(let i = 0; i < 4; i++) {
             const clone = document.importNode(promptTemplate, true);
             clone.querySelector('.prompt-title').textContent = cmd.commandName;
             clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
             clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
             clone.querySelector('.prompt-body').textContent = cmd.commandBody;
             promptContainer.appendChild(clone);
-        }
+        // }
     }
 }
 

@@ -1,5 +1,6 @@
 const DONE = 'DONE';
 const storageOptionKey = 'laiOptions';
+const sessionHistoryKey = 'sessionHistory';
 const commandPlacehoders = {
   "@{{page}}": "Include page into the prompt",
   "@{{dump}}": "Dump LLM response into the console",
@@ -108,7 +109,7 @@ async function allDOMContentLoaded(e){
     await getAiSessions();
     await getAiUserCommands();
   } catch (err) {
-    console.error(err);
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
     return;
   }
 
@@ -116,10 +117,10 @@ async function allDOMContentLoaded(e){
   Promise.all(laiFetchStyles(['button.css', 'sidebar.css']))
     .then(res => {
       laiFetchAndBuildSidebarContent(laiInitSidebar);
-      laiBuiltMainButton();
+      buildMainButton();
     })
     .catch(error => {
-      console.error(`>>> ${manifest.name} - Error loading one or more styles`, error);
+      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
     });
 }
 
@@ -144,11 +145,13 @@ function laiGetClickedSelectedElement(event){
   isElementSelectionActive = false;
   laiClearElementOver(event);
   let elementTextContent = event.target.innerText ?? ''; // get the visible text only
-  laiAppendSelectionToUserInput(elementTextContent.trim() || '');
+  attachments.push(elementTextContent);
+  showMessage('Element picked up successfully.', 'info')
+  updateStatusBar('Selected content added to the context.');
 }
 
-function laiBuiltMainButton() {
-  var theMainButton = laiBuildMainButton();
+function buildMainButton() {
+  var theMainButton = createMainButtonElement();
   const shadowRoot = getShadowRoot();
 if(!shadowRoot) {  return;  }
   shadowRoot.appendChild(theMainButton);
@@ -166,10 +169,10 @@ if(!shadowRoot) {  return;  }
   });
 }
 
-function laiBuildMainButton(){
+function createMainButtonElement(){
   if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
   if(!chrome.runtime.id){
-    console.error(`${manifest.name} - Extension context invalidated. Please reload the tab.`);
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
     return;
   }
   var theMainButton = Object.assign(document.createElement('div'), {
@@ -204,7 +207,7 @@ function laiMainButtonClicked(e){
 function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
   if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
   if(!chrome.runtime.id){
-    console.error(`${manifest.name} - Extension context invalidated. Please reload the tab.`);
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
     return;
   }
   fetch(chrome.runtime.getURL('sidebar.html'))
@@ -212,7 +215,7 @@ function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
     .then(data => {
       const shadowRoot = getShadowRoot();
       if(!shadowRoot) {
-        console.error(`Failed to find the shadow root!`, shadowRoot);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to find the shadow root!`, shadowRoot);
         return;
       }
 
@@ -228,7 +231,7 @@ function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
         return sidebarLoadedCallback();
       }
     })
-    .catch(error => console.error('Error loading the HTML:', error));
+    .catch(error => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error));
 }
 
 function laiFetchStyles(cssNames) {
@@ -260,22 +263,22 @@ function laiSetImg(el) {
 }
 
 function showMessage(messagesToShow, type) {
-  if(!messagesToShow){  return;  }
-  if(!Array.isArray(messagesToShow)){  messagesToShow = [messagesToShow];  }
+  if (!messagesToShow) { return; }
+  if (!Array.isArray(messagesToShow)) { messagesToShow = [messagesToShow]; }
   messagesToShow = [...new Set(messagesToShow)];
-  if(messagesToShow.length < 1) {  return;  }
+  if (messagesToShow.length < 1) { return; }
   const shadowRoot = getShadowRoot();
-  if(!shadowRoot) {  return;  }
+  if (!shadowRoot) { return; }
   const sideBar = getSideBar();
-  if(!sideBar.classList.contains('active')){ laiSwapSidebarWithButton();}
+  if (!sideBar.classList.contains('active')) { laiSwapSidebarWithButton(); }
   let msg = shadowRoot.querySelector('#feedbackMessage');
   let oldTimerId = msg.getAttribute('data-timerId');
-  if(oldTimerId){
+  if (oldTimerId) {
     clearTimeout(parseInt(oldTimerId, 10));
   }
 
   const types = ['success', 'error', 'info', 'warning'];
-  type = types.find(el => el===type) || 'info';
+  type = types.find(el => el === type) || 'info';
 
   for (let i = 0; i < messagesToShow.length; i++) {
     const msgText = document.createElement('p');
@@ -286,14 +289,14 @@ function showMessage(messagesToShow, type) {
   msg.classList.remove('success', 'error', 'info', 'warning');
   msg.classList.add('feedback-message-active', type || 'info');
   const timerId = setTimeout(() => {
-    if(type === 'error'){
+    if (type === 'error') {
       lastRegisteredErrorMessage = Array.from(msg.children).map(el => el.textContent);
     }
     handleErrorButton();
     msg.replaceChildren(); // clear the space
     msg.classList.remove('feedback-message-active');
   }, type === 'error' ? 7500 : 3000);
-  if(timerId) {
+  if (timerId) {
     msg.setAttribute('data-timerId', timerId);
   }
 }
@@ -338,12 +341,12 @@ async function getLaiOptions() {
     try {
       const obj = await chrome.storage.sync.get(storageOptionKey);
       const laiOptions = Object.assign({}, defaults, obj?.laiOptions ?? {});
-      if(laiOptions.systemInstructions) {
+    if (laiOptions.systemInstructions) {
         messages.push({ role: "system", content: laiOptions.systemInstructions });
       }
       return laiOptions;
   } catch (e) {
-    console.error(`>>> ${manifest.name}`, e);
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
   }
 }
 
@@ -357,6 +360,35 @@ async function getAiSessions(){
 async function setAiSessions(){
     await chrome.storage.local.set({['aiSessions']: aiSessions});
     return true;
+}
+
+async function getChatHistory(){
+  try {
+      obj = await chrome.storage.local.get(sessionHistoryKey);
+      return obj.sessionHistory || [];
+  } catch (e) {
+      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+  }
+}
+
+async function setChatHistory(newObj){
+  let sessionHistory = [];
+  try {
+      sessionHistory = await getChatHistory();
+      if(Array.isArray(newObj)){
+          sessionHistory.push(...newObj);
+      } else {
+          sessionHistory.push(newObj);
+      }
+      let chatSize=0;
+      sessionHistory.forEach(e => chatSize+=e?.content?.length ?? 0);
+      console.log(`>>> ${manifest.name} - [${getLineNumber()}] - chat history length: ${sessionHistory.length}; size: ${chatSize}`);
+      await chrome.storage.local.set({ [sessionHistoryKey]: sessionHistory });
+  } catch (e) {
+      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
+  }
+
+  return sessionHistory || [];
 }
 
 async function getAiUserCommands(){
@@ -400,4 +432,9 @@ function handleErrorButton(){
   }
 
   lastRegisteredErrorMessage.lastLength = lastRegisteredErrorMessage.length;
+}
+
+function getLineNumber() {
+  const e = new Error();
+  return e.stack.split("\n")[2].trim().replace(/\s{0,}at (.+)/, "[$1]");
 }

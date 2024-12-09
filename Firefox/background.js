@@ -2,9 +2,8 @@ var controller;
 var shouldAbort = false;
 var laiOptions;
 const storageOptionKey = 'laiOptions';
+const sessionHistoryKey = 'sessionHistory';
 const manifest = chrome.runtime.getManifest();
-var chatHistory = [];
-
 
 chrome.runtime.onInstalled.addListener(() => {
     init();
@@ -35,8 +34,8 @@ chrome.action.onClicked.addListener((tab) => {
     if(tab.url.startsWith('http')) {
         chrome.tabs.sendMessage(tab.id, { action: "toggleSidebar" })
             .catch(async e => {
-                console.error(`>>> ${manifest.name}`, e);
-                await showUIMessage(tab, e.message, 'error');
+                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+                await showUIMessage(e.message, 'error', tab);
             });
     }
 });
@@ -53,11 +52,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!controller) {
         controller = new AbortController();
     }
+    let response;
     switch (request.action) {
         case 'getModels':
             getModels()
             .then(response => sendResponse(response) )
-            .catch(error => {
+            .catch(async error => {
+                dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
@@ -65,14 +66,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             shouldAbort = false;
             fetchDataAction(request, sender).then(response => {
                 sendResponse(response);
-            }).catch(error => {
+            }).catch(async error => {
+                dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
         case "getHooks":
             getHooks()
             .then(response => sendResponse(response) )
-            .catch(error => {
+            .catch(async error => {
+                dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
@@ -82,7 +85,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         case 'extractText':
             convertFileToText(request.fileContent)
                 .then(response => sendResponse(response))
-                .catch(e => {
+                .catch(async e => {
+                    dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
             break;
@@ -90,7 +94,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             chrome.tabs.create({url: chrome.runtime.getURL('options.html')});
             break;
         default:
-            console.error('Unrecognized action:', request?.action);
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
     }
     return true;
 });
@@ -109,40 +113,27 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
             await askAIExplanation(info, tab);
             break;
         case "sendPageContent":
-            if(tab.id){
-                chrome.scripting.executeScript({
-                    target: {tabId: tab.id},
-                    func: extractEnhancedContent
-                }, (response) => {
-                    const pageContent = response?.[0]?.result ?? '';
-                    if (!pageContent) {  return;  }
-                        chrome.tabs.sendMessage(tab.id, {
-                            action: "activePageContent",
-                            selection: pageContent
-                        });
-                });
-            }
+            await chrome.tabs.sendMessage(tab.id, { action: "activePageContent" });
             break;
         case "selectAndSendElement":
             if (!tab?.id) {
-                console.error(`>>> Expected tab.id; received ${tab?.id}`, tab);
+                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Expected tab.id; received ${tab?.id}`, tab);
                 return;
             }
-            chrome.tabs.sendMessage(tab.id, {
+            await chrome.tabs.sendMessage(tab.id, {
                 action: "toggleSelectElement",
                 selection: true
-            }).catch(async e => {
-                console.error(`<<< Failed to send a message`, e);
-                await showUIMessage(tab, e.message, 'error')
             });
             break;
+        case "openOptions":
+            chrome.tabs.create({url: chrome.runtime.getURL('options.html')});
+            break;
         default:
-            console.error(`>>> Unknown menu id: ${info?.menuItemId}`);
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Unknown menu id: ${info?.menuItemId}`);
         }
 });
 
 function init(){
-    chatHistory = [];
     composeContextMenu()
 }
 
@@ -182,68 +173,24 @@ function composeContextMenu() {
         parentId: "sendToLocalAi",
         contexts: ["all"]
     });
-}
 
-async function fetchUserCommandResult(command, sender) {
-    let res = '';
-    switch (command) {
-        case 'page':
-            const response = await chrome.scripting.executeScript({
-                target: {tabId: sender.tab.id},
-                func: extractEnhancedContent
-            });
-            if (chrome.runtime.lastError) {
-                console.error(`>>> ${manifest.name}`, chrome.runtime.lastError.message);
-                return res;
-            }
-            res = response?.[0]?.result ?? '';
-            break;
-        case 'now':
-            res = (new Date()).toISOString();
-            break;
-        case 'today':
-            res = (new Date()).toISOString().split('T')[0];
-            break;
-        case 'time':
-            res = (new Date()).toISOString().split('T')[1];
-            break;
-        case 'url':
-            res = sender.url;
-            break;
-    }
+    chrome.contextMenus.create({
+        id: "separatorBeforeOptions",
+        type: "separator",
+        parentId: "sendToLocalAi",
+        contexts: ["all"]
+    });
 
-    return res;
+    chrome.contextMenus.create({
+        id: "openOptions",
+        title: "Options",
+        parentId: "sendToLocalAi",
+        contexts: ["all"]
+    });
 }
 
 function extractEnhancedContent() {
-    const bodyClone = document.body.cloneNode(true);
-
-    // Selector for common elements not directly related to the main content
-    const unwantedSelectors = [
-        'meta', 'code', 'script', 'style', 'nav', 'aside', 'link', 'select', 'form', 'iframe', 'video',
-        'input', 'button', 'svg', 'img', '[class*="sidebar"]', '[class*="side-nav"]', '.sidebar', '.widget'
-    ];
-
-    unwantedSelectors.forEach(selector => {
-        const elements = bodyClone.querySelectorAll(selector);
-        elements.forEach(el => el.remove());
-    });
-
-    // Remove HTML comments - nodeType === 8
-    const removeComments = (node) => {
-        for (let i = 0; i < node.childNodes.length; i++) {
-            const child = node.childNodes[i];
-            if (child.nodeType === 8 || (child.nodeType === 3 && !/\S/.test(child.nodeValue))) {
-                node.removeChild(child);
-                i--;
-            } else if (child.nodeType === 1) {
-                removeComments(child);
-            }
-        }
-    };
-    removeComments(bodyClone);
-
-    return bodyClone.textContent.replace(/[\w\s]+and others in your network/g, '').trim();
+    return getPageTextContent();
 }
 
 // Ollama returns several json object in a single response which invalidates the JSON
@@ -265,19 +212,21 @@ function processTextChunk(textChunk) {
 
 async function handleStreamingResponse(reader, senderTabId) {
     if (!reader || !reader.read) { return; }
+    const aiResponseData = [];
 
     const read = async () => {
         if (shouldAbort) {
             await reader.cancel();
             chrome.tabs.sendMessage(senderTabId, { action: "streamAbort" })
-                .catch(async e => await showUIMessage(null, e.message, 'error'));
+                .catch(async e => await showUIMessage(e.message, 'error'));
             return;
         }
         try {
             const { done, value } = await reader.read();
             if (done) {
+                await dumpInFrontConsole(`${manifest.name} - [${getLineNumber()}] - response completed`, {"role": "assistent", "content": aiResponseData}, 'log');
                 chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" })
-                    .catch(async e => await showUIMessage(null, e.message, 'error'));
+                    .catch(async e => await showUIMessage(e.message, 'error'));
                 return;
             }
             const textChunk = new TextDecoder().decode(value);
@@ -285,24 +234,25 @@ async function handleStreamingResponse(reader, senderTabId) {
             try {
                 data = JSON.parse(data);
             } catch (e) {
-                await showUIMessage(null, e.message, 'error');
-                console.log(`>>>`, e);
-                console.log(`>>> textChunk`, textChunk);
-                console.log(`>>> data`, data);
+                await showUIMessage(e.message, 'error');
+                await dumpInFrontConsole(`${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, 'error');
+                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+                console.log(`>>> ${manifest.name} - [${getLineNumber()}] - textChunk`, textChunk);
+                console.log(`>>> ${manifest.name} - [${getLineNumber()}] - data`, data);
+                shouldAbort = true;
             }
 
-            if(data.message){  chatHistory.push(data.message);  }
             if (Array.isArray(data)) {
                 data.forEach(el => chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(el) }));
             } else {
                 chrome.tabs.sendMessage(senderTabId, { action: "streamData", data: JSON.stringify(data) })
-                    .catch(async e => await showUIMessage(null, e.message, 'error'));
+                    .catch(async e => await showUIMessage(e.message, 'error'));
             }
             await read();
         } catch (error) {
             if (!shouldAbort) {
                 chrome.tabs.sendMessage(senderTabId, { action: "streamError", error: error.toString() })
-                    .catch(async e => await showUIMessage(null, e.message, 'error'));
+                    .catch(async e => await showUIMessage(e.message, 'error'));
             }
         }
     };
@@ -317,8 +267,8 @@ async function askAIExplanation(info, tab) {
             selection: info.selectionText
         });
     } catch (e) {
-        await showUIMessage(tab, e.message, 'error');
-        console.error('>>>', e);
+        await showUIMessage(e.message, 'error');
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
     }
 }
 
@@ -339,39 +289,34 @@ function getLastConsecutiveUserRecords(messages) {
 
 
 async function fetchDataAction(request, sender) {
-    if((request?.data?.messages || []).length < 1){  return {"status": "warning", "message": "Empty prompt"};  }
-    // let theExternalResources = request?.externalResources || [];
-    // let binaryFormData = getBinaryFormData(request?.binaryFormData);
+    let messages = await getChatHistory() || [];
+    if(messages.length < 1){  return {"status": "warning", "message": "Empty prompt"};  }
 
-    if(Object.keys(laiOptions ?? {}).length < 1){
-        laiOptions = await getOptions();
-    }
+    if(Object.keys(laiOptions ?? {}).length < 1){  laiOptions = await getOptions();  }
 
     if(!laiOptions?.aiUrl){
         let msg = 'Missing API endpoint!';
-        await showUIMessage(sender.tab, `${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
-        console.error(msg, laiOptions);
+        await showUIMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error', sender.tab);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg}`, laiOptions);
         return {"status": "error", "message": msg};
     }
 
     const url = request?.url ?? laiOptions?.aiUrl;
     if(!url){
         let msg = `Faild to compose the request URL - ${url}`;
-        await showUIMessage(sender.tab, msg, 'error');
-        console.error(`${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+        await showUIMessage(msg, 'error', sender.tab);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
         return {"status": "error", "message": msg};
     }
 
     const controller = new AbortController();
-    let data = getLastConsecutiveUserRecords(request.data.messages);
-
-    data = await addSystemCommandsToUserInput(data, sender);
 
     if(laiOptions?.aiModel){
         request.data['model'] = laiOptions?.aiModel || '';
     }
 
-    request.data.messages = builtMessagesWithHistory(data);
+    request.data.messages = messages;
+    await dumpInFrontConsole(`[${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender.tab);
 
     try{
         const response = await fetch(url, {
@@ -381,9 +326,7 @@ async function fetchDataAction(request, sender) {
         signal: controller.signal,
         });
 
-        if(response.status > 299){
-            throw new Error(`${response.status}: ${response.statusText}`);
-        }
+        if(response.status > 299){  throw new Error(`${response.status}: ${response.statusText}`);  }
 
         if(shouldAbort && controller){
             controller.abort();
@@ -398,6 +341,7 @@ async function fetchDataAction(request, sender) {
             chrome.tabs.sendMessage(sender.tab.id, { action: "streamAbort"});
         } else {
             chrome.tabs.sendMessage(sender.tab.id, { action: "streamError", error: e.toString()});
+            await dumpInFrontConsole(`[${getLineNumber()}] Error: ${e.message}`, e, 'error', sender.tab);
             return {"status": "error", "message": e.message};
         }
     }
@@ -408,108 +352,15 @@ async function fetchDataAction(request, sender) {
     return {"status": "success", "message": "Request sent. Awaiting response."};
 }
 
-function builtMessagesWithHistory(data){
-    let messagesWithHistory = [];
-    function calculateTokenCount(msg) {
-        // Simple token count based on characters (1 token = ~4 characters, but adjust for your use case)
-        let totalTokens = 0;
-        msg.forEach(msg => {
-            totalTokens += Math.ceil(msg.content.length / 4); // Approximate token calculation
-        });
-        return totalTokens;
-    }
-
-    const maxTokenLimit = 131072; // TODO: to be taken from the LLM if avaliabel on model change. Store it into the local storage with the others
-
-    // Step 1: Add chat history first
-    chatHistory.forEach(content => {
-        messagesWithHistory.push(content);
-    });
-
-    // Step 2: Add current prompt chunks
-    const newChunks = splitInputToChunks(data, 4096);
-    chatHistory.push(...newChunks);
-    messagesWithHistory.push(...newChunks);
-
-    // Step 3: Calculate the total token count
-    let totalTokens = calculateTokenCount(messagesWithHistory);
-
-    // Step 4: Trim history if total token count exceeds limit
-    while (totalTokens > maxTokenLimit) {
-        messagesWithHistory.shift();
-
-        totalTokens = calculateTokenCount(messagesWithHistory); // Recalculate the token count
-    }
-
-    return messagesWithHistory;
-}
-
-async function addSystemCommandsToUserInput(userInputText, sender) {
-    if (!userInputText && resources.length < 1) {  return '';  }
-
-    var combinedResult = [];
-    let userCommands = [];
-    if (Array.isArray(userInputText)) {
-        userInputText.forEach(txt => {
-            txt = txt.replace("📃", '');
-            userCommands = [...txt.matchAll(/@\{\{([\s\S]+?)\}\}/gm)]
-        });
-    } else {
-        userInputText = userInputText.replace("📃", '');
-        userCommands = [...userInputText.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
-    }
-
-    if (userCommands.length < 1){ return userInputText;  }
-
-    for (const cmd of userCommands) {
-        if (cmd && cmd.length > 1 && cmd[1]) {
-            let additionalInfo = await fetchUserCommandResult(cmd[1], sender);
-            if(cmd[1] && cmd[1] === 'page'){
-                additionalInfo = `${cmd[1]} content is between [PAGE] and [/PAGE]:\n[PAGE] ${additionalInfo} [/PAGE]. Using this content as a context of your respond.`;
-            }
-            combinedResult.push(additionalInfo);
-        }
-    }
-
-    for (let i = 0; i < userCommands.length; i++) {
-        const cmd = userCommands[i];
-        userInputText = userInputText.replace(cmd[0], combinedResult[i]);
-    }
-
-    return userInputText;
-}
-
-function splitInputToChunks(str, chunkSize) {
-    const chunks = [];
-    let currentChunk = "";
-
-    const words = str.split(/\s+/);
-
-    for (let word of words) {
-        if ((currentChunk + word).length > chunkSize) {
-            chunks.push({ "role": "user", "content": currentChunk.trim() });
-            currentChunk = word + " ";
-        } else {
-            currentChunk += word + " ";
-        }
-    }
-
-    if (currentChunk.trim().length > 0) {
-        chunks.push({ "role": "user", "content": currentChunk.trim() });
-    }
-
-    return chunks;
-}
-
 async function convertFileToText(fileAsB64) {
     if (!fileAsB64) {
-        console.error('Invalid file provided');
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Invalid file provided`);
         return '';
     }
 
     let url = laiOptions.tika?.trim();
     if (!url) {
-        showUIMessage(null, 'Missing document converter endpoint!', 'error');
+        await showUIMessage('Missing document converter endpoint!', 'error');
         return '';
     }
 
@@ -529,59 +380,15 @@ async function convertFileToText(fileAsB64) {
     try {
         const response = await fetch(url, options);
         if (!response.ok) {
-            console.error(`Error: Network response was not ok (${response.status}: ${response.statusText})`);
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: Network response was not ok (${response.status}: ${response.statusText})`);
             return '';
         }
         const res = typeof response === 'string' ? response : (typeof response.text === 'function' ? await response.text() : '');
         return res;
     } catch (e) {
-        console.error(`Error fetching text from file:`, e);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error fetching text from file: ${e.message}`, e);
         console.log(`Failed request to ${url} with file:`, fileAsB64);
         return '';
-    }
-}
-
-
-async function fetchExternalResource(endpoint, params) {
-    if (!endpoint || typeof(endpoint) !== 'string') {  return;  }
-    if (!laiOptions?.webHook) {  return;  }
-
-    const url = `${laiOptions.webHook.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`; // Remove duplicate slashes
-
-    let options = {  method: "GET", headers: {}  };
-
-    if (params) {
-        let body;
-        if (params instanceof FormData) {
-            body = params;  // When using FormData, the browser sets the correct Content-Type automatically
-        } else if (typeof(params) === 'string') {
-            body = params;
-            options.headers["Content-Type"] = "text/plain";
-        } else {
-            try {
-                body = JSON.stringify(params);
-                options.headers["Content-Type"] = "application/json";
-            } catch (e) {
-                console.error(`>>> ${manifest.name}`, e);
-                body = params;
-                options.headers["Content-Type"] = "application/x-www-form-urlencoded";
-            }
-        }
-
-        options.method = "POST";
-        options.body = body;
-    }
-
-    let response;
-    try {
-        response = await fetch(url, options);
-        return await response.text();
-    } catch (e) {
-        await showUIMessage(null, e.message, 'error');
-        console.log(`>>> ${manifest.name} - ERROR:`, e);
-        console.log(`>>> ${manifest.name} - url: ${url}; params`, params ?? '');
-        console.log(`>>> ${manifest.name} - response:`, response);
-        return;
     }
 }
 
@@ -594,7 +401,7 @@ function addPersonalInfoToSystemMessage(systemContent){
         strPersonalInfo = JSON.stringify(personalInfo);
     } catch (e) {
         strPersonalInfo = '';
-        console.error(e);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] -${e.message}`, e);
     }
     if(systemContent.indexOf('[personal information:') < 0){
         systemContent += ` [personal information: ${strPersonalInfo}]`
@@ -640,17 +447,53 @@ async function getOptions() {
     try {
         obj = await chrome.storage.sync.get(storageOptionKey);
     } catch (e) {
-        console.error(e);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
     }
 
     return Object.assign({}, defaults, obj.laiOptions);
 }
 
-async function showUIMessage(tab, message, type = '') {
-    if (!/^http/i.test(tab.url)) { return; }
+async function getChatHistory(){
+    try {
+        obj = await chrome.storage.local.get(sessionHistoryKey);
+        return obj.sessionHistory || [];
+    } catch (e) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+    }
+}
+
+async function setChatHistory(newObj){
+    let sessionHistory = [];
+    try {
+        sessionHistory = await getChatHistory();
+        if(Array.isArray(newObj)){
+            sessionHistory.push(...newObj);
+        } else {
+            sessionHistory.push(newObj);
+        }
+        await chrome.storage.local.set({ [sessionHistoryKey]: sessionHistory });
+    } catch (e) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+    }
+
+    return sessionHistory || [];
+}
+
+async function showUIMessage(message, type = '', tab) {
     if(!tab) {  tab = await getCurrentTab();  }
+    if (!/^http/i.test(tab.url)) { return; }
     chrome.tabs.sendMessage(tab.id, {"action": "showMessage", message: message, messageType: type})
-        .catch(e => console.error(`>>> ${manifest.name}`, e));
+        .catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
+}
+
+async function dumpInFrontConsole(message, obj, type = 'log', tab){
+    if(!tab) {  tab = await getCurrentTab();  }
+    if (!/^http/i.test(tab.url)) { return; }
+    try {
+        await chrome.tabs.sendMessage(tab.id, {"action": "dumpInConsole", message: message, obj: JSON.stringify(obj), type: type});
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+    }
 }
 
 async function getCurrentTab() {
@@ -665,12 +508,12 @@ async function getModels(){
     if(!laiOptions) {  laiOptions = await getOptions();  }
     let urlVal = laiOptions?.aiUrl;
     if(!urlVal){
-        showUIMessage(`No API endpoint found - ${urlVal}!`, 'error');
+        await showUIMessage(`No API endpoint found - ${urlVal}!`, 'error');
         return false;
     }
 
     if(!urlVal.startsWith('http')){
-        showUIMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
+        await showUIMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
         return false;
     }
 
@@ -689,7 +532,7 @@ async function getModels(){
       models = await response.json();
       if(models.models && Array.isArray(models.models)) {  return {"status":"success", "models": models.models};  }
     } catch (e) {
-      console.error(e);
+      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
       return {"status": "error", "message": e.message};
     }
 }
@@ -723,10 +566,15 @@ async function getHooks(){
 
 function tryReloadExtension() {
     try {
-        console.log(`>>> ${manifest.name} - trying to reload`);
+        console.log(`>>> ${manifest.name} - [${getLineNumber()}] - trying to reload`);
         chrome.runtime.reload();
     } catch (err) {
-        if(chrome.runtime.lastError){  console.error(`${manifest.name}`, chrome.runtime.lastError);  }
-        console.error(`>>> ${manifest.name}`, err);
+        if(chrome.runtime.lastError){  console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error:`, chrome.runtime.lastError);  }
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
     }
+}
+
+function getLineNumber() {
+    const e = new Error();
+    return e.stack.split("\n")[2].trim().replace(/\s{0,}at (.+)/, "[$1]");
 }

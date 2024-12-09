@@ -2,3 +2,4 @@
 *.bak
 *.back
 .vscode/
+*.log

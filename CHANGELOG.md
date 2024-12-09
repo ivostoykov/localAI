@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.20.68] 2024-12-6 - latest
+## [1.22.37] 2024-12-09 - latest
 ### Options page
 - Added `test connection` button
 - Added converting binary to text service and point
@@ -19,6 +19,8 @@
 - The response is possible to be inserted in element allowing input by point-and-click
 - Response formatting parser has some improvements
 - Added endpoint for document processing
+- A number of bugs fixed
+- Improved showing background messages to the user
 
 ## [1.17.68] 2024-09-01
 
