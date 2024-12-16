@@ -552,6 +552,9 @@ async function onPromptTextAreaKeyDown(e) {
         addCommandPlacehodersValues(elTarget.value);
         addUserInputIntoMessageQ(elTarget.value);
         messages = [{"role": "user", "content": messages.map(e => e.content).join('\n')}];
+        if(images.length > 0){
+            messages[messages.length - 1]["images"] = images;
+        }
         await setChatHistory(messages[0]);
         addSystemPrompt();
         try {
@@ -573,6 +576,7 @@ function addAttachmentsToUserInput() {
     const l = attachments.length;
     const content = [];
     const guidlines = `Asnwer the user prompt incorporating inline citations enclosed between one or more tags [SELECTION X] and [/SELECTION X], whene X is a sequencial number.
+        Selection URL is between [PAGE_URL] and [/PAGE_URL]
         ### Gidelines
         - If [SELECTION X] is explicitly profided use it as a context. If it is unreadable or of poor quality, inform the user and provide the best possible answer.
         - **Do not include [SELECTION X] in your answer**
@@ -589,6 +593,7 @@ function addAttachmentsToUserInput() {
     }
     if(content.length < 1){ return;  }
     content.unshift(guidlines);
+    content.push(`[PAGe_URL]${document.location.href}[/PAGe_URL]`);
     messages.push({ "role": "user", "content": content.join('\n') });
 }
 
@@ -1028,10 +1033,6 @@ function queryAI() {
         return;
     }
 
-    if(images.length > 0){
-        messages[messages.length - 1]["images"] = images;
-    }
-
     const data = {
         "messages": messages,
         "stream": true
@@ -1256,7 +1257,7 @@ function getPageTextContent() {
 
     let content = bodyClone.textContent.replace(/[ \t]+/g, ' ')
     content = content.replace(/\s+/g, '\n');
-    return `The user added content between [PAGE] and [/PAGE] related with the query.
+    return `The user added content between [PAGE] and [/PAGE] related with the query. The url is between [PAGE_URL] and [/PAGE_URL].
         ### Gidelines
         - If [PAGE] is explicitly profided use it as a context. If it is unreadable or of poor quality, inform the user and provide the best possible answer.
         - **Do not include [PAGE] in your answer**
@@ -1264,6 +1265,7 @@ function getPageTextContent() {
         - If uncertain, ask the user for clarification.
         ### Output
         Provide a clear and direct response to the prompt without extra breakdown or analyses unless explicitly asked for.
+        [PAGE_URL]${document.location.url}[/PAGE_URL]
         [PAGE] ${content.trim()} [/PAGE]`;
 }
 
@@ -1287,7 +1289,6 @@ function ask2ExplainSelection(response) {
     if (!userInput) { return; }
 
     const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
-    // attachments.push(`Page content is between [PAGE] and [/PAGE]:\n[PAGE] ${getPageTextContent()} [/PAGE]. If needed, use this content as a context of your respond. Omit it if you can reply directly.`);
     attachments.push(getPageTextContent());
 
     const enterEvent = new KeyboardEvent('keydown', {

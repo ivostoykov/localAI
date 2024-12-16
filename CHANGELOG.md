@@ -1,5 +1,9 @@
 # Local AI - Changelog
 
+## [1.22.47] 2024-12-16 - latest
+- `Select and Send Element` now separate image from text elements and prompt them accordingly. Processing images required LLM that supports it, like llama3.2-vision
+- Some bugs were fixed.
+
 ## [1.22.37] 2024-12-09 - latest
 ### Options page
 - Added `test connection` button

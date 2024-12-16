@@ -1,14 +1,12 @@
 {
     "manifest_version": 3,
     "name": "Local AI helper",
-    "version": "1.22.37",
+    "version": "1.22.47",
     "options_page": "options.html",
     "permissions": [
         "activeTab",
         "storage",
-        "contextMenus",
-        "scripting",
-        "webRequest"
+        "contextMenus"
     ],
     "host_permissions": [
         "*://*/*"

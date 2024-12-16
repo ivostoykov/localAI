@@ -102,7 +102,7 @@ async function allDOMContentLoaded(e){
     el.style.border = "5px double lime";
   }, true);
 
-  document.addEventListener('mouseout', laiClearElementOver, true);
+  document.addEventListener('mouseout', clearElementOverDecoration, true);
 
   try {
     laiOptions = await getLaiOptions();
@@ -134,20 +134,37 @@ function init() {
   localAI.attachShadow({"mode": 'open'});
 }
 
-function laiClearElementOver(e){
+function clearElementOverDecoration(e){
   let el = e.target;
   const currentBorder = el.getAttribute('data-original-border') || '';
   el.style.border = currentBorder;
   el.removeAttribute('data-original-border');
 }
 
+function getBase64ForImg(img){
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  let res = canvas.toDataURL();
+  return res.split(',').pop();
+}
+
 function laiGetClickedSelectedElement(event){
   isElementSelectionActive = false;
-  laiClearElementOver(event);
-  let elementTextContent = event.target.innerText ?? ''; // get the visible text only
-  attachments.push(elementTextContent);
-  showMessage('Element picked up successfully.', 'info')
-  updateStatusBar('Selected content added to the context.');
+  clearElementOverDecoration(event);
+  let el = event.target;
+  let isImg = el.tagName === 'IMG';
+  if (isImg) {
+    images.push(getBase64ForImg(el));
+    showMessage('Image picked up successfully.', 'info')
+    updateStatusBar('Selected image added to the context.');
+  } else {
+    attachments.push(el.innerText ?? ''); // get the visible text only
+    showMessage('Element picked up successfully.', 'info')
+    updateStatusBar('Selected content added to the context.');
+  }
 }
 
 function buildMainButton() {
