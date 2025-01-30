@@ -1,6 +1,11 @@
 # Local AI - Changelog
 
-## [1.22.47] 2024-12-16 - latest
+## [1.22.58] 2025-01-30 - latest
+- Attachments bug fixes
+- Custom commands bug fixes
+- Accepts selection of mupliple page snippets
+
+## [1.22.47] 2024-12-16
 - `Select and Send Element` now separate image from text elements and prompt them accordingly. Processing images required LLM that supports it, like llama3.2-vision
 - Some bugs were fixed.
 

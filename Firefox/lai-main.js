@@ -98,7 +98,6 @@ function laiInitSidebar() {
         if (!element) {  return; }
         const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
         element.dispatchEvent(event);
-        // shadowRoot.getElementById('laiRecycleAll')?.click();
     });
 
     shadowRoot.querySelector('#optionsMenu')?.addEventListener('click', function (e) {
@@ -198,20 +197,6 @@ function addSystemPrompt(){
         messages.unshift({ role: "system", content: value });
     }
 }
-
-/* function onSystemInstructionsChange(e) {
-    const value = e.target.value;
-    if (!value) {
-        return;
-    }
-
-    const index = messages.findIndex(message => message.role === "system");
-    if (index !== -1) {
-        messages[index].content += value;
-    } else {
-        messages.push({ role: "system", content: value });
-    }
-} */
 
 function createNewSession(e, shadowRoot) {
     aiSessions.push([]);
@@ -548,8 +533,8 @@ async function onPromptTextAreaKeyDown(e) {
         addInutCardToUIChatHistory('', 'ai');
 
         // update data
-        addAttachmentsToUserInput();
         addCommandPlacehodersValues(elTarget.value);
+        addAttachmentsToUserInput();
         addUserInputIntoMessageQ(elTarget.value);
         messages = [{"role": "user", "content": messages.map(e => e.content).join('\n')}];
         if(images.length > 0){
@@ -575,25 +560,13 @@ function addAttachmentsToUserInput() {
     if (attachments.length < 1) { return false; }
     const l = attachments.length;
     const content = [];
-    const guidlines = `Asnwer the user prompt incorporating inline citations enclosed between one or more tags [SELECTION X] and [/SELECTION X], whene X is a sequencial number.
-        Selection URL is between [PAGE_URL] and [/PAGE_URL]
-        ### Gidelines
-        - If [SELECTION X] is explicitly profided use it as a context. If it is unreadable or of poor quality, inform the user and provide the best possible answer.
-        - **Do not include [SELECTION X] in your answer**
-        - If you don't know the answer, clearly state that.
-        - If uncertain, ask the user for clarification.
-        ### Output
-        Provide a clear and direct response to the prompt. Do not provide breakdown or analyses unless explicitly asked for.`;
+
     for (let i = 0; i < l; i++) {
-        if(attachments[i].indexOf('[PAGE]') > -1){
-            messages.push({ "role": "user", "content": attachments[i] });
-            continue;
-        }
-        content.push(`[SELECTION ${i}]${attachments[i]}[/SELECTION ${i}]`);
+        content.push(`ATTACHMENT START ${attachments[i]} ATTACHMENT END\n`);
     }
     if(content.length < 1){ return;  }
-    content.unshift(guidlines);
-    content.push(`[PAGe_URL]${document.location.href}[/PAGe_URL]`);
+
+    content.push(`PAGE URL: ${document.location.href}\n`);
     messages.push({ "role": "user", "content": content.join('\n') });
 }
 
@@ -608,13 +581,13 @@ function addCommandPlacehodersValues(userInputValue){
                 content.push(getPageTextContent());
                 break;
             case 'now':
-                content.push(`For real-time date and time use following value: ${(new Date()).toISOString()}`);
+                content.push(`current date and time or timestamp is: ${(new Date()).toISOString()}`);
                 break;
             case "today":
-                content.push(`real-time date use following value: ${(new Date()).toISOString().split('T')[0]}`);
+                content.push(`current date is: ${(new Date()).toISOString().split('T')[0]}`);
                 break;
             case "time":
-                content.push(`real-time time now use following value: ${(new Date()).toISOString().split('T')[1]}`);
+                content.push(`current time is: ${(new Date()).toISOString().split('T')[1]}`);
                 break;
         }
     });
@@ -1257,16 +1230,7 @@ function getPageTextContent() {
 
     let content = bodyClone.textContent.replace(/[ \t]+/g, ' ')
     content = content.replace(/\s+/g, '\n');
-    return `The user added content between [PAGE] and [/PAGE] related with the query. The url is between [PAGE_URL] and [/PAGE_URL].
-        ### Gidelines
-        - If [PAGE] is explicitly profided use it as a context. If it is unreadable or of poor quality, inform the user and provide the best possible answer.
-        - **Do not include [PAGE] in your answer**
-        - If you don't know the answer, clearly state that.
-        - If uncertain, ask the user for clarification.
-        ### Output
-        Provide a clear and direct response to the prompt without extra breakdown or analyses unless explicitly asked for.
-        [PAGE_URL]${document.location.url}[/PAGE_URL]
-        [PAGE] ${content.trim()} [/PAGE]`;
+    return ` PAGE URL: ${document.location.url}\nPAGE CONTENT START: ${content.trim()} PAGE CONTENT ENDED`;
 }
 
 function ask2ExplainSelection(response) {
