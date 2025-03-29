@@ -259,6 +259,9 @@ Tools enhance the model's utility, allowing it to handle complex scenarios by in
 
 [OpenAI Documentation](https://platform.openai.com/docs/guides/function-calling?api-mode=responses) provide description of definition structure. Whenever a prompt is sent to LLM those definitions will be included.
 
+#### External Helper Project
+
+For those seeking ideas on implementing the functions, I've created a small project available [here](https://github.com/ivostoykov/llmTools). It can be used "as is" or modified to suit specific needs. For any suggestions, issues, or assistance related to this project, please use the project's own [issue tracking system](https://github.com/ivostoykov/llmTools/issues).
 
 ## User Commands
 
