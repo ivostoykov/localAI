@@ -2,6 +2,7 @@ var controller;
 var shouldAbort = false;
 var laiOptions;
 const storageOptionKey = 'laiOptions';
+const storageToolsKey = 'aiTools';
 const sessionHistoryKey = 'sessionHistory';
 const manifest = chrome.runtime.getManifest();
 
@@ -13,9 +14,9 @@ chrome.tabs.onCreated.addListener(tab => {  init();  });
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
-    if(tab.url && !tab.url.startsWith('http')) {  return;  }
+    if(tab?.url && !tab?.url?.startsWith('http')) {  return;  }
 
-    if (changeInfo.status === 'complete' && tab.url) {
+    if (changeInfo.status === 'complete' && tab?.url) {
         laiOptions = await getOptions();
         init();
     }
@@ -31,7 +32,7 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
 });
 
 chrome.action.onClicked.addListener((tab) => {
-    if(tab.url.startsWith('http')) {
+    if(tab?.url?.startsWith('http')) {
         chrome.tabs.sendMessage(tab.id, { action: "toggleSidebar" })
             .catch(async e => {
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
@@ -58,7 +59,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             getModels()
             .then(response => sendResponse(response) )
             .catch(async error => {
-                dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
+                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
@@ -67,7 +68,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             fetchDataAction(request, sender).then(response => {
                 sendResponse(response);
             }).catch(async error => {
-                dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
+                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
@@ -75,7 +76,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             getHooks()
             .then(response => sendResponse(response) )
             .catch(async error => {
-                dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
+                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error);
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
@@ -86,12 +87,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             convertFileToText(request.fileContent)
                 .then(response => sendResponse(response))
                 .catch(async e => {
-                    dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
             break;
         case "openOptionsPage":
             chrome.tabs.create({url: chrome.runtime.getURL('options.html')});
+            break;
+        case "prepareModels":
+            prepareModels(request.modelName, request.unload, sender.tab)
+                .then(response => sendResponse({status: response.status, text: response.statusText}))
+                .catch(async e => {
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                    sendResponse({ status: 'error', message: e.toString() });
+                });
+        break;
+        case "getImageBase64":
+            getImageAsBase64(request.url)
+                .then(base64 => sendResponse({ base64 }))
+                .catch(() => sendResponse({ base64: null }));
             break;
         default:
             console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
@@ -210,6 +224,28 @@ function processTextChunk(textChunk) {
     return textChunk;
 }
 
+// for responses stream = false - wait the whole response to return
+async function handleResponse(responseData = '', senderTabId) {
+    if(!responseData){
+        chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" })
+            .catch(async e => await showUIMessage(e.message, 'error'));
+        return;
+    }
+
+    console.log(`>>> ${manifest.name} - [${getLineNumber()}] - response (type: ${typeof(responseData)})`, responseData);
+    try {
+        // const resp = responseData?.message?.content || "Missing or empty reply content!";
+        // const result = resp === "Missing or empty reply content!" ? "error" : "success";
+        await chrome.tabs.sendMessage(senderTabId, { action: "streamData", response: JSON.stringify(responseData) });
+        await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" });
+    } catch (error) {
+        await showUIMessage(error.message, 'error');
+    }
+
+    return;
+}
+
+// for responses stream = true - obsolate
 async function handleStreamingResponse(reader, senderTabId) {
     if (!reader || !reader.read) { return; }
     const aiResponseData = [];
@@ -233,8 +269,9 @@ async function handleStreamingResponse(reader, senderTabId) {
             let data = processTextChunk(textChunk);
             try {
                 data = JSON.parse(data);
+                if(data.error){  throw new Error(data.error);  }
             } catch (e) {
-                await showUIMessage(e.message, 'error');
+                await showUIMessage(e.message, 'error', senderTabId);
                 await dumpInFrontConsole(`${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, 'error');
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
                 console.log(`>>> ${manifest.name} - [${getLineNumber()}] - textChunk`, textChunk);
@@ -287,12 +324,53 @@ function getLastConsecutiveUserRecords(messages) {
     return result.join('\n');
 }
 
+async function resolveToolCalls(toolCalls, toolBaseUrl) {
+    const messages = [];
+
+    for (const call of toolCalls) {
+        updateUIStatusBar(`Calling ${call.function.name}...`);
+        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tool call request`, call);
+        const funcUrl = `${toolBaseUrl}/${call.function.name}`;
+        let data;
+
+        try {
+            const res = await fetchExtResponse(funcUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(call.function.arguments),
+            });
+
+            data = res.status === 200 ? await res.json() : `There is no registered tool named ${funcUrl.split('/').pop()}`;
+            updateUIStatusBar(`${call.function.name} response received.`);
+
+        } catch (err) {
+            updateUIStatusBar(`Error occured while calling ${call.function.name}...`);
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error calling ${call.function.name}`, err, call);
+            if(err.toString().startsWith("TypeError: Failed to fetch")){
+                showUIMessage(`External tools endpoint (${funcUrl}) seems missing to be down!`, "error");
+                data = "Tool execution failed — endpoint unavailable.";
+                messages.push(
+                    { role: "assistant", content: "", tool_calls: [call] },
+                    { role: "tool", content: JSON.stringify(data) }
+                );
+                break;
+            }
+            continue;
+        }
+
+        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tool call response`, data);
+        messages.push(
+            { role: "assistant", content: "", tool_calls: [call] },
+            { role: "tool", content: JSON.stringify(data) }
+        );
+    }
+
+    return messages;
+}
 
 async function fetchDataAction(request, sender) {
-    let messages = await getChatHistory() || [];
-    if(messages.length < 1){  return {"status": "warning", "message": "Empty prompt"};  }
-
     if(Object.keys(laiOptions ?? {}).length < 1){  laiOptions = await getOptions();  }
+    const promptTools = await getPromptTools();
 
     if(!laiOptions?.aiUrl){
         let msg = 'Missing API endpoint!';
@@ -301,7 +379,7 @@ async function fetchDataAction(request, sender) {
         return {"status": "error", "message": msg};
     }
 
-    const url = request?.url ?? laiOptions?.aiUrl;
+    let url = request?.url ?? laiOptions?.aiUrl;
     if(!url){
         let msg = `Faild to compose the request URL - ${url}`;
         await showUIMessage(msg, 'error', sender.tab);
@@ -315,18 +393,42 @@ async function fetchDataAction(request, sender) {
         request.data['model'] = laiOptions?.aiModel || '';
     }
 
-    request.data.messages = messages;
+    if(promptTools.length > 0){
+        request.data["tools"] = promptTools;
+        request.data["stream"] = false;
+        request.data["tool_choice"] = "auto"
+    }
+    request["format"] = "json";
+
+    let chatHist = await getChatHistory() || [];
+
+    let context = chatHist.length > 0 ? chatHist.map(obj => `${obj.role}: ${obj.content}.`).join(' ') : '';
+    context = context ? [{"role": "user", "content": `\n\nChat context so far is: ${context}`}] : [];
+
+    let sysInstruct = request.systemInstructions || laiOptions.systemInstructions || '';
+    sysInstruct = sysInstruct ? [{ role: "system", content: sysInstruct }] : [];
+
+    const currentPrompt = request?.data?.messages || [];
+    if(currentPrompt.length < 1){ throw new Error("No prompt received!");  }
+
+    request.data.messages = [...sysInstruct, ...context, ...currentPrompt];
+
     await dumpInFrontConsole(`[${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender.tab);
 
-    try{
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(request.data),
-            signal: controller.signal,
-        });
+    await setChatHistory(currentPrompt);
 
-        if(response.status > 299){  throw new Error(`${response.status}: ${response.statusText}`);  }
+    let response;
+    let body;
+    let reqOpt = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request.data),
+        signal: controller.signal,
+    };
+    try{
+        response = await fetchExtResponse(url, reqOpt);
+        body = await response.json();
+        if(response.status > 299){  throw new Error(`${response.status}: ${response.statusText} - ${body?.error || 'No response error provided...'}`);  }
 
         if(shouldAbort && controller){
             controller.abort();
@@ -334,9 +436,25 @@ async function fetchDataAction(request, sender) {
             return  {"status": "aborted", "message": "Aborted"};
         }
 
-        await handleStreamingResponse(response?.body?.getReader(), sender.tab.id);
+        if (body?.message?.tool_calls) {
+            const newMessages = await resolveToolCalls(body.message.tool_calls, laiOptions.toolFunc);
+            await setChatHistory(newMessages);
+            request.data.messages.push(...newMessages);
+
+            response = await fetchExtResponse(url, {
+              ...reqOpt,
+              body: JSON.stringify(request.data),
+            });
+
+            body = await response.json();
+        }
+
+        updateUIStatusBar(`Final response received...`);
+        await handleResponse(body, sender.tab.id);
+        // await handleStreamingResponse(response?.body?.getReader(), sender.tab.id);
     }
     catch(e) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error`, e, response, request?.data);
         if (e.name === 'AbortError') {
             chrome.tabs.sendMessage(sender.tab.id, { action: "streamAbort"});
         } else {
@@ -350,6 +468,18 @@ async function fetchDataAction(request, sender) {
     }
 
     return {"status": "success", "message": "Request sent. Awaiting response."};
+}
+
+
+async function fetchExtResponse(url, options){
+    if(!url || !options.method){  throw new Error('Either URL or request options are empty or missing!');  }
+    try {
+        const response = await fetch(url, options);
+        return response;
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - External call to ${url} failed!`, error, options);
+        throw error;
+    }
 }
 
 async function convertFileToText(fileAsB64) {
@@ -429,6 +559,11 @@ function getPersonalInfo(){
     return personalInfo;
 }
 
+async function getPromptTools(){
+    const commands = await chrome.storage.local.get([storageToolsKey]);
+    return commands[storageToolsKey] || [];
+}
+
 async function getOptions() {
     const defaults = {
         "openPanelOnLoad": false,
@@ -481,14 +616,21 @@ async function setChatHistory(newObj){
 
 async function showUIMessage(message, type = '', tab) {
     if(!tab) {  tab = await getCurrentTab();  }
-    if (!/^http/i.test(tab.url)) { return; }
+    if (!/^http/i.test(tab?.url)) { return; }
     chrome.tabs.sendMessage(tab.id, {"action": "showMessage", message: message, messageType: type})
+        .catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
+}
+
+async function updateUIStatusBar(message, tab) {
+    if(!tab) {  tab = await getCurrentTab();  }
+    if (!/^http/i.test(tab?.url)) { return; }
+    chrome.tabs.sendMessage(tab.id, {"action": "updateStatusbar", message: message})
         .catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
 }
 
 async function dumpInFrontConsole(message, obj, type = 'log', tab){
     if(!tab) {  tab = await getCurrentTab();  }
-    if (!/^http/i.test(tab.url)) { return; }
+    if (!/^http/i.test(tab?.url)) { return; }
     try {
         await chrome.tabs.sendMessage(tab.id, {"action": "dumpInConsole", message: message, obj: JSON.stringify(obj), type: type});
     } catch (error) {
@@ -539,7 +681,7 @@ async function getModels(){
 
 async function getHooks(){
     if(!laiOptions) {  laiOptions = await getOptions();  }
-    let urlVal = laiOptions?.webHook;
+    let urlVal = laiOptions?.toolFunc;
     if(!urlVal){
         let msg = `No API endpoint found - ${urlVal}!`;
         return {"status":"error", "messsage": msg};
@@ -560,7 +702,7 @@ async function getHooks(){
         if(!hooks) {  return {"status":"error", "messsage": "No hooks returned. Is server running?"};  }
         return {"status":"success", "hooks": hooks};
     } catch (err) {
-        return {"status":"error", "messsage": `webHook seems invalud - ${urlVal}! Error: ${err.message}`};
+        return {"status":"error", "messsage": `toolFunc seems invalud - ${urlVal}! Error: ${err.message}`};
     }
 }
 
@@ -577,4 +719,43 @@ function tryReloadExtension() {
 function getLineNumber() {
     const e = new Error();
     return e.stack.split("\n")[2].trim().replace(/\s{0,}at (.+)/, "[$1]");
+}
+
+async function getImageAsBase64(url) {
+    if (!url) {  return null;  }
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      return await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(',').pop());
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+}
+
+async function prepareModels(modelName, remove = false, tab){
+    let response;
+    if(Object.keys(laiOptions ?? {}).length < 1){  laiOptions = await getOptions();  }
+    const data = {
+        "model": modelName,
+        "messages": [],
+    };
+    if(remove){  data["keep_alive"] = 0;  }
+    try {
+       response = await fetch(laiOptions?.aiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+    } catch (err) {
+        await dumpInFrontConsole(err.message, err, "error", tab);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+    }
+
+    await dumpInFrontConsole(`${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "success", tab);
+    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - response`, response);
+    return response;
 }

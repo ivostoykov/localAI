@@ -29,6 +29,12 @@ body {
     display: block;
 }
 
+.row-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
 .el-holder {
     display: grid;
     grid-template-columns: auto auto 1fr;
@@ -246,24 +252,24 @@ li.navbar-item:hover {
     border-bottom: 2px solid #777;
 }
 
-#promptRibbon ul {
+#promptRibbon ul, #toolFunctionsRibbon ul {
     list-style-type: none;
     margin: 0;
     padding: 0 0 10px 0;
     display: flex;
 }
 
-#promptRibbon li {
+#promptRibbon li, #toolFunctionsRibbon li {
     margin-right: 20px;
     cursor: pointer;
     padding: 8px;
 }
 
-#promptRibbon li:hover {
+#promptRibbon li:hover, #toolFunctionsRibbon li:hover {
     background-color: #ccc;
 }
 
-#promptRibbon li:last-child {
+#promptRibbon li:last-child, #toolFunctionsRibbon li:last-child {
     margin-right: 0;
 }
 
@@ -274,7 +280,7 @@ li.navbar-item:hover {
     margin: 0 0 10px 0;
 }
 
-.prompt-section{
+.prompt-section, .tool-section{
     overflow: auto;
 }
 
@@ -330,4 +336,8 @@ li.navbar-item:hover {
 .delete-active{
     border: 2px solid red;
     opacity: 1 !important;
+}
+
+code, pre {
+    font-family:Consolas,Monaco,Lucida Console,Liberation Mono,DejaVu Sans Mono,Bitstream Vera Sans Mono,Courier New;
 }

@@ -1,6 +1,20 @@
 # Local AI - Changelog
 
-## [1.22.58] 2025-01-30 - latest
+## [1.2X.XX] XXXX-XX-XX - latest
+- Added tool functions to extend LLMs that support them as part of the prompt, such as Llama 3.2.
+- Enhanced image functionality: users can now select an image on the page and/or attach an image as context for the prompt.
+- Extended user input edit allowing to exeute the prompt again after adjusting contents
+- Sync session with the edit
+- Added global option to set default prompt temperature.
+- Added per-prompt temperature control, temporary until tab reload or user adjustment.
+- Documentation page was updated withe the latest changes.
+- fixed missing system instructions
+- fixed some false error messages
+- fixed missing attaching icon for pages and sections
+- improved prompt context
+- fixed adding images to the prompt
+
+## [1.22.58] 2025-01-30
 - Attachments bug fixes
 - Custom commands bug fixes
 - Accepts selection of mupliple page snippets

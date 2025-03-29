@@ -12,7 +12,7 @@ document.querySelector('#aiUrl').addEventListener('blur', loadModels);
 
 document.title = manifest.name || '';
 document.getElementById('pageTitle').textContent = `${manifest.name} - ${manifest.version}`;
-document.getElementById('laiOptionsForm').addEventListener('submit', saveSettings);
+document.getElementById('laiOptionsForm').addEventListener('submit', async e => await saveSettings(e));
 document.getElementById('cancelButton').addEventListener('click', cancelOptions);
 document.getElementById('deleteAllSessions').addEventListener('click', deleteAllAiSessions);
 document.getElementById('exportSessions').addEventListener('click', exportAsFile);
@@ -22,21 +22,29 @@ document.getElementById('aiUrl').addEventListener('input', loadModels)
 document.getElementById("dlgBtnOK").addEventListener('click', closeDialog);
 document.getElementById("dlgBtnCancel").addEventListener('click', closeDialog);
 
-function saveSettings(e) {
+document.getElementById("tempRange").addEventListener('input', updateTempValue);
+document.getElementById("tempIntput").addEventListener('input', updateTempValue);
+
+async function saveSettings(e) {
     e.preventDefault();
 
     const optionsData = {};
-    const elements = this.elements;
+    const elements = e.target.elements;
+    if(!elements){
+        showMessage(`Failed to save changes!`, 'error');
+        console.error(`Form element not found or empty: ${e.target?.id}`, e.target);
+        return;
+    }
 
     for (let i = 0; i < elements.length; i++) {
         const element = elements[i];
-        if (['select', 'checkbox', 'text', 'textarea'].indexOf(element.type) < 0) {
+        if (['select', 'checkbox', 'text', 'textarea', 'number', 'range', 'url'].indexOf(element.type) < 0) {
             continue;
         }
         optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
     }
 
-    const dataLists = ['modelList', 'urlList', 'webHookList'];
+    const dataLists = ['modelList', 'urlList'];
     for (let i = 0; i < dataLists.length; i++) {
         const list = dataLists[i];
         const el = document.querySelector(`select[data-list="${list}"]`);
@@ -48,9 +56,8 @@ function saveSettings(e) {
     }
 
     laiOptions = optionsData;
-    chrome.storage.sync.set({ 'laiOptions': optionsData }, function () {
-        showMessage('Settings saved', 'success');
-    });
+    await chrome.storage.sync.set({ 'laiOptions': optionsData });
+    showMessage('Settings saved', 'success');
 }
 
 function loadSettings(e) {
@@ -58,7 +65,7 @@ function loadSettings(e) {
         const formData = obj.laiOptions || {};
         laiOptions = formData;
 
-        const dataLists = ['modelList', 'urlList', 'webHookList'];
+        const dataLists = ['modelList', 'urlList', 'toolFuncList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             if (!formData[list]) { continue; }
@@ -82,6 +89,8 @@ function loadSettings(e) {
                 }
             }
         });
+
+        document.getElementById("tempIntput").dispatchEvent(new Event('input', { bubbles: true }));
     });
 }
 
@@ -100,6 +109,8 @@ function attachListeners(e) {
     document.querySelector('#exportPromptBtn')?.addEventListener('click', exportAsFile);
     document.querySelector('#importPromptBtn')?.addEventListener('click', importUserCommand);
     document.querySelector('#deletePromptBtn')?.addEventListener('click', deleteUserCommands);
+
+    document.querySelector('#newFuncBtn')?.addEventListener('click', async e => await createNewToolFunc(e)  );
 }
 
 function onshowEmbeddedButtonClicked(e) {
@@ -210,7 +221,6 @@ async function loadModels(e) {
         return false;
     }
 
-    // let urlVal = aiUrl.value.trim();
     let urlVal = aiUrl.options[aiUrl.selectedIndex].value.trim();
     if (urlVal === '') { return; }
     if (!urlVal.startsWith('http')) {
@@ -533,22 +543,49 @@ async function switchSection(e){
 
     document.querySelector('.active-navebar-item')?.classList?.remove('active-navebar-item');
     el.classList.add('active-navebar-item');
-    if(tabBodyId === 'prompts'){
-        showSpinner();
-        try {
-            await getAiUserCommands();
-        } catch (error) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${error.message}`, error);
-        } finally{  hideSpinner();  }
 
-        document.querySelector('#promptRibbon')?.classList.remove('invisible');
-    }
-    else {  document.querySelector('#promptRibbon')?.classList.add('invisible');  }
+    document.querySelectorAll('#general, #promptRibbon, #toolFunctionsRibbon')?.forEach(el => {
+        el.classList.add('invisible');
+    });
 
     document.querySelectorAll('.js-tab-body')?.forEach(el => {
         if(el.id === tabBodyId){  el?.classList.remove('invisible');  }
         else {  el?.classList.add('invisible');  }
     });
+
+    switch (tabBodyId) {
+        case 'prompts':
+            document.querySelector('#promptRibbon').classList.remove('invisible');
+            await showPromptSection();
+            break;
+        case 'tools':
+            document.querySelector('#toolFunctionsRibbon').classList.remove('invisible');
+            await showToolSection();
+            break;
+        case 'general':
+            break;
+        default:
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: Wrong section Id - ${tabBodyId}!`);
+            break;
+    }
+}
+
+async function showPromptSection() {
+    showSpinner();
+    try {
+        await getAiUserCommands();
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${error.message}`, error);
+    } finally { hideSpinner(); }
+}
+
+async function showToolSection() {
+    showSpinner();
+    try {
+        await getTools();
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${error.message}`, error);
+    } finally { hideSpinner(); }
 }
 
 async function getAiUserCommands(){
@@ -566,14 +603,32 @@ async function getAiUserCommands(){
 
     for (let x=0, l=aiUserCommands.length; x<l; x++) {
         const cmd = aiUserCommands[x];
-        // for(let i = 0; i < 4; i++) {
-            const clone = document.importNode(promptTemplate, true);
-            clone.querySelector('.prompt-title').textContent = cmd.commandName;
-            clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
-            clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
-            clone.querySelector('.prompt-body').textContent = cmd.commandBody;
-            promptContainer.appendChild(clone);
-        // }
+        const clone = document.importNode(promptTemplate, true);
+        clone.querySelector('.prompt-title').textContent = cmd.commandName;
+        clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
+        clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
+        clone.querySelector('.prompt-body').textContent = cmd.commandBody;
+        promptContainer.appendChild(clone);
+    }
+}
+
+async function getTools(){
+    const commands = await chrome.storage.local.get(['aiTools']);
+    const generalSection = document.getElementById('general');
+    const height = generalSection?.offsetHeight || -1;
+    const aiTools = commands.aiTools || [];
+    if(aiTools.length < 1){  return;  }
+
+    const funcTemplate = document.getElementById('functionTemplate').content;
+    const toolsContainer = document.querySelector('#tools');
+    if(!funcTemplate || !toolsContainer){  return;  }
+    toolsContainer.replaceChildren();
+    if(height > 0){  toolsContainer.style.height = `${height}px`;  }
+
+    for (let x=0, l=aiTools.length; x<l; x++) {
+        const clone = document.importNode(funcTemplate, true);
+        clone.querySelector('.prompt-body').textContent = JSON.stringify(aiTools[x], null, 4);
+        toolsContainer.appendChild(clone);
     }
 }
 
@@ -613,21 +668,43 @@ async function applyPromptCardAction(e){
 }
 
 async function savePrompts(e){
-    const aiUserCommands = [];
-    document.querySelectorAll('.prompt-item')?.forEach(item => {
-        const cmd = {};
-        cmd['commandName'] = item.querySelector('.prompt-title').textContent.toLowerCase().replace(/\s+/g, '-');
-        cmd['commandDescription'] = item.querySelector('.prompt-description').textContent;
-        cmd['commandBody'] = item.querySelector('.prompt-body').textContent;
-        aiUserCommands.push(cmd);
-    });
-    await chrome.storage.local.set({['aiUserCommands']: aiUserCommands});
-    showMessage('Prompt updated successfully.', 'success');
+    const section = e.target.closest('section');
+    const storageData = [];
+    let storageKey = '';
+    switch (section.id) {
+        case 'tools':
+            storageKey = 'aiTools';
+            section.querySelectorAll('.prompt-item')?.forEach((item, idx) => {
+                const jsonString = item.querySelector('.prompt-body').textContent;
+                try {
+                    const jsonObject = JSON.parse(jsonString);
+                    storageData.push(jsonObject);
+                } catch (error) {
+                    showMessage(`Incalid JSON in card ${idx+1}!`);
+                    console.error('Invalid JSON: jsonString', error);
+                }
+            });
+            break;
+        case 'prompts':
+            storageKey = 'aiUserCommands';
+            section.querySelectorAll('.prompt-item')?.forEach(item => {
+                const cmd = {};
+                cmd['commandName'] = item.querySelector('.prompt-title').textContent.toLowerCase().replace(/\s+/g, '-');
+                cmd['commandDescription'] = item.querySelector('.prompt-description').textContent;
+                cmd['commandBody'] = item.querySelector('.prompt-body').textContent;
+                storageData.push(cmd);
+            });
+            break;
+    }
+
+    await chrome.storage.local.set({[storageKey]: storageData});
+    showMessage('Data updated successfully.', 'success');
 }
 
 async function createNewPrompt(e){
     const promptSection = document.querySelector('#prompts');
     if(!promptSection){  return;  }
+
     const promptTemplate = document.getElementById('promptTemplate').content;
     const clone = document.importNode(promptTemplate, true);
     const promptItem1 = promptSection.querySelector('.prompt-item');
@@ -646,4 +723,58 @@ async function createNewPrompt(e){
             }
             btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); });
     });
+}
+
+function updateTempValue(e){
+    const originator = e.target;
+    const otherElId = originator.id === "tempRange" ? "tempIntput" : "tempRange";
+    const otherEl = document.getElementById(otherElId);
+    const tempOutput = document.getElementById("tempOutput");
+    if(!otherEl){
+        console.log(`${otherElId} element not found`);
+        return;
+    }
+
+    otherEl.value = originator.value;
+    tempOutput.value = parseFloat(originator.value) < 0.5 ? 'Stricter' : (originator.value > 0.5 ? 'More Createive' : 'Neutral');
+}
+
+// tools ribbon funxtions
+async function applyPromptToolAction(e){
+    console.log(e.target);
+}
+
+async function createNewToolFunc(e){
+    const promptSection = document.querySelector('#tools');
+    if(!promptSection){  return;  }
+    const promptTemplate = document.getElementById('functionTemplate').content;
+    const clone = document.importNode(promptTemplate, true);
+    const promptItem1 = promptSection.querySelector('.prompt-item');
+    if(promptItem1){
+        promptSection.insertBefore(clone, promptItem1);
+    } else {
+        promptSection.appendChild(clone);
+    }
+    const newPromptItem = promptSection.querySelector('.prompt-item')
+    newPromptItem?.classList.add('prompt-item-edit');
+    newPromptItem.querySelectorAll('.prompt-buttons img')
+        ?.forEach(btn => {
+            if(btn.src.indexOf('edit2')> -1){
+                btn.src = btn.src.replace('edit2', 'tick');
+                btn.setAttribute('data-action', 'save');
+            }
+            btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); });
+    });
+    newPromptItem.querySelector('.prompt-body').setAttribute('contenteditable', true);
+}
+
+function getLineNumber() {
+    const e = new Error();
+    const stackLines = e.stack.split("\n").map(line => line.trim());
+    let index = stackLines.findIndex(line => line.includes(getLineNumber.name));
+
+    return stackLines[index + 1]
+        ?.replace(/\s{0,}at\s+/, '')
+        ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
+        || "Unknown";
 }

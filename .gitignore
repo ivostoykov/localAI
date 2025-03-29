@@ -3,3 +3,4 @@
 *.back
 .vscode/
 *.log
+.continuerules

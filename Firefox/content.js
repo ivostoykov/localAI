@@ -1,5 +1,7 @@
 const DONE = 'DONE';
 const storageOptionKey = 'laiOptions';
+// const storageToolsKey = 'aiTools';
+const storageUserCommandsKey = 'aiUserCommands';
 const sessionHistoryKey = 'sessionHistory';
 const commandPlacehoders = {
   "@{{page}}": "Include page into the prompt",
@@ -50,7 +52,7 @@ async function start(){
 
 async function allDOMContentLoaded(e){
 
-  document.addEventListener('click', function (event) {
+  document.addEventListener('click', async function (event) {
     hideSessionHistoryMenu();
     if(isElementSelectionActive) {  laiGetClickedSelectedElement(event);  }
 
@@ -141,27 +143,26 @@ function clearElementOverDecoration(e){
   el.removeAttribute('data-original-border');
 }
 
-function getBase64ForImg(img){
-  const canvas = document.createElement('canvas');
-  canvas.width = img.naturalWidth;
-  canvas.height = img.naturalHeight;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0);
-  let res = canvas.toDataURL();
-  return res.split(',').pop();
-}
-
-function laiGetClickedSelectedElement(event){
+async function laiGetClickedSelectedElement(event){
   isElementSelectionActive = false;
   clearElementOverDecoration(event);
   let el = event.target;
   let isImg = el.tagName === 'IMG';
   if (isImg) {
-    images.push(getBase64ForImg(el));
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'getImageBase64', url: el.src});
+      if(!response.base64){ throw new Error(`Failed to get the image from ${el.src}`);   }
+
+      images.push(response?.base64);
     showMessage('Image picked up successfully.', 'info')
     updateStatusBar('Selected image added to the context.');
+      showAttachment(el.title || el.alt || el.src.split('/').pop());
+    } catch (error) {
+      showMessage(error.message);
+    }
   } else {
     attachments.push(el.innerText ?? ''); // get the visible text only
+    showAttachment(`${el?.innerText?.split(/\s+/)?.slice(0,5).join(' ')}...` || 'Selected element');
     showMessage('Element picked up successfully.', 'info')
     updateStatusBar('Selected content added to the context.');
   }
@@ -409,12 +410,12 @@ async function setChatHistory(newObj){
 }
 
 async function getAiUserCommands(){
-  const commands = await chrome.storage.local.get(['aiUserCommands']);
+  const commands = await chrome.storage.local.get([storageUserCommandsKey]);
   aiUserCommands = commands.aiUserCommands || [];
 }
 
 async function setAiUserCommands(){
-  await chrome.storage.local.set({['aiUserCommands']: aiUserCommands});
+  await chrome.storage.local.set({[storageUserCommandsKey]: aiUserCommands});
 }
 
 chrome.storage.onChanged.addListener(function (changes, namespace) {

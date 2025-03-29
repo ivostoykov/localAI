@@ -98,6 +98,17 @@
     align-items: center;
 }
 
+.temp-range{
+    width: 35px;
+    font-size: .9rem;
+}
+
+.temp-range-wrapper::after {
+    content: "🌡";
+    display: inline-block;
+    margin-left: -2px;
+}
+
 .rib-section.left {
     justify-content: flex-start;
     padding-left: 16px;
@@ -870,4 +881,21 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
 
 #hookContainer button:hover {
     background-color: #999;
+}
+
+/* spinner */
+.loading {
+    width: 60px;
+    height: auto;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    animation: spin 1.75s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }

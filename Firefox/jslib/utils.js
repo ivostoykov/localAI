@@ -61,3 +61,29 @@ function getHighestZIndex() {
 
     return isNaN(intZIndex) ? highestZIndex : intZIndex + 10;
 }
+
+function getLineNumber() {
+    const e = new Error();
+    const stackLines = e.stack.split("\n").map(line => line.trim());
+    let index = stackLines.findIndex(line => line.includes(getLineNumber.name));
+
+    // return stackLines[index + 1]?.replace(/\s{0,}at\s+/, '') || "Unknown";
+    return stackLines[index + 1]
+        ?.replace(/\s{0,}at\s+/, '')
+        ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
+        || "Unknown";
+}
+
+function showSpinner() {
+    const sideBar = getSideBar();
+    const spinner = sideBar.querySelector('#spinner');
+    if (!spinner) { return; }
+    spinner.classList.remove('invisible');
+}
+
+function hideSpinner() {
+    const sideBar = getSideBar();
+    const spinner = sideBar.querySelector('#spinner');
+    if (!spinner) { return; }
+    spinner.classList.add('invisible');
+}

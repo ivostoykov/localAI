@@ -38,6 +38,9 @@
                 <img src="" id="newSession" alt="New Session" title="New Session" data-type="plus">
                 <img src="" id="sessionHistry" alt="Session history" title="System Instructions" data-type="history">
                 <img src="" id="laiRecycleAll" alt="Delete Session" title="Delete Session" data-type="recycle" />
+                <div class="temp-range-wrapper">
+                    <input type="number" name="tempInput" id="tempInput" value="0.5" max="1" min="0" step="0.1" class="temp-range" title="Neutral" />
+                </div>
             </div>
 
             <div id="laiSysIntruct" class="rib-section center">
@@ -91,6 +94,8 @@
     </div>
     <div class="user-command-block"></div>
 </div>
+
+<img id="spinner" class="loading invisible" data-type="reload"/>
 
 <template id="helpTemplate">
     <div id="helpPopup">

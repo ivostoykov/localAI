@@ -14,6 +14,7 @@
             <ul id="tabMenu" class="navbar">
                 <li class="navbar-item active-navebar-item" data-tabBody="general">General Settings</li>
                 <li class="navbar-item" data-tabBody="prompts">User Commands</li>
+                <li class="navbar-item" data-tabBody="tools">Functions</li>
             </ul>
         </section>
         <form id="laiOptionsForm">
@@ -23,11 +24,18 @@
                     <input type="checkbox" name="showEmbeddedButton" id="showEmbeddedButton" />
                     <label for="showEmbeddedButton">Show embedded button</label>
                     <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon"
-                        title="Embedded button icon">
+                    title="Embedded button icon">
                 </div>
-                <div class="el-holder">
-                    <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
-                    <label for="openPanelOnLoad">Open panel on load</label>
+                <div class="row-split">
+                    <div class="el-holder">
+                        <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
+                        <label for="openPanelOnLoad">Open panel on load</label>
+                    </div>
+                    <div class="el-holder">
+                        <input type="range" id="tempRange" name="tempRange" min="0" max="1" value="0.5" step="0.1">
+                        <input type="number" id="tempIntput" name="tempIntput" min="0" max="1" value="0.5" step="0.1">
+                        <output for="tempRange" id="tempOutput">Neutral</output>
+                    </div>
                 </div>
                 <div class="el-holder">
                     <input type="checkbox" name="closeOnClickOut" id="closeOnClickOut" />
@@ -83,13 +91,22 @@
                 </div>
                 <div class="el-holder">
                     <label for="tika">Document Converter</label>
-                    <input type="text" name="tika" id="tika" class="url" size="1000" />
+                    <input type="url" name="tika" id="tika" class="url" size="1000" />
                     <div id="tikaButtons">
                         <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
                             title="Test connection">
                     </div>
                 </div>
+
                 <div class="el-holder">
+                    <label for="webHook">Tools/Functions</label>
+                    <input type="url" name="toolFunc" id="toolFunc" class="url" size="1000" />
+                    <div id="tikaButtons">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                            title="Test connection">
+                    </div>
+                </div>
+                <!-- <div class="el-holder">
                     <label for="webHook">Webhook URL</label>
                     <select name="webHook" id="webHook" class="url" data-list="webHookList">
                         <option value="" selected="selected">Select Web Hook</option>
@@ -110,7 +127,7 @@
                             title="Soft List Desc">
                         <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                     </div>
-                </div>
+                </div> -->
 
                 <div class="el-holder">
                     <label for="localPort">System Instructions:</label>
@@ -156,6 +173,18 @@
             </div>
             <section id="prompts" class="js-tab-body invisible prompt-section">
             </section>
+
+<!-- tools functions -->
+            <div id="toolFunctionsRibbon" class="invisible">
+                <ul>
+                    <li id="newFuncBtn">New Function</li>
+                    <li id="exportFuncBtn">Export Function Definitions</li>
+                    <li id="importFuncBtn">Import Function Definitions</li>
+                    <li id="deleteFuncBtn">Delete Function Definitions</li>
+                </ul>
+            </div>
+            <section id="tools" class="js-tab-body invisible tool-section">
+            </section>
         </form>
         <div id="message" class="message-box invisible"></div>
     </div>
@@ -199,6 +228,17 @@
             <div class="prompt-command js-ptompt-card-item" contenteditable="false">Non-editable Command</div>
             <div class="prompt-description js-ptompt-card-item" contenteditable="false">Editable Title</div>
             <div class="prompt-body js-ptompt-card-item" contenteditable="false">Editable Body</div>
+        </div>
+    </template>
+
+    <template id="functionTemplate">
+        <div class="prompt-item">
+            <div class="prompt-buttons">
+                <img src="img/edit2.svg" data-action="edit">
+                <img src="img/remove-all.svg" data-action="delete">
+            </div>
+            <pre class="prompt-body js-ptompt-card-item" contenteditable="false">{}</pre>
+            <!-- <div class="prompt-body js-ptompt-card-item" contenteditable="false">{}</div> -->
         </div>
     </template>
 

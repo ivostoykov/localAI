@@ -88,7 +88,29 @@ When you hover over the [Ribbon](#ribbon), you'll see the extension's version nu
 
 <img src="Chrome/img/recycle.svg" height="30" alt="New Session"/> - Delete sessions
 
+<img src="media/temperature.png" height="30" alt="New Session"/> - Adjustable sessions temperature
+
 Sessions can be managed also from the [Options](#options) page.
+
+# Context menu
+
+![Context menu](media/context_menu.png)
+
+On each web page (where the tab has a valid `http` location), there is a `Local AI` context menu available by right-clicking.
+
+- **Local AI**: Contains context-dependent menu options.
+
+- **Select and Send Element**: Allows you to select an element on the page to send to the AI for processing. The selected element will be highlighted with a temporary lime-coloured double border. Click inside the element to confirm selection, or press the `Esc` key to cancel.
+
+![Context menu](media/select_and_send.png)
+
+- **Ask AI to Explain Selected**: Sends the selected text to the AI and requests an explanation.
+
+- **Send Selected**: Sends the selected text on the page to the AI. You can include multiple selected elements as context for the prompt.
+
+- **Entire Page**: Sends the entire visible content of the page to the AI as context for the prompt.
+
+- **Options**: Opens the options page to configure the [AI settings](#options).
 
 # System instructions
 
@@ -126,10 +148,17 @@ Additional information about which browser and how support it is available <a hr
 
 ### Attach file
 
-Just drag and drop a file.
+Simply drag and drop a file. If it's an image and the active LLM can process images (vision model), it can be included in the prompts.
+
+#### Images
+> [!Note]
+> If the LLM can process images (known as vision models), a converter is unnecessary. The image can be attached directly to the prompt, and the model will handle it.
+>
+
+Images can be provided as a selected element on the page or pass as an attachment from the local files.
 
 > [!Note]
-> Only plain text files can be used currently.
+> Only plain text files and images can be used currently.
 
 <img src="media/attach.gif" height="600" alt="attach"/>
 
@@ -198,6 +227,8 @@ This will send the content of the page from current active tab to the AI with a 
 
 ![Options](media/options.png)
 
+<img src="media/default_temp.png" width="250" alt="Temperature" title="Temperature"/> Use temperature slider to set default temperature, adjustable anytime from the [Ribbon](#ribbon). The short description is: the lower the value, the stricter the response; conversely, a higher value allows for a more relaxed and creative outcome. If you're interested in learning more about temperature, here is a [helpful article](https://www.hopsworks.ai/dictionary/llm-temperature), or you can simply Google it.
+
 ### End Points
 
 Add the end point used to query the LLM. Use the buttons to `add` ( <img src="Chrome/img/add.svg" height="25" alt="Add" title="Add"/> ), `delete` ( <img src="Chrome/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), `delete all` ( <img src="Chrome/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ) `sort ascending` ( <img src="Chrome/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or `descending` ( <img src="Chrome/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ), and `copy` ( <img src="Chrome/img/copy.svg" height="25" alt="Copy" title="Copy"/> ).
@@ -214,52 +245,24 @@ If [Ollama](https://ollama.com/) is defined as [End Point](#end-points), Model l
 
 If a valid URL is provided, documents dropped into the panel will be converted based on the API used. One particularly capable option available for local use is [tika](https://hub.docker.com/r/apache/tika), which supports multiple languages and can be easily installed as a Docker or Podman image. Users can choose any other tool that returns plain text, based on their preference.
 
------
-> [!IMPORTANT]
-> **Web Hooks** will be removed in favor of the document converter.
+### Functions (Tools)
 
-### Web Hooks
+![User Commands](media/functions.png)
 
-Allows adding a list of predefined API end points to be called before sending the prompt to the model. The resource used must return plain text. Any other type will either be treated as text or throw an error, potentially misleading the model.
+As defined in OpenAI's specification, tools are defined functionalities the model can access to perform specific tasks beyond its typical capabilities. They act as interfaces to external systems or functions, enabling the model to execute commands, retrieve data, or perform calculations directly.
 
-The purpose is to enrich the context by providing relevant information when needed, which will improve the quality of the generated response.
+When a tool is included, during interaction, if the model determines a tool's usage is needed, it can call the tool with the specified parameters, facilitating tasks like accessing a database or invoking a web service.
 
-The user has complete freedom to choose the type of service they want to use, but the intention is to run the service locally. If needed, this hook can be easily extended to call external services.
+Tools enhance the model's utility, allowing it to handle complex scenarios by integrating real-time data or operations that require exact execution, thus expanding its practical applications beyond generating text to include dynamic data manipulation.
 
-**Example Project**: An example project is available on GitHub [here](https://github.com/ivostoykov/localAI_webhook). It provides a simple HTTP server and an option to extend it.
+#### Definition
 
-#### Format
+[OpenAI Documentation](https://platform.openai.com/docs/guides/function-calling?api-mode=responses) provide description of definition structure. Whenever a prompt is sent to LLM those definitions will be included.
 
-To embed a Web Hook, follow this structure:
-
-* `!#` indicates the start of an external call construction.
-* `/path/to/the/resource`: This is the endpoint API defined in [Web Hooks](#web-hooks).
-* `?`: A separator used if any parameters will be passed.
-* `key=value`: A sequence used to pass parameters as a `POST` body.
-* `#!`: Indicates the end of the external call construction.
-
-To add web resources as prompt contexts, consider this example project. A script that queries and returns text content is available on [this GitHub repository](https://github.com/ivostoykov/localAI). Once set up, you can pass it in the prompt like so:
-
-```
-!#/readweb?resource=https://github.com/ivostoykov/localAI#!
-```
-
-The result will be the text content added to the rest of the prompt. The purpose is for this retrieved content to be used as context by the model.
-
-> [!Note]
->  If another API is used, it must abide by two rules:
-
-* Understand the content enclosed between `!#...#!`.
-* Return plain text.
-
-> [!IMPORTANT]
-> **Web Hooks** will be removed in favor of the document converter.
-
------
 
 ## User Commands
 
-![User Commands](media/options.png)
+![User Commands](media/user_cmd.png)
 
 Each command is listed as a card.
 

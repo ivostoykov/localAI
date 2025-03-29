@@ -56,6 +56,11 @@ function laiInitSidebar() {
     ribbon.addEventListener('mouseleave', e => e.target.querySelector('#version')?.classList.add('invisible'));
     ribbon.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
 
+    const tempInput = ribbon.querySelector('#tempInput');
+    const temp = laiOptions?.tempIntput || "0.5";
+    tempInput.value = temp;
+    tempInput.title = parseFloat(temp) < 0.5 ? 'Stricter' : (temp > 0.5 ? 'More Createive' : 'Neutral');
+
     const userInput = shadowRoot.getElementById('laiUserInput');
     userInput.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e));
     userInput.addEventListener('click', userInputClicked);
@@ -128,7 +133,8 @@ function laiInitSidebar() {
     ribbon.querySelector('#newSession').addEventListener('click', e => createNewSession(e, shadowRoot));
     ribbon.querySelector('#sessionHistry').addEventListener('click', showSessionHistoryMenu);
     ribbon.querySelector('#apiUrlList').addEventListener('change', selectMenuChanged);
-    ribbon.querySelector('#modelList').addEventListener('change', selectMenuChanged);
+    ribbon.querySelector('#modelList').addEventListener('change', async e => await modelChanged(e) );
+    // ribbon.querySelector('#modelList').addEventListener('change', selectMenuChanged);
     ribbon.querySelector('#hookList').addEventListener('change', selectMenuChanged);
     ribbon.querySelector('#laiModelName').addEventListener('mouseenter', e => {
       updateStatusBar('Click to toggle the list with available models.');
@@ -180,10 +186,13 @@ function laiInitSidebar() {
         laiSetImg(img);
     });
 
+    laiSetImg(shadowRoot.querySelector('#spinner'));
+
     setModelNameLabel({ "model": laiOptions.aiModel });
     buildMenuDropdowns();
 };
 
+// TODO: remove
 function addSystemPrompt(){
     const shadowRoot = getShadowRoot();
     if(!shadowRoot){  return '';  }
@@ -196,6 +205,14 @@ function addSystemPrompt(){
     } else {
         messages.unshift({ role: "system", content: value });
     }
+}
+
+function getCurrentSystemInstructions(){
+    const shadowRoot = getShadowRoot();
+    if(!shadowRoot){  return '';  }
+    const value = `${shadowRoot.querySelector('#laiSysIntructInput')?.value || ''}; timestamp: ${new Date().toISOString()}`;
+
+    return value || '';
 }
 
 function createNewSession(e, shadowRoot) {
@@ -380,10 +397,24 @@ async function onUserInputFileDropped(e) {
 
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
             const file = e.dataTransfer.files[i];
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - File ${i}:`);
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Name: ${file.name}`);
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Type: ${file.type}`);
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Size: ${file.size}`);
+            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - File ${i}: Name: ${file.name}; Type: ${file.type}; Size: ${file.size}`);
+
+            if (file.type.startsWith('image/')) {
+                try {
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    images.push(reader.result.split(',').pop());
+                    showAttachment(file.name);
+                  };
+                  reader.readAsDataURL(file);
+                } catch (imgErr) {
+                  console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Image read failed: ${imgErr.message}`, imgErr);
+                  showMessage(`Failed to read image ${file.name}`, 'error');
+                }
+
+                continue;
+            }
+
             const fileContent = await readFileContent(file);
             if (!fileContent) {
                 showMessage(`Failed to get content of ${file.name}.`, 'error');
@@ -408,8 +439,8 @@ async function onUserInputFileDropped(e) {
                 showMessage(`${file.name} is either empty or extraction of its content failed!`, 'error');
             }
         }
-        console.log('==============================', onUserInputFileDropped);
     } catch (err){
+        showMessage(err.message, 'error');
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
     }
 }
@@ -529,19 +560,17 @@ async function onPromptTextAreaKeyDown(e) {
         checkForDump(elTarget.value);
 
         // update UI
-        addInutCardToUIChatHistory(elTarget.value, 'user', messages.length - 1);
-        addInutCardToUIChatHistory('', 'ai');
+        addInputCardToUIChatHistory(elTarget.value, 'user', messages.length - 1);
+        addInputCardToUIChatHistory('', 'ai');
 
         // update data
         addCommandPlacehodersValues(elTarget.value);
         addAttachmentsToUserInput();
         addUserInputIntoMessageQ(elTarget.value);
+
         messages = [{"role": "user", "content": messages.map(e => e.content).join('\n')}];
-        if(images.length > 0){
-            messages[messages.length - 1]["images"] = images;
-        }
-        await setChatHistory(messages[0]);
-        addSystemPrompt();
+        if(images.length > 0){  messages[0]["images"] = images;  }
+
         try {
             dumpInConsole(`${[getLineNumber()]} - messages collected are ${messages.length}`, messages);
             queryAI();
@@ -591,7 +620,7 @@ function addCommandPlacehodersValues(userInputValue){
                 break;
         }
     });
-    attachments.push(...content);
+    if(content.length > 0){ attachments.push(...content);  }
 }
 
 function addUserInputIntoMessageQ(inputChunks, omitFromSession = false) {
@@ -671,12 +700,12 @@ function buildElements(elements) {
     return fragment.childNodes.length === 1 ? fragment.firstChild : fragment;
 }
 
-function addInutCardToUIChatHistory(inputText, type, index = -1) {
+function addInputCardToUIChatHistory(inputText, type, index = -1) {
     if (!checkExtensionState()) { return; }
 
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
-    const chatHist = shadowRoot.getElementById('laiChatMessageList');
+    const messageList = shadowRoot.getElementById('laiChatMessageList');
     const lastChatElement = Object.assign(document.createElement('div'), {
         className: `lai-${type}-input lai-chat-history`
     });
@@ -739,11 +768,12 @@ function addInutCardToUIChatHistory(inputText, type, index = -1) {
     const actionIconsDiv = document.createElement('div');
     if(type === 'ai'){  actionIconsDiv.rawContent = '';  } // add custom attribute to keep the raw content
     actionIconsDiv.classList.add('lai-action-icons', 'invisible');
-    actionIconsDiv.appendChild(buildElements(type !== 'ai' && index > -1 ? [...arrButtons, ...arrEditButton] : arrButtons));
+    actionIconsDiv.appendChild(buildElements(type !== 'ai' ? [...arrButtons, ...arrEditButton] : arrButtons));
+    // actionIconsDiv.appendChild(buildElements(type !== 'ai' && index > -1 ? [...arrButtons, ...arrEditButton] : arrButtons));
     lastChatElement.appendChild(lastChatlabel)
     lastChatElement.appendChild(lastChatText)
     lastChatElement.appendChild(actionIconsDiv);
-    chatHist.appendChild(lastChatElement);
+    messageList.appendChild(lastChatElement);
 
     lastChatElement.addEventListener('mouseenter', function (e) {
         const el = e.target.querySelector('.lai-action-icons');
@@ -800,7 +830,7 @@ function addInutCardToUIChatHistory(inputText, type, index = -1) {
         lastChatText.addEventListener('click', function (e) { laiSourceTextClicked(e); });
     }
 
-    chatHist.scrollTop = chatHist.scrollHeight;
+    messageList.scrollTop = messageList.scrollHeight;
 }
 
 function insertIntoDocument(e, type){
@@ -901,13 +931,31 @@ function laiCopyElementContent(e, type) {
 }
 
 function editUserInput(e, type) {
-    let el = e.target.closest('span[data-index]');
-    const idx = parseInt(el.getAttribute('data-index') || "-1");
-    if (isNaN(idx) || idx < 0) { return; }
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
+    if (!shadowRoot) {
+        console.error(`[${getLineNumber()}]: Base element not found!`);
+        return;
+    }
+
+    const container = shadowRoot.getElementById("laiChatMessageList");
+    const chatHistoryEl = e.target.closest('.lai-chat-history');
+    if(!chatHistoryEl){
+        console.error(`[${getLineNumber()}]: chat-history element not found!`);
+        return;
+    }
+
+    const idx = Array.from(container.children).indexOf(chatHistoryEl);
+
     const userInputField = shadowRoot.getElementById('laiUserInput')
-    userInputField.value = messages[idx]?.content || '';
+    // const activeChild = e.target.closest('.lai-chat-history');
+    userInputField.value = chatHistoryEl.querySelector('.lai-input-text').innerText || '';
+    let children = Array.from(container.querySelectorAll('.lai-chat-history'));
+    // let activeIndex = children.indexOf(activeChild);
+    if (idx > -1) {
+        children.slice(idx).forEach(child => child.remove());
+    }
+    aiSessions[0].length = idx + 1;
+    userInputField.focus();
 }
 
 // handle code snippets clicks in AI response
@@ -1006,22 +1054,34 @@ function queryAI() {
         return;
     }
 
+    const shadowRoot = getShadowRoot();
+    let temp = 0.5;
+    if(shadowRoot){
+        const tempInput = shadowRoot.querySelector('#tempInput');
+        temp = tempInput?.value;
+    }
+
     const data = {
         "messages": messages,
-        "stream": true
+        // "stream": true,
+        "options": {
+            "temperature": parseFloat(temp || "0.5" )
+          }
     }
 
     if (laiOptions.aiUrl.indexOf('api') > -1) {
         if (laiOptions.aiModel.trim() === '') {
-            showMessage('Please choose a model from the ');
+            showMessage('Please choose a model from the list!');
             return;
         } else {
-            data['model'] = laiOptions.aiModel;
+            data['model'] = laiOptions.aiModel.trim();
         }
     }
 
+    const sysInstruct = getCurrentSystemInstructions();
     const requestData = {
         action: "fetchData",
+        systemInstructions: sysInstruct || '',
         url: laiOptions.aiUrl,
         data: data, // TODO remove - get from storage
     };
@@ -1059,11 +1119,42 @@ function laiFinalPreFormat() {
 }
 
 function laiExtractDataFromResponse(response) {
+    // {status: result, content: resp}
+/*     const parts = (response?.data?.split(': ') || []).slice(-1);
+    const jsonPart = parts[0];
+    if (jsonPart.toUpperCase() === '[DONE]') { return  ''; } */
+    // let data = '';
+    const responseJson = response.response;
+    try {
+        response = JSON.parse(responseJson);
+        // if(response?.message?.content){
+        //     data = JSON.parse(response?.message?.content | "{}");
+        // }
+        // if(response.status === 'error'){  throw new Error(response.content);  }
+        // data = JSON.parse(response?.data || `{"content": null}`);
+    } catch (err) {
+        showMessage(err.message, 'error');
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        return '';
+    }
+
+/*     if (data?.error && data.error.length > 0) {
+        showMessage(data.error, 'error');
+        return '';
+    } */
+
+    setModelNameLabel(response.model || 'unknown');
+    return response?.message?.content || "Empty content!";
+}
+
+/* function laiExtractDataFromResponse(response) {
     const parts = (response?.data?.split(': ') || []).slice(-1);
     const jsonPart = parts[0];
     if (jsonPart.toUpperCase() === '[DONE]') { return  ''; }
     let data = '';
     try {
+        const responseData = JSON.parse(response?.data || "{}");
+        if(responseData?.error){  throw new Error(responseData.error);  }
         data = JSON.parse(jsonPart);
     } catch (err) {
         showMessage(err.message, 'error');
@@ -1078,7 +1169,7 @@ function laiExtractDataFromResponse(response) {
 
     setModelNameLabel(data);
     return (data?.choices?.[0]?.delta?.content || data?.message?.content || '');
-}
+} */
 
 chrome.runtime.onMessage.addListener((response) => {
     const shadowRoot = getShadowRoot();
@@ -1134,13 +1225,13 @@ chrome.runtime.onMessage.addListener((response) => {
             break;
         case "activePageSelection":
             attachments.push(response.selection);
-            // laiAppendSelectionToUserInput(response.selection);
+            showAttachment(`${selection?.split(/\s+/).slice(0, 5).join(' ')}...`);
             showMessage('Element picked up successfully.', 'info')
             updateStatusBar('Selected content added to the context.');
             break;
         case "activePageContent":
             attachments.push(getPageTextContent());
-            // laiAppendSelectionToUserInput(response.selection.replace(/\s{1,}/gm, ' '));
+            showAttachment(document?.title || 'Current page');
             showMessage('Element picked up successfully.', 'info')
             updateStatusBar('Selected content added to the context.');
             break;
@@ -1151,9 +1242,10 @@ chrome.runtime.onMessage.addListener((response) => {
             isElementSelectionActive = response.selection;
             break;
         case "showMessage":
-            if(response.message){
-                showMessage(response.message, response.messageType);
-            }
+            if(response.message){  showMessage(response.message, response.messageType);  }
+            break;
+        case "updateStatusbar":
+            if(response.message){  updateStatusBar(response.message);  }
             break;
         case "dumpInConsole":
             dumpInConsole(response.message, response.obj, response.type);
@@ -1185,7 +1277,7 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
     recipient.removeAttribute("id");
     const streamData = StreamMarkdownProcessor.getRawContent();
 
-    if (laiAbortElem) laiAbortElem.classList.add('invisible');
+    if (laiAbortElem) {  laiAbortElem.classList.add('invisible');  }
     if (textAres) {
         textAres.classList.remove('invisible');
         textAres.focus();
@@ -1207,7 +1299,7 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
         dumpStream = false;
     }
     recipient.rawContent = StreamMarkdownProcessor.getRawContent();
-    setTimeout(async () => await setChatHistory({"role": "assitent", "contnet": recipient.rawContent}, 100));
+    setTimeout(async () => await setChatHistory({"role": "assitent", "content": recipient.rawContent}, 100));
 
     StreamMarkdownProcessor.dispose();
     setAiSessions().then().catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
@@ -1579,7 +1671,7 @@ function restoreLastSession(sessionIdx) {
         return;
     }
     session.forEach((msg, i) => {
-        addInutCardToUIChatHistory(msg.content, msg.role.replace(/assistant/i, 'ai'), i);
+        addInputCardToUIChatHistory(msg.content, msg.role.replace(/assistant/i, 'ai'), i);
     });
     showMessage(`session #${sessionIdx} restored.`, 'info');
 }
@@ -1639,16 +1731,26 @@ function showSessionHistoryMenu(e) {
     sessionHistMenu.style.cssText = `top: ${e.clientY + 10}px;; left: ${e.clientX - (sessionHistMenu.offsetWidth / 4)}px;`;
 }
 
+async function modelChanged(e){
+    const oldModelName = laiOptions.aiModel;
+    const newModelName = e.target.options[e.target.selectedIndex].value;
+    await chrome.runtime.sendMessage({action: "prepareModels", modelName: oldModelName, unload: true });
+    await chrome.runtime.sendMessage({action: "prepareModels", modelName: newModelName, unload: false });
+
+    laiOptions.aiModel = newModelName;
+    setModelNameLabel({ "model": laiOptions.aiModel });
+}
+
 function selectMenuChanged(e) {
     const id = e.target.id;
     switch (id) {
         case 'apiUrlList':
             laiOptions.aiUrl = e.target.options[e.target.selectedIndex].value;
             break;
-        case 'modelList':
+/*         case 'modelList':
             laiOptions.aiModel = e.target.options[e.target.selectedIndex].value;
             setModelNameLabel({ "model": laiOptions.aiModel });
-            break;
+            break; */
         case 'hookList':
             console.log(`>>> ${manifest.name} - [${getLineNumber()}] - ${id} is not implemented yet`);
             break;
@@ -1875,20 +1977,40 @@ function fillAndShowModelList(models){
 }
 
 async function swapActiveModel(e, modelName){
+    e.stopPropagation();
     const activatedModel = e.target;
     const oldModel = laiOptions.aiModel;
     if(!activatedModel){  return;  }
-    laiOptions.aiModel = modelName;
-    await chrome.storage.sync.set({[storageOptionKey]: laiOptions});
+    try {
+        showSpinner();
+        updateStatusBar(`Trying to remove ${oldModel} from the memory...`);
+        let response = await chrome.runtime.sendMessage({action: "prepareModels", modelName: oldModel, unload: true });
+        if(response.status !== 200){
+            showMessage(`Failed to change the model!`, 'error');
+            return;
+        }
 
-    setModelNameLabel({ "model": modelName });
-    const parent = activatedModel.parentElement;
-    Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
-    e.target.textContent = `${e.target.textContent} ✔`;
-    parent.classList.add('invisible');
-    const sideBar = getSideBar();
-    sideBar.querySelector('div#modelNameContainer')?.classList.remove('open')
-    showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
+        updateStatusBar(`Trying to load ${modelName} into the memory...`);
+        response = await chrome.runtime.sendMessage({action: "prepareModels", modelName: modelName, unload: false });
+        if(response.status !== 200){
+            showMessage(`Failed to change the model!`, 'error');
+            return;
+        }
+
+        laiOptions.aiModel = modelName;
+        await chrome.storage.sync.set({[storageOptionKey]: laiOptions});
+
+        setModelNameLabel({ "model": modelName });
+        const parent = activatedModel.parentElement;
+        Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
+        e.target.textContent = `${e.target.textContent} ✔`;
+        parent.classList.add('invisible');
+        const sideBar = getSideBar();
+        sideBar.querySelector('div#modelNameContainer')?.classList.remove('open')
+        showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error occured while changing the model`);
+    } finally{  hideSpinner();  }
 }
 
 function updateStatusBar(status){
