@@ -1,8 +1,9 @@
 # Local AI - Changelog
 
-## [1.24.49] 2025-03-31 - latest
+## [1.24.52] 2025-03-31 - latest
 
 - Replaced the Markdown processor to improve output handling.
+- Bug fixed
 
 ## [1.24.33] 2025-03-29
 - Added tool functions to extend LLMs that support them as part of the prompt, such as Llama 3.2.

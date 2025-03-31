@@ -1275,7 +1275,7 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
     let textAres = shadowRoot.getElementById('laiUserInput');
     const laiAbortElem = shadowRoot.getElementById('laiAbort');
     recipient.removeAttribute("id");
-    const streamData = StreamMarkdownProcessor.getRawContent();
+    // const streamData = StreamMarkdownProcessor.getRawContent();
 
     if (laiAbortElem) {  laiAbortElem.classList.add('invisible');  }
     if (textAres) {
@@ -1294,14 +1294,14 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
         recipient.innerHTML += `<span class="lai-aborted-text">${abortText}</span>`;
     }
 
-    if (dumpStream) {
-        console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Dumping stream content:\n${StreamMarkdownProcessor.getRawContent()}`);
-        dumpStream = false;
-    }
-    recipient.rawContent = StreamMarkdownProcessor.getRawContent();
+    // if (dumpStream) {
+    //     console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Dumping stream content:\n${StreamMarkdownProcessor.getRawContent()}`);
+    //     dumpStream = false;
+    // }
+    // recipient.rawContent = StreamMarkdownProcessor.getRawContent();
     setTimeout(async () => await setChatHistory({"role": "assitent", "content": recipient.rawContent}, 100));
 
-    StreamMarkdownProcessor.dispose();
+    // StreamMarkdownProcessor.dispose();
     setAiSessions().then().catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
 }
 
