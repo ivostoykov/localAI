@@ -1202,7 +1202,7 @@ chrome.runtime.onMessage.addListener((response) => {
                 if (!dataChunk) { return; }
                 aiRawResponse.push(dataChunk);
                 updateStatusBar('Receiving and processing data...');
-                StreamMarkdownProcessor.processStreamChunk(dataChunk, laiGetRecipient());
+                parse(dataChunk, laiGetRecipient());
             } catch (err) {
                 resetStatusbar();
                 laiHandleStreamActions(`${err}`, recipient)

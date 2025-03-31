@@ -126,7 +126,7 @@
     left: 20px;
     cursor: pointer;
     z-index: 100;
-	width: 250px;
+    width: 250px;
 }
 
 .rib-cog-menu-container select {
@@ -200,7 +200,7 @@
 }
 
 .available-model-list div {
-	padding: 0 5px;
+    padding: 0 5px;
 }
 
 .available-model-list div:hover {
@@ -464,11 +464,11 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
     overflow: hidden;
     text-wrap: nowrap;
     text-overflow: ellipsis;
-	position: sticky;
-	bottom: 1px;
+    position: sticky;
+    bottom: 1px;
     height: 30px;
-	border: 1px solid #aaa;
-	padding: 0 3px;
+    border: 1px solid #aaa;
+    padding: 0 3px;
 }
 
 .statusbar .notification{
@@ -580,15 +580,15 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
 @keyframes flipAbortIcon {
     0% {
         transform: rotateY(0deg);
-      }
+    }
 
-      40% {
+    40% {
         transform: rotateY(360deg);
-      }
+    }
 
-      100% {
+    100% {
         transform: rotateY(360deg);
-      }
+    }
 }
 
 /* attachments */
@@ -689,12 +689,12 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
 }
 
 .help-other-btns-container {
-  position: absolute;
-  display: inline-flex;
-  top: 10px;
-  align-items: center;
-  left: 10%;
-  align-content: space-evenly;
+    position: absolute;
+    display: inline-flex;
+    top: 10px;
+    align-items: center;
+    left: 10%;
+    align-content: space-evenly;
 }
 
 .user-command-list-ribbon img:hover,

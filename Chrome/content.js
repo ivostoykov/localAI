@@ -116,7 +116,7 @@ async function allDOMContentLoaded(e){
   }
 
   init();
-  Promise.all(laiFetchStyles(['button.css', 'sidebar.css']))
+  Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css']))
     .then(res => {
       laiFetchAndBuildSidebarContent(laiInitSidebar);
       buildMainButton();

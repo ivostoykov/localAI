@@ -325,9 +325,12 @@ function getLastConsecutiveUserRecords(messages) {
 }
 
 async function resolveToolCalls(toolCalls, toolBaseUrl) {
+    const availableTools = await getPromptTools();
     const messages = [];
 
     for (const call of toolCalls) {
+        // const exists = availableTools.some(t => t.function?.name.toLowerCase() === call.function.name.toLowerCase());
+        // if(!exists){  continue;  }
         updateUIStatusBar(`Calling ${call.function.name}...`);
         console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tool call request`, call);
         const funcUrl = `${toolBaseUrl}/${call.function.name}`;
@@ -365,6 +368,7 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
         );
     }
 
+    if(messages.length < 1){  messages.push({ role: "tool", content: `None of these - ${toolCalls.map(t => t.function?.name).join(", ")} - are existing tool functions. Please rely on your internal knowledge instead.`});  }
     return messages;
 }
 
@@ -471,11 +475,24 @@ async function fetchDataAction(request, sender) {
 }
 
 
-async function fetchExtResponse(url, options){
+async function fetchExtResponse(url, options, resentWithoutTools = true){
     if(!url || !options.method){  throw new Error('Either URL or request options are empty or missing!');  }
+    let requestBody;
     try {
         const response = await fetch(url, options);
-        return response;
+        if(response.status < 300 || !resentWithoutTools) {  return response;  }
+
+        const body = await response.clone().json(); // clone to allow reading twice if needed
+        const toolsUnsupported = (body?.error || '').toLowerCase().includes("does not support tools");
+        if(toolsUnsupported && options.body){
+            requestBody = JSON.parse(options.body); // to remove tools if errors occurs
+            updateUIStatusBar(`${requestBody.model || 'This model'} does not support tools. It will try without them.`);
+            delete requestBody.tools;
+            delete requestBody.tool_choice;
+            requestBody.messages.push({ role: "tool", content: "Briefly inform the user that you do not support tool usage or web searches. Provide the best answer based solely on your existing knowledge." })
+            options.body = JSON.stringify(requestBody);
+            return fetchExtResponse(url, options, false);
+        }
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - External call to ${url} failed!`, error, options);
         throw error;

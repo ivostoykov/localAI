@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local AI helper",
-    "version": "1.24.33",
+    "version": "1.24.51",
   "options_page": "options.html",
   "permissions": [
     "activeTab",
@@ -25,7 +25,7 @@
         "<all_urls>"
       ],
       "js": [
-        "jslib/stream_processor.js",
+        "jslib/solomd2html.js",
         "jslib/utils.js",
         "jslib/stt.js",
         "lai-main.js",
@@ -44,8 +44,9 @@
     {
       "resources": [
         "sidebar.html",
-        "button.css",
-        "sidebar.css",
+        "css/button.css",
+        "css/sidebar.css",
+        "css/aioutput.css",
         "lai-main.js",
         "img/*.svg"
       ],

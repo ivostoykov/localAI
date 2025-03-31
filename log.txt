@@ -1,0 +1,1 @@
+Directory: /home/ivo/Projects/js/extensions/localAI/Chrome

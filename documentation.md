@@ -48,6 +48,15 @@ Click the icon to open the main UI.
 
 <img src="media/UI.gif" height="600" />
 
+
+
+# AI response parser
+
+A new Markdown parser is included for an improved experience. It is available as an independent open-source project on GitHub: [solomd2html](https://github.com/ivostoykov/solomd2html). Please use the parser's [Issues section](https://github.com/ivostoykov/solomd2html/issues) for bug reports and suggestions related to the AI output format.
+
+<img src="media/ai_reply.png" height="600" />
+
+
 ## Ribbon
 ![alt text](media/ribbon.png)
 

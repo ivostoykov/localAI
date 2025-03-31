@@ -1,6 +1,10 @@
 # Local AI - Changelog
 
-## [1.2X.XX] XXXX-XX-XX - latest
+## [1.24.49] 2025-03-31 - latest
+
+- Replaced the Markdown processor to improve output handling.
+
+## [1.24.33] 2025-03-29
 - Added tool functions to extend LLMs that support them as part of the prompt, such as Llama 3.2.
 - Enhanced image functionality: users can now select an image on the page and/or attach an image as context for the prompt.
 - Extended user input edit allowing to exeute the prompt again after adjusting contents
