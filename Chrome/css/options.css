@@ -99,7 +99,7 @@ input[type="checkbox"] {
     border-radius: 7px;
     margin: 25px 0;
     padding: 5px;
-    justify-content: space-between;
+    justify-content: flex-start;
     flex-direction: row;
 }
 

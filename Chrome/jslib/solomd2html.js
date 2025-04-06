@@ -1,13 +1,52 @@
-function parse(markdownText, rootEl, options = {}) {
-    const config = Object.assign({ codeCopy: true }, options);
+async function parseAndRender(markdownText, rootEl, options = {}) {
+    const defaults = { codeCopy: true, streamReply: true, abortSignal: null, onAbort: null, onRenderStarted: null, onRendering: null, onRenderComplete: null };
+    const config = Object.assign(defaults, options); 1
+    const { abortSignal } = config;
+    if (abortSignal) {
+        abortSignal.addEventListener('abort', handleAbort, { once: true });
+    }
+
+    rootEl.dataset.status = 'parsing';
+    rootEl.dispatchEvent(new CustomEvent('renderStarted'));
+    config.onRenderStarted?.();
+
     const lines = markdownText.replace(/\r\n/g, '\n').split('\n');
     let blocks = processLines(lines);
     blocks = mergeConsecutiveHtmlBlocks(blocks);
-    // return blocks;
-    blocks.forEach((bl, idx) => {
+
+    rootEl.dataset.status = 'rendering';
+    for (const bl of blocks) {
+        rootEl.dispatchEvent(new CustomEvent('rendering', { detail: bl }));
+        config.onRendering?.(bl);
+        if (abortSignal?.aborted) { return; }
+
         const el = renderBlock(bl);
-        if (el) { rootEl.appendChild(el); }
-    });
+        if (!el) { continue; }
+        const nodes = Array.isArray(el) ? el : (el instanceof DocumentFragment ? Array.from(el.childNodes) : [el]);
+        for (const node of nodes) {
+            if (config.streamReply) {
+                await streamNode(node, rootEl);
+            } else {
+                rootEl.appendChild(node);
+            }
+        }
+    }
+    rootEl.dataset.status = 'renderCompleted';
+    rootEl.dispatchEvent(new CustomEvent('renderComplete'));
+    config.onRenderComplete?.();
+    cleanup();
+    /// end of the main block
+
+    function cleanup() {
+        delete rootEl.dataset.status;
+        abortSignal?.removeEventListener('abort', handleAbort);
+    }
+
+    function handleAbort() {
+        rootEl.dispatchEvent(new CustomEvent('renderAborted'));
+        cleanup();
+        config.onAbort?.();
+    }
 
     function processLines(lines) {
         const result = [];
@@ -70,30 +109,62 @@ function parse(markdownText, rootEl, options = {}) {
         switch (tag) {
             case 'hr':
                 break;
+            case 'heading':
+                el = renderHeading(block.content);
+                break;
             case 'pre':
-                // el.textContent = block.content;
                 el = renderCodeBlock(block.content, el);
                 break;
             case 'ul':
-                el = renderListContent(block.content);
-                break;
+            case 'ol':
+                return renderListContent(block.content);
             case 'blockquote':
                 const bq = renderBlockquoteContent(block.content);
                 el.appendChild(bq);
                 break;
             case 'html':
-                // el.textContent = escapeHTML(block.content);
                 el.textContent = block.content;
                 break;
             case 'table':
                 return renderTable(block.content);
             default:
-                const inline = renderMultilineContent(block.content);
-                el.appendChild(inline);
-                break;
+                const res = renderMultilineContent(block.content);
+                if (Array.isArray(res)) return res; // <- return array directly
+                return res;
         }
 
         return el;
+    }
+
+    async function streamNode(srcNode, targetParent) {
+        if (srcNode.nodeType === Node.TEXT_NODE) {
+            const text = srcNode.textContent;
+            let i = 0;
+            const span = document.createTextNode('');
+            targetParent.appendChild(span);
+            await new Promise(resolve => {
+                function typeChar() {
+                    if (i < text.length) {
+                        span.textContent += text[i++];
+                        requestAnimationFrame(typeChar);
+                    } else {
+                        resolve();
+                    }
+                }
+                typeChar();
+            });
+        } else if (srcNode.nodeType === Node.ELEMENT_NODE) {
+            const clone = document.createElement(srcNode.tagName);
+            for (const attr of srcNode.attributes) {
+                try {  clone.setAttribute(attr.name, attr.value);  }
+                catch (err) {  console.error(`[${_getLineNumber()}] - ${err.message}`, err);  }
+            }
+            attachCopyHandler(clone); // reattach click on the copy button
+            targetParent.appendChild(clone);
+            for (const child of Array.from(srcNode.childNodes)) {
+                await streamNode(child, clone);
+            }
+        }
     }
 
     function renderCodeBlock(content, el) {
@@ -163,14 +234,12 @@ function parse(markdownText, rootEl, options = {}) {
             const text = match[3];
             const isOrdered = /^\d+\./.test(marker);
 
-            // Find correct parent level
             while (stack.length && indent < stack[stack.length - 1].indent) {
                 stack.pop();
             }
 
             let parent = stack[stack.length - 1];
 
-            // If deeper indent, nest into new sublist
             if (indent > parent.indent) {
                 const lastItem = parent.el.lastElementChild;
                 if (!lastItem) return;
@@ -191,24 +260,28 @@ function parse(markdownText, rootEl, options = {}) {
 
 
     function renderMultilineContent(content) {
-        const container = document.createDocumentFragment();
         const lines = content.split('\n');
+        const elements = [];
 
         lines.forEach(line => {
-            const heading = line.match(/^#{1,6}\s+(.*)/);
-            if (heading) {
-                const level = line.match(/^#+/)[0].length;
-                const h = document.createElement(`h${level}`);
-                h.appendChild(renderInline(heading[1]));
-                container.appendChild(h);
-            } else {
-                const p = document.createElement('p');
-                p.appendChild(renderInline(line));
-                container.appendChild(p);
-            }
+            const p = document.createElement('p');
+            p.appendChild(renderInline(line));
+            elements.push(p);
         });
 
-        return container;
+        return elements;
+    }
+
+    function renderHeading(content) {
+        const fragment = document.createDocumentFragment();
+        content.split(/\s*\n{1,}/g).forEach(line => {
+            const match = line.match(/^#{1,6}/);
+            const tag = match ? `h${line.match(/^#{1,6}/)[0].length}` : 'p';
+            const h = document.createElement(tag);
+            h.appendChild(renderInline(line.replace(/^#{1,6}\s+/, '')));
+            fragment.appendChild(h);
+        });
+        return fragment;
     }
 
     function renderGridTable(lines) {
@@ -281,7 +354,6 @@ function parse(markdownText, rootEl, options = {}) {
         let root = document.createElement('blockquote');
 
         lines.forEach(line => {
-            // const match = line.match(/^\s{0,3}(>+)\s?(.*)/);
             const match = line.match(/^\s{0,3}((?:>\s*)+)(.*)/);
             if (!match) { return; }
 
@@ -312,8 +384,8 @@ function parse(markdownText, rootEl, options = {}) {
             .replace(/`([^`]+)`/g, '<code>$1</code>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/__(.*?)__/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/_(.*?)_/g, '<em>$1</em>')
+            .replace(/\s\*(.*?)\*\s/g, '<em>$1</em>')
+            .replace(/\s_(.*?)_\s/g, '<em>$1</em>')
             .replace(/~~(.*?)~~/g, '<del>$1</del>');
         return span;
     }
@@ -331,6 +403,7 @@ function parse(markdownText, rootEl, options = {}) {
             "fence": "pre",
             "html": "pre",
             "hr": "hr",
+            "heading": "heading",
             "table": "table"
         }
 
@@ -338,11 +411,12 @@ function parse(markdownText, rootEl, options = {}) {
     }
 
     function detectBlockType(line) {
+        if (/^\s*([`']{3,})\s{0,}(\w+)?\s*$/.test(line)) return 'fence';
         if (/^\s{0,3}>/.test(line)) return 'blockquote';
         if (/^\s*([-+*]|\d+\.)\s/.test(line)) return 'list';
-        if (/^\s*([`']{3,})\s{0,}(\w+)?\s*$/.test(line)) return 'fence';
         if (/^(\s{4,}|\t)/.test(line)) return 'indented';
         if (/^\s*<.+?>/.test(line)) return 'html';
+        if (/^#{1,6}\s+/.test(line)) return 'heading';
         if (line === '') return 'empty';
         if (/^\s*(\||\+).+(\||\+)\s*$/.test(line)) return 'table';
         return 'general';
@@ -363,14 +437,32 @@ function parse(markdownText, rootEl, options = {}) {
         return currentType !== newType;
     }
 
-    function escapeHTML(str) {
-        return str
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+    function attachCopyHandler(el) {
+        if (el.classList.contains('code-copy-btn') && !el.dataset.bound) {
+            el.dataset.bound = '1';  // prevents attaching duplicate event listeners.
+            el.addEventListener('click', () => {
+                const code = el.closest('.code-block')?.querySelector('code')?.textContent;
+                if (!code) return;
+                navigator.clipboard.writeText(code).then(() => {
+                    el.textContent = '✅';
+                    setTimeout(() => el.textContent = '📋', 1500);
+                });
+            });
+        }
+    }
+
+    function _getLineNumber() {
+        const e = new Error();
+        const stackLines = e.stack.split("\n").map(line => line.trim());
+        let index = stackLines.findIndex(line => line.includes(getLineNumber.name));
+
+        return stackLines[index + 1]
+            ?.replace(/\s{0,}at\s+/, '')
+            ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
+            || "Unknown";
     }
 }
 
 if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
-    module.exports = { parse };
+    module.exports = { parse: parseAndRender };
 }

@@ -1,27 +1,25 @@
+const manifest = chrome.runtime.getManifest();
 const DONE = 'DONE';
 const storageOptionKey = 'laiOptions';
-// const storageToolsKey = 'aiTools';
 const storageUserCommandsKey = 'aiUserCommands';
-const sessionHistoryKey = 'sessionHistory';
-const commandPlacehoders = {
+const activeSessionKey = 'activeSession';
+const allSessionsStorageKey = 'aiSessions';
+const activeSessionIndexStorageKey = 'activeSessionIndex';
+const activePageStorageKey = 'activePage';
+const commandPlaceholders = {
   "@{{page}}": "Include page into the prompt",
   "@{{dump}}": "Dump LLM response into the console",
   "@{{now}}": "Include current date and time",
-  "@{{today}}": "Include cuddent date without the time",
+  "@{{today}}": "Include current date without the time",
   "@{{time}}": "Include current time without the date"
 };
 
 var aiRawResponse = [];
-var laiOptions = {};
 var aiSessions = [];
 var aiUserCommands = [];
-// var externalResources = [];
-var userCmdItemBtns = {'edit':null, 'execute': null, 'paste': null, 'delete': null};
-var activeSessionIndex = 0;
-var messages = [];
+var userCmdItemBtns = { 'edit': null, 'execute': null, 'paste': null, 'delete': null };
 var images = [];
 var attachments = [];
-// var binaryFormData;
 var userScrolled = false;
 var isElementSelectionActive = false;
 var dumpStream = false;
@@ -29,20 +27,25 @@ var lastRegisteredErrorMessage = [];
 lastRegisteredErrorMessage.lastLength = 0;
 var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
 var userPredefinedCmd = [
-  {"commandName": "add", "commandDescription":"Create a new predefined prompt"},
-  {"commandName": "edit(command_name)", "commandDescription":"Edit the command corresponding to name, provided in the brackets"},
-  {"commandName": "error", "commandDescription":"Show last error"},
-  {"commandName":"list", "commandDescription":"Show all defined commands"},
-  {"commandName":"hooks", "commandDescription":"Show all defined hooks"},
-  {"commandName":"dump", "commandDescription": "Dump AI raw content into the console"},
-  {"commandName":"udump", "commandDescription": "Dump generated prompt including all data"}
+  { "commandName": "add", "commandDescription": "Create a new predefined prompt" },
+  { "commandName": "edit(command_name)", "commandDescription": "Edit the command corresponding to name, provided in the brackets" },
+  { "commandName": "error", "commandDescription": "Show last error" },
+  { "commandName": "list", "commandDescription": "Show all defined commands" },
+  { "commandName": "hooks", "commandDescription": "Show all defined hooks" },
+  { "commandName": "dump", "commandDescription": "Dump AI raw content into the console" },
+  { "commandName": "udump", "commandDescription": "Dump generated prompt including all data" }
 ];
 
 document.addEventListener('DOMContentLoaded', async function (e) {
-  await allDOMContentLoaded(e);
+  // await allDOMContentLoaded(e);
+  await start();
+  chrome.storage.sync.get(null, items => {
+    console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Keys:`, Object.keys(items));
+    console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Raw:`, items);
+  });
 });
 
-async function start(){
+async function start() {
   if (document.readyState !== 'complete') {
     setTimeout(start, 1000);
   } else {
@@ -50,16 +53,16 @@ async function start(){
   }
 }
 
-async function allDOMContentLoaded(e){
+async function allDOMContentLoaded(e) {
 
   document.addEventListener('click', async function (event) {
-    hideSessionHistoryMenu();
-    if(isElementSelectionActive) {  laiGetClickedSelectedElement(event);  }
+    hideaictiveSessionMenu();
+    if (isElementSelectionActive) { laiGetClickedSelectedElement(event); }
 
     const localAI = document.getElementById('localAI');
-    if(localAI === event.target){  return;  }
+    if (localAI === event.target) { return; }
     const laiShadowRoot = localAI?.shadowRoot
-    if(!laiShadowRoot){  return;  }
+    if (!laiShadowRoot) { return; }
     const pluginContainer = laiShadowRoot.getElementById('laiSidebar');
 
     if (!pluginContainer) { return; }
@@ -68,23 +71,23 @@ async function allDOMContentLoaded(e){
       return;
     }
 
-    laiSwapSidebarWithButton();
+    await laiSwapSidebarWithButton();
   }, true);
 
-  document.addEventListener('keydown', function (e) {
-    if(isElementSelectionActive){
+  document.addEventListener('keydown', async function (e) {
+    if (isElementSelectionActive) {
       if (e.key === "Escape") {
         isElementSelectionActive = false;
         document.querySelectorAll(`[data-original-border]`)?.forEach(el => {
-            const currentBorder = el.getAttribute('data-original-border');
-            el.style.border = currentBorder;
-            el.removeAttribute('data-original-border');
+          const currentBorder = el.getAttribute('data-original-border');
+          el.style.border = currentBorder;
+          el.removeAttribute('data-original-border');
         });
         return;
       }
     }
 
-    if (e.key !== "Escape") {  return;  }
+    if (e.key !== "Escape") { return; }
     if (!laiOptions.closeOnClickOut) { return; }
 
     const pluginContainer = document.getElementById('localAI')?.shadowRoot?.getElementById('laiSidebar');
@@ -93,11 +96,11 @@ async function allDOMContentLoaded(e){
       return;
     }
 
-    laiSwapSidebarWithButton();
+    await laiSwapSidebarWithButton();
   }, true);
 
-  document.addEventListener('mouseover', function(event) {
-    if(!isElementSelectionActive) {  return;  }
+  document.addEventListener('mouseover', function (event) {
+    if (!isElementSelectionActive) { return; }
     const el = event.target
     const currentBorder = el.style.border;
     el.setAttribute('data-original-border', currentBorder);
@@ -107,51 +110,59 @@ async function allDOMContentLoaded(e){
   document.addEventListener('mouseout', clearElementOverDecoration, true);
 
   try {
-    laiOptions = await getLaiOptions();
-    await getAiSessions();
-    await getAiUserCommands();
+    // laiOptions = await getLaiOptions();
+    await removeLocalStorageObject(activeSessionIndexStorageKey);
+    await setActiveSessionPageData({"url": document.location.url, "pageContent": getPageTextContent()});
+    // await setAllSessions();
+    await getAiUserCommands(); //TODO: remove it as global
   } catch (err) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
     return;
   }
 
   init();
-  Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css']))
-    .then(res => {
-      laiFetchAndBuildSidebarContent(laiInitSidebar);
-      buildMainButton();
-    })
-    .catch(error => {
-      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
+  try {
+    await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css']));
+  } catch (error) {
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
+  }
+}
+
+async function init() {
+  try {
+    if (!chrome.runtime.id) { chrome.runtime.reload(); }
+    const localAI = Object.assign(document.createElement('local-ai'), {
+      id: "localAI"
     });
+
+    document?.body?.appendChild(localAI);
+    localAI.attachShadow({ "mode": 'open' });
+    await buildMainButton();
+    await laiFetchAndBuildSidebarContent();
+    await laiInitSidebar();
+    await laiUpdateMainButtonStyles();
+  } catch (err) {
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);
+  }
 }
 
-function init() {
-  if(!chrome.runtime.id){  chrome.runtime.reload();  }
-  const localAI = Object.assign(document.createElement('local-ai'), {
-    id: "localAI"
-  });
-
-  document?.body?.appendChild(localAI);
-  localAI.attachShadow({"mode": 'open'});
-}
-
-function clearElementOverDecoration(e){
+function clearElementOverDecoration(e) {
   let el = e.target;
   const currentBorder = el.getAttribute('data-original-border') || '';
   el.style.border = currentBorder;
   el.removeAttribute('data-original-border');
 }
 
-async function laiGetClickedSelectedElement(event){
+async function laiGetClickedSelectedElement(event) {
   isElementSelectionActive = false;
   clearElementOverDecoration(event);
   let el = event.target;
   let isImg = el.tagName === 'IMG';
   if (isImg) {
     try {
-      const response = await chrome.runtime.sendMessage({ action: 'getImageBase64', url: el.src});
-      if(!response.base64){ throw new Error(`Failed to get the image from ${el.src}`);   }
+      const response = await chrome.runtime.sendMessage({ action: 'getImageBase64', url: el.src });
+      if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+      if (!response.base64) { throw new Error(`Failed to get the image from ${el.src}`); }
 
       images.push(response?.base64);
       showMessage('Image picked up successfully.', 'info')
@@ -162,21 +173,22 @@ async function laiGetClickedSelectedElement(event){
     }
   } else {
     attachments.push(el.innerText ?? ''); // get the visible text only
-    showAttachment(`${el?.innerText?.split(/\s+/)?.slice(0,5).join(' ')}...` || 'Selected element');
+    showAttachment(`${el?.innerText?.split(/\s+/)?.slice(0, 5).join(' ')}...` || 'Selected element');
     showMessage('Element picked up successfully.', 'info')
     updateStatusBar('Selected content added to the context.');
   }
 }
 
-function buildMainButton() {
-  var theMainButton = createMainButtonElement();
+async function buildMainButton() {
+  var theMainButton = await createMainButtonElement();
   const shadowRoot = getShadowRoot();
-if(!shadowRoot) {  return;  }
+  if (!shadowRoot) { return; }
   shadowRoot.appendChild(theMainButton);
-  theMainButton.addEventListener('click', laiMainButtonClicked);
-  theMainButton.querySelector('div.close-semi-sphere-button')?.addEventListener('click', (e) => {
+  theMainButton.addEventListener('click', async e => await laiMainButtonClicked(e));
+  theMainButton.querySelector('div.close-semi-sphere-button')?.addEventListener('click', async (e) => {
     e.stopPropagation();
     e.stopImmediatePropagation();
+    const laiOptions = await getLaiOptions();
     theMainButton.classList.add('lai-faid-out');
     laiOptions.showEmbeddedButton = false;
 
@@ -187,9 +199,10 @@ if(!shadowRoot) {  return;  }
   });
 }
 
-function createMainButtonElement(){
-  if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
-  if(!chrome.runtime.id){
+async function createMainButtonElement() {
+  const laiOptions = await getLaiOptions();
+  if (!chrome.runtime.id && chrome.runtime.reload) { chrome.runtime.reload(); }
+  if (!chrome.runtime.id) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
     return;
   }
@@ -202,8 +215,13 @@ function createMainButtonElement(){
   theMainButton.style.zIndex = getHighestZIndex();
   const img = document.createElement('img');
   img.src = chrome.runtime.getURL('img/icon128.svg');
+  img.style.display = 'none';
   img.classList.add('img-btn');
   theMainButton.appendChild(img);
+
+  setTimeout(() => {
+    img.style.display = '';
+  }, 1000);
 
   var btnClose = Object.assign(document.createElement('div'), {
     id: "laiCloseMainButton",
@@ -216,44 +234,45 @@ function createMainButtonElement(){
   return theMainButton;
 }
 
-function laiMainButtonClicked(e){
+async function laiMainButtonClicked(e) {
   e.preventDefault();
-  laiSwapSidebarWithButton();
+  await laiSwapSidebarWithButton();
   return false;
 }
 
-function laiFetchAndBuildSidebarContent(sidebarLoadedCallback) {
-  if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
-  if(!chrome.runtime.id){
+async function laiFetchAndBuildSidebarContent() {
+  if (!chrome.runtime.id && chrome.runtime.reload) {
+    chrome.runtime.reload();
+  }
+  if (!chrome.runtime.id) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
     return;
   }
-  fetch(chrome.runtime.getURL('sidebar.html'))
-    .then(response => response.text())
-    .then(data => {
-      const shadowRoot = getShadowRoot();
-      if(!shadowRoot) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to find the shadow root!`, shadowRoot);
-        return;
-      }
 
-      var theSideBar = document.createElement('div');
-      theSideBar.id = "laiSidebar";
-      theSideBar.classList.add("lai-fixed-parent")
-      theSideBar.innerHTML = data;
-      theSideBar.style.zIdex = getHighestZIndex();
+  try {
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) {
+      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to find the shadow root!`, shadowRoot);
+      return;
+    }
 
-      shadowRoot.appendChild(theSideBar);
+    const response = await fetch(chrome.runtime.getURL('sidebar.html'));
+    const data = await response.text();
 
-      if (typeof (sidebarLoadedCallback) === 'function') {
-        return sidebarLoadedCallback();
-      }
-    })
-    .catch(error => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error));
+    var theSideBar = document.createElement('div');
+    theSideBar.id = "laiSidebar";
+    theSideBar.classList.add("lai-fixed-parent")
+    theSideBar.innerHTML = data;
+    theSideBar.style.zIndex = getHighestZIndex();
+
+    shadowRoot.appendChild(theSideBar);
+  } catch (error) {
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error);
+  }
 }
 
 function laiFetchStyles(cssNames) {
-  if(!checkExtensionState()){  return;  }
+  if (!checkExtensionState()) { return; }
   if (!cssNames) { return; }
   if (!Array.isArray(cssNames)) { cssNames = [cssNames]; }
 
@@ -262,7 +281,7 @@ function laiFetchStyles(cssNames) {
       .then(response => response.text())
       .then(data => {
         const shadowRoot = getShadowRoot();
-        if(!shadowRoot) {  return;  }
+        if (!shadowRoot) { return; }
         const styleElement = document.createElement('style');
         styleElement.innerHTML = data;
         styleElement.id = cssName.split('.')[0];
@@ -273,7 +292,7 @@ function laiFetchStyles(cssNames) {
 }
 
 function laiSetImg(el) {
-  if(!checkExtensionState()){  return;  }
+  if (!checkExtensionState()) { return; }
   const name = el?.getAttribute('data-type')?.toLowerCase();
   if (name) {
     el.src = chrome.runtime.getURL(`img/${name}.svg`);
@@ -288,7 +307,9 @@ function showMessage(messagesToShow, type) {
   const shadowRoot = getShadowRoot();
   if (!shadowRoot) { return; }
   const sideBar = getSideBar();
-  if (!sideBar.classList.contains('active')) { laiSwapSidebarWithButton(); }
+  if (!sideBar.classList.contains('active')) {
+    setTimeout(async () => {  await laiSwapSidebarWithButton(); }, 0);
+  }
   let msg = shadowRoot.querySelector('#feedbackMessage');
   let oldTimerId = msg.getAttribute('data-timerId');
   if (oldTimerId) {
@@ -319,9 +340,10 @@ function showMessage(messagesToShow, type) {
   }
 }
 
-function buildMenuDropdowns(){
+async function buildMenuDropdowns() {
   const shadowRoot = getShadowRoot();
   const menuDropDowns = shadowRoot.querySelectorAll('#cogMenu select');
+  const laiOptions = await getLaiOptions();
   for (let i = 0; i < menuDropDowns.length; i++) {
     const list = menuDropDowns[i];
     const selectOption = list.querySelectorAll('option')[0];
@@ -329,14 +351,14 @@ function buildMenuDropdowns(){
     list.appendChild(selectOption);
     list.selectedIndex = 0;
     let data = list.getAttribute('data-source');
-    if(!data){  continue;  }
-    try { data = JSON.parse(data);  }
-    catch(e){  continue;  }
-    if(!laiOptions?.[data?.list]){  return;  }
+    if (!data) { continue; }
+    try { data = JSON.parse(data); }
+    catch (e) { continue; }
+    if (!laiOptions?.[data?.list]) { return; }
     laiOptions[data?.list]?.forEach(m => {
       const option = document.createElement('option');
       option.value = option.text = m;
-      if(m === laiOptions[data?.selected]){  option.selected = true;  }
+      if (m === laiOptions[data?.selected]) { option.selected = true; }
       list.appendChild(option);
     });
   }
@@ -357,93 +379,20 @@ async function getLaiOptions() {
   };
 
   try {
-    const obj = await chrome.storage.sync.get(storageOptionKey);
-    const laiOptions = Object.assign({}, defaults, obj?.laiOptions ?? {});
-    if (laiOptions.systemInstructions) {
-      messages.push({ role: "system", content: laiOptions.systemInstructions });
-    }
+    const obj = await getOptions();
+    const laiOptions = Object.assign({}, defaults, obj ?? {});
     return laiOptions;
   } catch (e) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
   }
 }
 
-async function getAiSessions(){
-  const sessions = await chrome.storage.local.get(['aiSessions']);
-  aiSessions = sessions.aiSessions || [];
-  if(aiSessions.length < 1){  aiSessions[0] = [];  }
-  activeSessionIndex = aiSessions.length - 1;
-}
-
-async function setAiSessions(){
-  await chrome.storage.local.set({['aiSessions']: aiSessions});
-    return true;
-}
-
-async function getChatHistory(){
-  try {
-      obj = await chrome.storage.local.get(sessionHistoryKey);
-      return obj.sessionHistory || [];
-  } catch (e) {
-      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-  }
-}
-
-async function setChatHistory(newObj){
-  let sessionHistory = [];
-  try {
-      sessionHistory = await getChatHistory();
-      if(Array.isArray(newObj)){
-          sessionHistory.push(...newObj);
-      } else {
-          sessionHistory.push(newObj);
-      }
-      let chatSize=0;
-      sessionHistory.forEach(e => chatSize+=e?.content?.length ?? 0);
-      console.log(`>>> ${manifest.name} - [${getLineNumber()}] - chat history length: ${sessionHistory.length}; size: ${chatSize}`);
-      await chrome.storage.local.set({ [sessionHistoryKey]: sessionHistory });
-  } catch (e) {
-      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
-  }
-
-  return sessionHistory || [];
-}
-
-async function getAiUserCommands(){
-  const commands = await chrome.storage.local.get([storageUserCommandsKey]);
-  aiUserCommands = commands.aiUserCommands || [];
-}
-
-async function setAiUserCommands(){
-  await chrome.storage.local.set({[storageUserCommandsKey]: aiUserCommands});
-}
-
-chrome.storage.onChanged.addListener(function (changes, namespace) {
-  for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
-    if (key === 'laiOptions') {
-      laiOptions = newValue;
-      if (oldValue.showEmbeddedButton !== newValue.showEmbeddedButton) {
-        laiUpdateMainButtonStyles();
-      }
-      if (oldValue.systemInstructions !== newValue.systemInstructions) {
-        const shadowRoot = getShadowRoot();
-        if(!shadowRoot) {  return;  }
-        const sysIntruct = shadowRoot.getElementById('laiSysIntructInput');
-        const currentValue = sysIntruct.value.indexOf(oldValue.systemInstructions) < 0
-          ? `${newValue.systemInstructions}\n${sysIntruct.value}`
-          : sysIntruct.value.replace(oldValue.systemInstructions, newValue.systemInstructions);
-        sysIntruct.value = currentValue;
-      }
-    }
-  }
-});
-
-function handleErrorButton(){
-  if(lastRegisteredErrorMessage.length === lastRegisteredErrorMessage.lastLength) {  return;  }
+function handleErrorButton() {
+  if (lastRegisteredErrorMessage.length === lastRegisteredErrorMessage.lastLength) { return; }
   const shadowRoot = getShadowRoot();
   const errorBtn = shadowRoot.querySelector('#errorMsgBtn');
-  if(!errorBtn)  {  return;  }
-  if(lastRegisteredErrorMessage.length > 0){
+  if (!errorBtn) { return; }
+  if (lastRegisteredErrorMessage.length > 0) {
     errorBtn.classList.remove('invisible');
   } else {
     errorBtn.classList.add('invisible');

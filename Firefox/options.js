@@ -103,12 +103,11 @@ function attachListeners(e) {
     document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
     document.querySelector('#newPromptBtn')?.addEventListener('click', async e => {  await createNewPrompt(e);  })
 
-    document.getElementById('importUserCmd')?.addEventListener('click', importUserCommand);
-    document.getElementById('exportUserCmd')?.addEventListener('click', exportAsFile);
-    document.getElementById('cleartUserCmd')?.addEventListener('click', deleteUserCommands);
-    document.querySelector('#exportPromptBtn')?.addEventListener('click', exportAsFile);
-    document.querySelector('#importPromptBtn')?.addEventListener('click', importUserCommand);
-    document.querySelector('#deletePromptBtn')?.addEventListener('click', deleteUserCommands);
+    document.querySelectorAll('#exportPromptBtn, #exportFuncBtn')?.forEach(btn => {
+        btn.addEventListener('click', async e => {  await exportAsFile(e);  });
+    });
+    document.querySelectorAll('#importPromptBtn, #importFuncBtn')?.forEach(btn => btn.addEventListener('click', importUserCommand));
+    document.querySelectorAll('#deletePromptBtn, #deleteFuncBtn')?.forEach(btn => btn.addEventListener('click', async e => await deleteStorageCollection(e)));
 
     document.querySelector('#newFuncBtn')?.addEventListener('click', async e => await createNewToolFunc(e)  );
 }
@@ -143,12 +142,22 @@ function deleteAllAiSessions(e) {
    });
 }
 
-function deleteUserCommands(e) {
-    chrome.storage.local.remove(['aiUserCommands']).then(() => {
-        showMessage('All User commands have been deleted.', 'success');
-    }).catch(e => {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e)
-    });
+async function deleteStorageCollection(e) {
+    const storageKeys = {"deletePromptBtn": "aiUserCommands", "deleteFuncBtn": "aiTools"};
+    const storageKey = storageKeys[e.target?.id];
+    const label = `${e.target?.id === 'deletePromptBtn' ? "User Prompts" : "Tool Functions"}`;
+    if(!storageKey) {
+        showMessage(`${label} not found!`, "error");
+        return;
+    }
+    try {
+        await chrome.storage.local.remove([storageKey]);
+        showMessage(`All ${label} have been deleted.`, 'success');
+        const avtiveMenu = document.querySelector('.active-navebar-item');
+        if(avtiveMenu){  avtiveMenu.click();  }
+    } catch (err) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err)
+    }
 }
 
 async function exportAsFile(e) {
@@ -159,7 +168,10 @@ async function exportAsFile(e) {
             storageKey = 'aiSessions';
             fileName = `session_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
             break;
-        case 'exportUserCmd':
+        case 'exportFuncBtn':
+            storageKey = 'aiTools';
+            fileName = `tool_functions_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
+            break;
         case 'exportPromptBtn':
             storageKey = 'aiUserCommands';
             fileName = `user_commands_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
@@ -181,26 +193,53 @@ async function exportAsFile(e) {
 }
 
 function importUserCommand(e) {
-    const fileInput = document.getElementById('fileInput')
+    const fileInput = document.getElementById('fileInput');;
+    fileInput.dataset.key = e.target.id || 'unknown';
     fileInput.click();
 }
 
 function importFromFile(e) {
+    let storageKey = e.target.dataset.key || 'unknown';
+    if (storageKey === 'unknown'){
+        showMessage("Failed to locate data storage!", "error");
+        console.error(`${getLineNumber()} - Wrong storage key!`, e.target);
+        return;
+    }
+
     const file = e.target.files[0];
     if(!file){
         showMessage("No file was selected!", "error");
         return;
     }
+
+    switch (storageKey) {
+        case 'importSessions':
+            storageKey = 'aiSessions';
+            break;
+        case 'importFuncBtn':
+            storageKey = 'aiTools';
+            break;
+        case 'importPromptBtn':
+            storageKey = 'aiUserCommands';
+            break;
+
+        default:
+            showMessage("Failed to locate data storage!", "error");
+            console.error(`${getLineNumber()} - Wrong storage key!`, e.target);
+            return;
+            break;
+    }
+
     var reader = new FileReader();
-    reader.onloadend = async function () {
+    reader.onloadend = async () => {
         showSpinner();
         try {
             var json = JSON.parse(reader.result);
-            await chrome.storage.local.set({ ['aiUserCommands']: json });
+            await chrome.storage.local.set({ [storageKey]: json });
 
-            showMessage('User Commands imported successfully.', 'success');
-            await getAiUserCommands();
-
+            showMessage(`${file.name} imported successfully.`, 'success');
+            const avtiveMenu = document.querySelector('.active-navebar-item');
+            if(avtiveMenu){  avtiveMenu.click();  }
         } catch (err) {
             console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
         } finally {
@@ -593,12 +632,19 @@ async function getAiUserCommands(){
     const generalSection = document.getElementById('general');
     const height = generalSection?.offsetHeight || -1;
     const aiUserCommands = commands.aiUserCommands || [];
+    const promptContainer = document.querySelector('#prompts');
+    if(!promptContainer){
+        console.error(`${promptContainer} not found!`, promptContainer)
+        return;
+    }
+    promptContainer.replaceChildren();
     if(aiUserCommands.length < 1){  return;  }
 
     const promptTemplate = document.getElementById('promptTemplate').content;
-    const promptContainer = document.querySelector('#prompts');
-    if(!promptTemplate || !promptContainer){  return;  }
-    promptContainer.replaceChildren();
+    if(!promptTemplate){
+        console.error(`${promptTemplate} not found!`, promptTemplate)
+        return;
+    }
     if(height > 0){  promptContainer.style.height = `${height}px`;  }
 
     for (let x=0, l=aiUserCommands.length; x<l; x++) {
@@ -608,6 +654,7 @@ async function getAiUserCommands(){
             clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
             clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
             clone.querySelector('.prompt-body').textContent = cmd.commandBody;
+        clone.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
             promptContainer.appendChild(clone);
     }
 }
@@ -617,17 +664,25 @@ async function getTools(){
     const generalSection = document.getElementById('general');
     const height = generalSection?.offsetHeight || -1;
     const aiTools = commands.aiTools || [];
+    const toolsContainer = document.querySelector('#tools');
+    if(!toolsContainer){
+        console.error(`[${getLineNumber()}] - toolsContainer not found!`, toolsContainer);
+        return;
+    }
+    toolsContainer.replaceChildren();
     if(aiTools.length < 1){  return;  }
 
     const funcTemplate = document.getElementById('functionTemplate').content;
-    const toolsContainer = document.querySelector('#tools');
-    if(!funcTemplate || !toolsContainer){  return;  }
-    toolsContainer.replaceChildren();
+    if(!funcTemplate){
+        console.error(`[${getLineNumber()}] - funcTemplate not found!`, funcTemplate);
+        return;
+    }
     if(height > 0){  toolsContainer.style.height = `${height}px`;  }
 
     for (let x=0, l=aiTools.length; x<l; x++) {
         const clone = document.importNode(funcTemplate, true);
         clone.querySelector('.prompt-body').textContent = JSON.stringify(aiTools[x], null, 4);
+        clone.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
         toolsContainer.appendChild(clone);
     }
 }
@@ -635,20 +690,45 @@ async function getTools(){
 async function applyPromptCardAction(e){
     const parent = e.target.closest('.prompt-item');
     const action = e.target.getAttribute('data-action');
+    const copyBtn = parent.querySelector('img[src="img/copy.svg"][data-action="copy"]');
+    const delBtn = parent.querySelector('img[src="img/remove-all.svg"][data-action="delete"]');
+    const undoBtn = parent.querySelector('img[src="img/undo.svg"][data-action="undo"]');
+    const editBtn = parent.querySelector('img[src="img/edit2.svg"][data-action="edit"]');
+    const saveBtn = parent.querySelector('img[src="img/tick.svg"][data-action="save"]');
+    if(delBtn){  delBtn.classList.remove('delete-active');  }
     if(!parent || !action){  return;  }
 
     switch(action) {
+        case 'copy':
+            let data = parent.querySelector('.prompt-body');
+            const getParentEvent = () => e;
+            navigator.clipboard.writeText(data?.textContent || '')
+                .then(() => { showHint(getParentEvent()); })
+                .catch(err => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
+            break;
+        case 'undo':
+            copyBtn.classList.remove('invisible');
+            undoBtn.classList.add('invisible');
+            editBtn.classList.remove('invisible');
+            saveBtn.classList.add('invisible');
+            parent.classList.remove('prompt-item-edit');
+            parent.querySelectorAll('.js-ptompt-card-item').forEach(el => el.setAttribute('contenteditable', false));
+            break;
         case 'edit':
+            copyBtn.classList.add('invisible');
+            undoBtn.classList.remove('invisible');
             parent.classList.add('prompt-item-edit');
-            e.target.setAttribute('data-action', 'save');
+            editBtn.classList.add('invisible');
+            saveBtn.classList.remove('invisible');
             parent.querySelectorAll('.js-ptompt-card-item').forEach(el => el.setAttribute('contenteditable', true));
-            e.target.src = `img/tick.svg`;
             break;
         case 'save':
+            undoBtn.classList.add('invisible');
+            copyBtn.classList.remove('invisible');
+            editBtn.classList.remove('invisible');
+            saveBtn.classList.add('invisible');
             parent.classList.remove('prompt-item-edit');
-            e.target.setAttribute('data-action', 'edit');
             parent.querySelectorAll('.js-ptompt-card-item').forEach(el => el.setAttribute('contenteditable', false));
-            e.target.src = `img/edit2.svg`;
             await savePrompts(e);
             break;
 
@@ -717,10 +797,8 @@ async function createNewPrompt(e){
     newPromptItem?.classList.add('prompt-item-edit');
     newPromptItem.querySelectorAll('.prompt-buttons img')
         ?.forEach(btn => {
-            if(btn.src.indexOf('edit2')> -1){
-                btn.src = btn.src.replace('edit2', 'tick');
-                btn.setAttribute('data-action', 'save');
-            }
+            btn.classList.remove('invisible');
+            if(["edit", "copy"].includes(btn.dataset.action)){  btn.classList.add('invisible');  }
             btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); });
     });
 }
@@ -759,10 +837,8 @@ async function createNewToolFunc(e){
     newPromptItem?.classList.add('prompt-item-edit');
     newPromptItem.querySelectorAll('.prompt-buttons img')
         ?.forEach(btn => {
-            if(btn.src.indexOf('edit2')> -1){
-                btn.src = btn.src.replace('edit2', 'tick');
-                btn.setAttribute('data-action', 'save');
-            }
+            btn.classList.remove('invisible');
+            if(["edit", "copy"].includes(btn.dataset.action)){  btn.classList.add('invisible');  }
             btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); });
     });
     newPromptItem.querySelector('.prompt-body').setAttribute('contenteditable', true);

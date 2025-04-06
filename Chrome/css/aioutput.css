@@ -16,6 +16,12 @@
     border-radius: 3px;
 }
 
+.lai-ai-input .lai-input-text span code {
+    color: #272822;
+    background-color: #f8f8f2;
+    border-radius: 3px;
+}
+
 .lai-ai-input .lai-input-text code {
     padding: 3px;
 }

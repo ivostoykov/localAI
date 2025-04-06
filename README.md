@@ -26,11 +26,12 @@ You’ll need enough hardware power, preferably with a GPU.
 
 A local AI tool—these are easy to set up, usually just download and run:
 
-* [LM Studio](https://lmstudio.ai/) - preffered
+* [Ollama](https://ollama.com/) server is used as the API endpoint.
 
-Optionally:
-* [Ollama](https://ollama.com/)
-* [Mozilla LlamaFile](https://github.com/Mozilla-Ocho/llamafile)
+>[! Warning]:
+> The following API providers are deprecated for now and will only be reinstated upon request.
+> * [LM Studio](https://lmstudio.ai/) - preffered
+> * [Mozilla LlamaFile](https://github.com/Mozilla-Ocho/llamafile)
 
 And the browser extension.
 

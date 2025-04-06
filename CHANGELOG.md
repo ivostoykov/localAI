@@ -1,6 +1,20 @@
 # Local AI - Changelog
 
-## [1.24.52] 2025-03-31 - latest
+## [1.27.22] 2025-04-06 - latest
+
+- Completely rewrote the session management.
+- Added the ability to name session history for easier restoration.
+- Synced chat history changes with the active session.
+- Redesigned dynamic chat menus.
+- Implemented the newest Markdown parser features.
+- Introduced internal tool functions for rendering the active page in the current tab.
+- Enhanced the options page.
+- Improved the import, export, and deletion functions for user commands.
+- Improved the import, export, and deletion functions for user tool functions.
+- Moved related button from the "General" section to the associated script.
+- Designated Ollama as the primary API endpoint, deprecating others.
+
+## [1.24.52] 2025-03-31
 
 - Replaced the Markdown processor to improve output handling.
 - Bug fixed
