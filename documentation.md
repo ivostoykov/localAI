@@ -101,6 +101,11 @@ When you hover over the [Ribbon](#ribbon), you'll see the extension's version nu
 
 Sessions can be managed also from the [Options](#options) page.
 
+### Tools
+
+<img src="Chrome/img/tools.svg" height="30" alt="Tools"/> - Enable or disable the tools. Also avaliable in the [Options](#options) page - see [Tools](#functions-tools).
+
+
 # Context menu
 
 ![Context menu](media/context_menu.png)
@@ -258,11 +263,41 @@ If a valid URL is provided, documents dropped into the panel will be converted b
 
 ![User Commands](media/functions.png)
 
+> ![Note]
+> This is experimental
+
+Similar to [User Commands](#user-commands) container for [tool & functions](https://platform.openai.com/docs/guides/agents#tools). Here are all the tools your system has ready to serve.
+
 As defined in OpenAI's specification, tools are defined functionalities the model can access to perform specific tasks beyond its typical capabilities. They act as interfaces to external systems or functions, enabling the model to execute commands, retrieve data, or perform calculations directly.
 
 When a tool is included, during interaction, if the model determines a tool's usage is needed, it can call the tool with the specified parameters, facilitating tasks like accessing a database or invoking a web service.
 
 Tools enhance the model's utility, allowing it to handle complex scenarios by integrating real-time data or operations that require exact execution, thus expanding its practical applications beyond generating text to include dynamic data manipulation.
+
+There is one built-in fool function related wtih the active tab, allowing to get the URL and loaded page content. It require to be devined by the user into the Options -> Functions section.
+
+```
+{
+    "function": {
+        "description": "Returns the active browser tab URL and content without need for further web search.",
+        "name": "get_tab_info",
+        "parameters": {
+            "properties": {},
+            "required": [],
+            "type": "object"
+        }
+    },
+    "strict": true,
+    "type": "tool",
+    "usage_cost": 1
+}
+```
+
+> [!Note]
+> get_tab_info **must** be declared as `type: "tool"`
+
+> [!Note]
+> As per [Llama3 documentation](https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_1/#-tool-calling-(8b/70b/405b)-): *We recommend using Llama 70B-instruct or Llama 405B-instruct for applications that combine conversation and tool calling. **Llama 8B-Instruct can not reliably maintain a conversation alongside tool calling definitions**.*
 
 #### Definition
 

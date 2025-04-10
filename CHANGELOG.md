@@ -1,6 +1,16 @@
 # Local AI - Changelog
 
-## [1.27.22] 2025-04-06 - latest
+## [1.27.30] 2025-04-06 - latest
+
+- Improved event raised by the markdow parser
+- Added built-in function allowing to query the active tab URL and loaded page content
+- fixed some bugs related to function calls
+- optimised function calls
+- optimised messages shown to the user for better understanding
+- Added dynamic enabling and disabling of the tools for optimisation of the interaction wtih the AI
+- fixed some bugs with chat parts buttons
+
+## [1.27.22] 2025-04-06
 
 - Completely rewrote the session management.
 - Added the ability to name session history for easier restoration.

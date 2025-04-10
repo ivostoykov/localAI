@@ -6,6 +6,17 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         abortSignal.addEventListener('abort', handleAbort, { once: true });
     }
 
+    let debounceTimeout;
+    const observer = new MutationObserver(() => {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+            console.debug(`>>> ${manifest.name} - [${getLineNumber()}]`);
+            rootEl.dispatchEvent(new CustomEvent('rendering'));
+            config.onRendering?.();
+        }, 50);
+    });
+    observer.observe(rootEl, { childList: true, characterData: true, subtree: true });
+
     rootEl.dataset.status = 'parsing';
     rootEl.dispatchEvent(new CustomEvent('renderStarted'));
     config.onRenderStarted?.();
@@ -16,7 +27,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
 
     rootEl.dataset.status = 'rendering';
     for (const bl of blocks) {
-        rootEl.dispatchEvent(new CustomEvent('rendering', { detail: bl }));
         config.onRendering?.(bl);
         if (abortSignal?.aborted) { return; }
 
@@ -38,6 +48,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
     /// end of the main block
 
     function cleanup() {
+        observer.disconnect();
         delete rootEl.dataset.status;
         abortSignal?.removeEventListener('abort', handleAbort);
     }
@@ -143,9 +154,10 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             const span = document.createTextNode('');
             targetParent.appendChild(span);
             await new Promise(resolve => {
-                function typeChar() {
+                async function typeChar() {
                     if (i < text.length) {
                         span.textContent += text[i++];
+                        await new Promise(resolve => setTimeout(resolve));
                         requestAnimationFrame(typeChar);
                     } else {
                         resolve();

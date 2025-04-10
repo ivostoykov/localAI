@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Local AI helper",
-    "version": "1.27.22",
+    "version": "1.27.30",
     "options_page": "options.html",
     "permissions": [
         "activeTab",
@@ -41,6 +41,7 @@
             "resources": [
                 "sidebar.html",
                 "css/button.css",
+                "css/ribbon.css",
                 "css/sidebar.css",
                 "css/aioutput.css",
                 "lai-main.js",

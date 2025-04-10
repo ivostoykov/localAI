@@ -8,7 +8,8 @@ function getRootElement() {
 }
 
 function getShadowRoot() {
-    return document.getElementById('localAI')?.shadowRoot;
+    const el = document.documentElement.querySelector('localAI') || document.getElementById('localAI')
+    return el?.shadowRoot;
 }
 
 function getSideBar() {
@@ -128,6 +129,29 @@ async function laiInitSidebar() {
         }
     });
 
+    const toolFunctions = ribbon.querySelector('#toolFunctions');
+    if(laiOptions?.toolsEnabled){
+        toolFunctions.classList.remove('disabled');
+    }else{
+        toolFunctions.classList.add('disabled');
+    }
+    toolFunctions?.addEventListener('click', async e => {
+        const el = e.target;
+        const options = await getOptions();
+        el.classList.toggle('disabled');
+        if (el.classList.contains('disabled')) {
+            el.alt = el.alt.replace(/Disable/g , 'Enable');
+            el.title = el.alt;
+            options["toolsEnabled"] = false;
+        } else {
+            el.alt = el.alt.replace(/Enable/g , 'Disable');
+            el.title = el.alt;
+            options["toolsEnabled"] = true;
+        }
+        updateStatusBar(`Tools are ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`)
+        setTimeout(() => resetStatusbar(), 3000);
+        await setOptions(options);
+    });
     ribbon.querySelector('#systemIntructions').addEventListener('click', laiShowSystemInstructions);
     ribbon.querySelector('#newSession').addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot));
     ribbon.querySelector('#sessionHistry').addEventListener('click', async e => await showActiveSessionMenu(e));
@@ -187,9 +211,6 @@ async function laiInitSidebar() {
 
     setModelNameLabel({ "model": laiOptions.aiModel });
     await buildMenuDropdowns();
-    // attachments.push(`Current page contents:\n[FILE] ${getPageTextContent()} [/FILE]`);
-    // showAttachment("Current page");
-    // updateStatusBar("Current page has been added to the context. Assistent is ready.");
 };
 
 function getCurrentSystemInstructions(){
@@ -790,7 +811,7 @@ function addInputCardToUIChatHistory(inputText, type, index = -1) {
                     prompt2UserCommand(thisPromptContainer.querySelector('.lai-input-text').textContent);
                     break;
                 case 'copy':
-                    await copyElementContent(e, type);
+                    await copyChatElementContent(e, type);
                     break;
                 case 'edit':
                     await editUserInput(e, type);
@@ -897,25 +918,6 @@ function laiShowCopyHint(e) {
     }, 2500);
 }
 
-// get raw content
-async function getElementSessionContent(el){
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) {
-        console.error(`[${getLineNumber()}]: Base element not found!`);
-        return;
-    }
-    const currentSession = await getActiveSession();
-    const currentSessionData = currentSession?.data || [];
-    const index = await findElementHistoryIndex(el);
-    if(index < 0){
-        console.error(`[${getLineNumber()}]: Element not found in the session!`);
-        return;
-    }
-
-    const content = index < 0 ? '' : currentSessionData[index]?.content || '';
-    return content;
-}
-
 // index in the UI chat list
 async function findElementHistoryIndex(el){
     const shadowRoot = getShadowRoot();
@@ -930,10 +932,11 @@ async function findElementHistoryIndex(el){
     return index;
 }
 
-async function copyElementContent(e, type) {
+async function copyChatElementContent(e, type) {
     const evt = e;
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
-    let textContent = element ? await getElementSessionContent(element) : '';
+    const textContent = element.innerText || '';
+    // let textContent = element ? await getElementSessionContent(element) : '';
 
     try {
         await navigator.clipboard.writeText(textContent);
@@ -945,7 +948,8 @@ async function copyElementContent(e, type) {
 
 async function editUserInput(e, type) {
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
-    let textContent = element ? await getElementSessionContent(element) : '';
+    const textContent = element.innerText || '';
+    // let textContent = element ? await getElementSessionContent(element) : '';
     const container = element.closest("#laiChatMessageList");
     const currentSession = await getActiveSession();
     const idx = await findElementHistoryIndex(element);
@@ -1156,16 +1160,24 @@ function laiExtractDataFromResponse(response) {
     return response?.message?.content || "Empty content!";
 }
 
-function createAbortHandler(controller, abortBtn) {
+function createAbortHandler(controller, abortBtn, rootEl) {
     return function abortHandler() {
         controller.abort();
         abortBtn?.removeEventListener('click', abortHandler);
         resetStatusbar();
-        laiHandleStreamActions("Stream Aborted", recipient, '... Aborted');
+        laiHandleStreamActions("Stream Aborted", rootEl, '... Aborted');
     };
 }
 
+function scropChatHistoryContainer(e){
+    if (userScrolled) {  return; }
+    const laiChatMessageList = e.target.closest('#laiChatMessageList');
+    laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+}
+
 function renderCompleteFired(e){
+    const laiChatMessageList = e.target.closest('#laiChatMessageList');
+    laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
     resetStatusbar();
     laiHandleStreamActions("Streaming response ended", e.target);
 }
@@ -1177,9 +1189,10 @@ function getParseAndRenderOptions(rootEl) {
     const controller = new AbortController();
     const abortBtn = shadowRoot.getElementById('laiAbort');
 
-    const abortHandler = createAbortHandler(controller, abortBtn);
+    const abortHandler = createAbortHandler(controller, abortBtn, rootEl);
 
     rootEl.addEventListener('renderComplete', renderCompleteFired);
+    rootEl.addEventListener('rendering', scropChatHistoryContainer)
     abortBtn?.addEventListener('click', abortHandler);
 
     return {  abortSignal: controller.signal  };
@@ -1233,14 +1246,9 @@ chrome.runtime.onMessage.addListener(async (response) => {
             } catch (err) {
                 streamDataError = err;
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err, dataChunk, response);
-            } finally{
-                // resetStatusbar();
-                // laiHandleStreamActions((streamDataError ? streamDataError.message : "Stream Ended"), recipient)
             }
             break;
         case "streamEnd":
-            // resetStatusbar();
-            // laiHandleStreamActions("Stream Ended", recipient);
             break;
         case "streamError":
             laiHandleStreamActions("Stream Error", recipient);
@@ -1291,10 +1299,10 @@ chrome.runtime.onMessage.addListener(async (response) => {
             break;
     }
 
-    if (!userScrolled) {
-        const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
-        laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
-    }
+    // if (!userScrolled) {
+    //     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
+    //     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+    // }
 
     if (response.error) {
         showMessage(response.error, 'error');
@@ -1347,13 +1355,22 @@ function laiGetRecipient() {
 
 function getPageTextContent() {
     const bodyClone = document.body.cloneNode(true);
-    ['local-ai', 'script', 'link', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside'].forEach(selector => {
-        bodyClone.querySelectorAll(selector).forEach(el => el.remove());
+
+    const removed = document.createElement('div');
+    removed.style.display = 'none';
+    ['local-ai', 'script', 'link', 'button', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside', 'audio', 'video','embed', 'object', 'picture', 'source', 'track', 'canvas'].forEach(selector => {
+        bodyClone.querySelectorAll(selector).forEach(el => removed.appendChild(el));
     });
 
-    let content = bodyClone.textContent.replace(/[ \t]+/g, ' ')
-    content = content.replace(/\s+/g, '\n');
-    return ` PAGE URL: ${document.location.url}\nPAGE CONTENT START: ${content.trim()} PAGE CONTENT ENDED`;
+    let content = [];
+    const walker = document.createTreeWalker(bodyClone, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node?.nodeValue || !(/[^\n\s\r]/.test(node?.nodeValue))) { continue; }
+        content.push(node.nodeValue?.trim());
+    }
+
+    return ` PAGE URL: ${document.location.href}\nPAGE CONTENT START: ${content.join('\n')} PAGE CONTENT END`;
 }
 
 async function ask2ExplainSelection(response) {
@@ -1699,13 +1716,11 @@ function isAskingForHelp(e) {
 async function restoreLastSession(sessionIdx) {
     const allSessions = await getAllSessions();
     if(allSessions.length < 1){
-        // activeSessionIndex = 0;
         showMessage('No stored sessions found.');
         return;
     }
     if(isNaN(sessionIdx) || typeof(sessionIdx) !== 'number'){  sessionIdx = Math.max(allSessions.length -1, 0);  }
     const session = allSessions[sessionIdx];
-    // activeSessionIndex = sessionIdx;
     await setActiveSessionIndex(sessionIdx);
     if (!session || !session.data || session.length < 1) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - No data found in current session.`, session);
@@ -1722,6 +1737,11 @@ async function restoreLastSession(sessionIdx) {
         }
         else{  addInputCardToUIChatHistory(msg.content, role, i);  }
     });
+
+    const shadowRoot = getShadowRoot();
+    const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
+    laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+
     showMessage(`session #${sessionIdx} restored.`, 'info');
 }
 

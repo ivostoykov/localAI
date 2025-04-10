@@ -109,11 +109,18 @@ async function allDOMContentLoaded(e) {
 
   document.addEventListener('mouseout', clearElementOverDecoration, true);
 
+  // window?.navigation.addEventListener("navigate", (event) => {
+  //   setTimeout(async () => { await setActiveSessionPageData({ "url": document.location.href, "pageContent": getPageTextContent() }); }, 200);
+  // });
+  if ('navigation' in window) {
+    window?.navigation.addEventListener("currententrychange", e => {
+      setTimeout(async () => { await setActiveSessionPageData({ "url": document.location.href, "pageContent": getPageTextContent() }); }, 200)
+    });
+  } else {  console.error(`>>> ${manifest.name} - [${getLineNumber()}] - This browser does not support window.navigation. Current page won't be tracked properly!`); }
+
   try {
-    // laiOptions = await getLaiOptions();
     await removeLocalStorageObject(activeSessionIndexStorageKey);
-    await setActiveSessionPageData({"url": document.location.url, "pageContent": getPageTextContent()});
-    // await setAllSessions();
+    await setActiveSessionPageData({"url": document.location.href, "pageContent": getPageTextContent()});
     await getAiUserCommands(); //TODO: remove it as global
   } catch (err) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
@@ -122,7 +129,7 @@ async function allDOMContentLoaded(e) {
 
   init();
   try {
-    await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css']));
+    await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css' ]));
   } catch (error) {
       console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }
@@ -131,11 +138,13 @@ async function allDOMContentLoaded(e) {
 async function init() {
   try {
     if (!chrome.runtime.id) { chrome.runtime.reload(); }
-  const localAI = Object.assign(document.createElement('local-ai'), {
-    id: "localAI"
-  });
+    document.documentElement.querySelector('localAI')?.remove();
+    document.querySelector('localAI')?.remove();
 
-  document?.body?.appendChild(localAI);
+    const localAI = document.createElement('local-ai');
+    localAI.id = "localAI";
+
+    document.documentElement.appendChild(localAI);
     localAI.attachShadow({ "mode": 'open' });
     await buildMainButton();
     await laiFetchAndBuildSidebarContent();

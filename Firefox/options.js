@@ -110,6 +110,12 @@ function attachListeners(e) {
     document.querySelectorAll('#deletePromptBtn, #deleteFuncBtn')?.forEach(btn => btn.addEventListener('click', async e => await deleteStorageCollection(e)));
 
     document.querySelector('#newFuncBtn')?.addEventListener('click', async e => await createNewToolFunc(e)  );
+
+    document.getElementById('toolsEnabled')?.addEventListener('change', e => {
+        const label = document.querySelector('label[for="toolsEnabled"]');
+        label.textContent = `${e.target.checked ? 'Enable' : 'Disable'} tools`;
+        document.querySelector('[type="submit"]').click();
+    });
 }
 
 function onshowEmbeddedButtonClicked(e) {
@@ -496,7 +502,7 @@ function shrinkList(e) {
 
 async function attachDataListListeners(e) {
 
-    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons'];
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons'];
     for (let x = 0; x < containers.length; x++) {
         const container = document.querySelector(`#${containers[x]}`);
         if (!container) { continue; }
@@ -539,7 +545,7 @@ async function testConnection(e){
     try {
         const container = e.target.closest('.el-holder')
         if(!container){ throw new Error(`Faild to find main element!`); }
-        const el = container.querySelector('input[type="text"]') || container.querySelector('select');
+        const el = container.querySelector('input[type="url"]') || container.querySelector('select');
         // const tikaEl = document.querySelector('#tika');
         if (!el) { throw new Error(`No API endpoint value found - ${el?.value}!`); }
 
@@ -548,7 +554,7 @@ async function testConnection(e){
         url = (new URL(url)).origin;
 
         response = await fetch(url);
-        if(!response.ok){   throw new Error(`Server returned status code ${response.status}`);  }
+        if(isNaN(response.status)){   throw new Error(`Server returned status code ${response.status}`);  }
         showMessage(`Connection to ${url} successfull.`, "success");
     } catch (e) {
         showMessage(`Connection to ${url} failed! - ${e.message}`, "error");

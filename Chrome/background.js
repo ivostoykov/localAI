@@ -333,16 +333,77 @@ function getLastConsecutiveUserRecords(messages) {
     return result.join('\n');
 }
 
+async function validateToolCall(call = {}, availableTools) {
+    if (!availableTools) {  availableTools = await getPromptTools(); }
+
+    if (!call?.function?.name || Object.keys(call.function).length < 1) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - call request is null or empty!`, call);
+        return { isValid: false, reason: "Missing or empty call object!" };
+    }
+
+    const func = availableTools.find(f => f?.function?.name === call.function.name);
+    if (!func) {
+        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - Fake function call - ${call.function.name}. Instructions to restrict provided.`);
+        return {
+            isValid: false,
+            reason: `Invalid function call.\nThere is no function named ${call.function.name} in the provided list.\nYou must only call functions from the available list.\nDo not guess, do not invent function names.\nRetry using exactly one valid function from the list.\nContinue this process until a correct call is made or no function applies.`
+        };
+    }
+
+    const requiredParams = func.function.parameters?.required || [];
+    const properties = func.function.parameters?.properties || {};
+    const args = call.function.arguments || {};
+
+    for (const param of requiredParams) {
+        const value = args[param];
+        const expectedType = properties[param]?.type;
+
+        if (value === undefined || value === null || value === '') {
+            return {
+                isValid: false,
+                reason: `Missing or invalid parameter: "${param}". All required parameters must be provided.\nDo not leave parameters blank or undefined.\nIf required data is unavailable, do not make the call.`
+            };
+        }
+
+        if (expectedType && typeof value !== expectedType) {
+            return {
+                isValid: false,
+                reason: `Type mismatch for parameter: "${param}". Expected "${expectedType}", got "${typeof value}". Ensure correct types are used.`
+            };
+        }
+
+        if (typeof value === 'string' && availableTools.some(t => t.function.name === value)) {
+            return {
+                isValid: false,
+                reason: `Provided parameter "${param}" looks like an existing function name: "${value}", which is not a valid value for "${call.function.name}". Make another call explicitly requesting "${value}" first and use its result as input.`
+            };
+        }
+    }
+
+    return { isValid: true };
+}
+
 async function resolveToolCalls(toolCalls, toolBaseUrl) {
     const availableTools = await getPromptTools();
     const messages = [];
 
+
     for (const call of toolCalls) {
-        const funcType = console.log(availableTools.find(f => call.function.name === "get_current_page")?.type || null);
-        updateUIStatusBar(`Calling ${call.function.name}...`);
-        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tool call request`, call);
-        await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - tool call request`, call, 'debug');
+        const validation = await validateToolCall(call, availableTools);
+        if(!validation.isValid){
+            console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - Validation call vailed for ${call.function.name}!`, validation);
+            messages.push(
+                { role: "assistant", content: "", tool_calls: [call] },
+                { role: "tool", content: validation.reason || 'No reason provided' }
+            );
+            break;
+        }
+
+        const funcType = availableTools.find(f => f.function.name === call.function.name)?.type || null;
         const funcUrl = `${toolBaseUrl}/${call.function.name}`;
+        updateUIStatusBar(`Calling ${call.function.name}...`);
+        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} call request`, call);
+        await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} call request`, call, 'debug');
         let data;
         let res;
 
@@ -350,6 +411,17 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
             switch (funcType?.toLowerCase()) {
                 case 'tool':
                     res = await execInternalTool(call);
+                    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
+                    if(res?.result !== "success"){
+                        data = `"${call?.function?.name}" call returned error: ${res?.content}\nSelect the next best candidate function from the list.\n Continue until a valid response is received or no options remain.`;
+                        messages.push(
+                            { role: "assistant", content: "", tool_calls: [call] },
+                            { role: "user", content: data }
+                        );
+                        continue;
+                    }
+                    data = res?.content || 'No content returned!';
                     break;
                 case 'function':
                     res = await fetchExtResponse(funcUrl, {
@@ -357,43 +429,68 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(call.function.arguments),
                     });
+                    data = await res?.json();
+                    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
+                    if (res?.status !== 200 || data?.status === 'error') {
+                        data = `"${call?.function?.name}" call returned error: ${data.message}\nSelect and call another function from the list.\n Continue until a valid response is received or no options remain.`;
+                        messages.push(
+                            { role: "assistant", content: "", tool_calls: [call] },
+                            { role: "user", content: data }
+                        );
+                        continue;
+                    }
                     break;
                 default:
-                    throw new Error(`Invalid tool type: ${call.function.type} found in this tool's objectL ${JSON.stringify(call || "{}")}`);
+                    throw new Error(`Invalid tool type: ${call.function.type} found in this tool's object: ${JSON.stringify(call || "{}")}`);
             }
 
-            data = res?.status === 200 ? await res.json() : `There is no registered tool named ${funcUrl.split('/').pop()}`;
+            switch (typeof res) {
+              case 'undefined':
+                data = `Function "${call.function.name}" returned no response.\nThe function name, its parameters, or the server may be invalid or unavailable.\nSelect and call another function from the list.\nContinue until a valid response is received or no options remain.`;
+                break;
+            case 'object':
+                data = JSON.stringify(data);
+                break;
+            }
+
             updateUIStatusBar(`${call.function.name} response received.`);
+            console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+            await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
 
         } catch (err) {
+
             updateUIStatusBar(`Error occured while calling ${call.function.name}...`);
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error calling ${call.function.name}`, err, call);
-            if (err.toString().startsWith("TypeError: Failed to fetch")) {
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error calling ${call.function.name}`, err, call, res);
+            if (err.name === 'TypeError' && err.message.includes('fetch')) {
                 showUIMessage(`External tools endpoint (${funcUrl}) seems missing to be down!`, "error");
                 data = "Tool execution failed — endpoint unavailable.";
+                console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
                 messages.push(
                     { role: "assistant", content: "", tool_calls: [call] },
-                    { role: "tool", content: JSON.stringify(data) }
+                    { role: "user", content: data }
                 );
                 break;
             }
             continue;
         }
 
-        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tool call response`, data);
         messages.push(
             { role: "assistant", content: "", tool_calls: [call] },
-            { role: "tool", content: JSON.stringify(data) }
+            { role: "tool", content: data }
         );
     }
 
     if (messages.length < 1) { messages.push({ role: "tool", content: `None of these - ${toolCalls.map(t => t.function?.name).join(", ")} - are existing tool functions. Please rely on your internal knowledge instead.` }); }
+    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - merged tool call responses`, messages);
     return messages;
 }
 
 async function fetchDataAction(request, sender) {
     const laiOptions = await getLaiOptions();
     const promptTools = await getPromptTools();
+    const remainingTools = new Set(promptTools.map(t => t.function.name));
 
     if (!laiOptions?.aiUrl) {
         let msg = 'Missing API endpoint!';
@@ -416,11 +513,14 @@ async function fetchDataAction(request, sender) {
         request.data['model'] = laiOptions?.aiModel || '';
     }
 
-    if (promptTools.length > 0) {
+    if (laiOptions.toolsEnabled && promptTools.length > 0) {
         request.data["tools"] = promptTools;
-        request.data["stream"] = false;
         request.data["tool_choice"] = "auto"
+    } else {
+        await dumpInFrontConsole(`[${getLineNumber()}] - tools are disabled in the settings. Skipping them.`, laiOptions, 'debug')
+        console.debug(`[${getLineNumber()}] - tools are disabled in the settings. Skipping them.`, laiOptions)
     }
+    request.data["stream"] = false;
     request["format"] = "json";
 
     let activeSession = await getActiveSession() || [];
@@ -442,6 +542,7 @@ async function fetchDataAction(request, sender) {
 
     let response;
     let body;
+    let responseText;
     let reqOpt = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -450,6 +551,7 @@ async function fetchDataAction(request, sender) {
     };
     try {
         response = await fetchExtResponse(url, reqOpt);
+        responseText = await response.clone().text();
         body = await response.json();
         if (response.status > 299) { throw new Error(`${response.status}: ${response.statusText} - ${body?.error || 'No response error provided...'}`); }
 
@@ -460,16 +562,36 @@ async function fetchDataAction(request, sender) {
             return { "status": "aborted", "message": "Aborted" };
         }
 
-        if (body?.message?.tool_calls) {
+        while (body?.message?.tool_calls && remainingTools.size > 0) {
+            const toolNamesUsed = body.message.tool_calls.map(tc => tc.function.name);
+            toolNamesUsed.forEach(name => remainingTools.delete(name));
+
             const newMessages = await resolveToolCalls(body.message.tool_calls, laiOptions.toolFunc);
-            await setActiveSession(newMessages);
             request.data.messages.push(...newMessages);
+            const lastRole = request.data.messages.at(-1)?.role;
+            await setActiveSession(newMessages);
+
+            if(lastRole !== 'tool') {   // Inject updated tool list to LLM if needed
+                if (remainingTools.size > 0) {
+                    request.data.messages.push({
+                        role: "user",
+                        content: `Use nothing else but the best candidate from the available functions here: ${[...remainingTools].join(", ")}. Always call one at a time.`,
+                    });
+                } else {
+                    request.data.messages.push({
+                        role: "user",
+                        content: `All tools have been tried. Provide a final response based on what you know.`,
+                    });
+                    break;
+                }
+            }
 
             response = await fetchExtResponse(url, {
                 ...reqOpt,
                 body: JSON.stringify(request.data),
             });
 
+            responseText = await response.clone().text();
             body = await response.json();
         }
 
@@ -479,7 +601,7 @@ async function fetchDataAction(request, sender) {
         await handleResponse(body, sender.tab.id);
     }
     catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error`, e, response, request?.data);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
         if (e.name === 'AbortError') {
             try {
                 await chrome.tabs.sendMessage(sender.tab.id, { action: "streamAbort" });
@@ -531,6 +653,8 @@ async function fetchExtResponse(url, options, resentWithoutTools = true) {
             options.body = JSON.stringify(requestBody);
             return fetchExtResponse(url, options, false);
         }
+
+        return response;
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - External call to ${url} failed!`, error, options);
         throw error;
@@ -755,17 +879,26 @@ async function prepareModels(modelName, remove = false, tab) {
 /////////// internal function defined in the prompt tools section ///////////
 
 async function execInternalTool(call = {}){
-    let res= {"status": null, "message": null, "result":null};
+    let res;
     const data = await getActiveSessionPageData();
     switch (call?.function?.name.toLowerCase()) {
-        case "get_current_url":
-            res = {"status": 200, "message": `${call?.function?.name} completed`, "result":`${call?.function?.name} returned this URL: ${data.url}`};
+        case "get_current_tab_url":
+            res = {"result": "success", "content": `${call?.function?.name} response is: ${data.url}`};
             break;
-        case "get_current_page":
-            res = {"status": 200, "message": `${call?.function?.name} completed`, "result":`${call?.function?.name} returned this page content: ${data.pageContent}`};
+        case "get_current_date":
+        case "get_current_time":
+        case "get_date_time":
+        case "get_date":
+        case "get_time":
+            res = {"result": "success", "content": `${call?.function?.name} response is: ${new Date().toISOString()}`};
+            break;
+        case "get_tab_info":
+        case "get_current_tab_info":
+        case "get_current_tab_page_content":
+            res = {"result": "success", "content": `${call?.function?.name} response is: ${data.pageContent}`};
             break;
         default:
-            res = {"status": "error", "message": `No tool named ${call?.function?.name} was found!`, "result":null};
+            res = {"result": "error", "content": `No tool named ${call?.function?.name} was found!`};
             break;
     }
 

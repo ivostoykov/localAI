@@ -101,7 +101,7 @@
             <div class="el-holder">
                     <label for="webHook">Tools/Functions</label>
                     <input type="url" name="toolFunc" id="toolFunc" class="url" size="1000" />
-                    <div id="tikaButtons">
+                    <div id="toolButtons">
                         <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
                             title="Test connection">
                     </div>
@@ -156,6 +156,10 @@
                     <li id="exportFuncBtn">Export Function Definitions</li>
                     <li id="importFuncBtn">Import Function Definitions</li>
                     <li id="deleteFuncBtn">Delete Function Definitions</li>
+                    <li>
+                        <input type="checkbox" id="toolsEnabled">
+                        <label for="toolsEnabled">Disable tools</label>
+                    </li>
                 </ul>
             </div>
             <section id="tools" class="js-tab-body invisible tool-section">
