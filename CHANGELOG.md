@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.27.30] 2025-04-06 - latest
+## [1.27.41] 2025-04-12 - latest
+
+- fixed autoscroll
+- fixed bug in fonts and colours in some pages
+- fixed rendering event bubbling
+- fixed scrolling behaviour separating extension and page scrolling behaviour.
+- enhanced rendering of output from reasoning models.
+
+## [1.27.30] 2025-04-06
 
 - Improved event raised by the markdow parser
 - Added built-in function allowing to query the active tab URL and loaded page content

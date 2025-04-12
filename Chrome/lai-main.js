@@ -181,10 +181,29 @@ async function laiInitSidebar() {
     });
 
     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
+    laiChatMessageList.dataset.watermark = `${manifest.name} - ${manifest.version}`;
     laiChatMessageList.addEventListener('click', hidePopups);
-    laiChatMessageList.addEventListener('scroll', () => {
+    laiChatMessageList.addEventListener('scroll', (e) => {
         const fromBottom = laiChatMessageList.scrollHeight - laiChatMessageList.scrollTop - laiChatMessageList.clientHeight;
         userScrolled = fromBottom > 10 ? true : false;
+        const chatList = e.target;
+        const itemRibbon = chatList.querySelector('.lai-action-icons:not(.invisible)');
+        if (!itemRibbon){  return;  }
+
+        const elChatHist = itemRibbon.parentElement;
+        const elChatHistRect = elChatHist.getBoundingClientRect();
+        const chatListRect = chatList.getBoundingClientRect();
+        const offset = elChatHistRect.top - chatListRect.top;
+
+        if (offset < 0) {
+            itemRibbon.style.position = 'fixed';
+            itemRibbon.style.top = `${chatListRect.top}px`;
+            itemRibbon.style.bottom = '';
+        } else {
+            itemRibbon.style.position = 'absolute';
+            itemRibbon.style.top = `-${itemRibbon.getBoundingClientRect().height}px`;
+            itemRibbon.style.bottom = '';
+        }
     });
 
     const resizeHandle = shadowRoot.querySelector('.lai-resize-handle');
@@ -773,7 +792,6 @@ function addInputCardToUIChatHistory(inputText, type, index = -1) {
     }];
 
     const actionIconsDiv = document.createElement('div');
-    if(type === 'ai'){  actionIconsDiv.rawContent = '';  } // add custom attribute to keep the raw content
     actionIconsDiv.classList.add('lai-action-icons', 'invisible');
     actionIconsDiv.appendChild(buildElements(type !== 'ai' ? [...arrButtons, ...arrEditButton] : arrButtons));
     lastChatElement.appendChild(lastChatlabel)
@@ -782,20 +800,38 @@ function addInputCardToUIChatHistory(inputText, type, index = -1) {
     messageList.appendChild(lastChatElement);
 
     lastChatElement.addEventListener('mouseenter', function (e) {
+        let elChatHist = e.target;
+        if(!elChatHist.classList.contains('lai-chat-history')){  elChatHist = el.closest('.lai-chat-history');  }
         const el = e.target.querySelector('.lai-action-icons');
-        if (!el) { return; }
-        const elHist = el.closest('.lai-chat-history');
-        const elIdx = Array.from(el.closest('#laiChatMessageList').children).indexOf(elHist);
+        if (!el) return;
+        const elChatHistRect = elChatHist.getBoundingClientRect();
+        const chatList = elChatHist.closest('#laiChatMessageList');
+        const chatListRect = chatList.getBoundingClientRect();
+
+        const offset = elChatHistRect.top - chatListRect.top;
+
         el.classList.remove('invisible');
-        if (elIdx > 0) {
-            el.style.top = `-${el.getBoundingClientRect().height}px`;
+
+        if (offset < 0) {
+            el.style.position = 'fixed';
+            el.style.top = `${chatListRect.offsetTop}px`;
+            el.style.bottom = '';
         } else {
-            el.style.bottom = `-${el.getBoundingClientRect().height}px`;
+            el.style.position = 'absolute';
+            if (elChatHist === chatList.firstElementChild) {
+                el.style.top = `${elChatHist.offsetHeight - 4}px`;
+                el.style.bottom = '';
+            } else {
+                el.style.top = `-${el.getBoundingClientRect().height}px`;
+                el.style.bottom = '';
+            }
         }
     });
+
     lastChatElement.addEventListener('mouseleave', function (e) {
         const el = e.target.querySelector('.lai-action-icons');
-        el?.classList.add('invisible');
+        if (!el) {  return;  }
+        el.className = 'lai-action-icons invisible';
     });
 
     lastChatElement.querySelectorAll('.lai-chat-item-button').forEach(el => {
@@ -1169,9 +1205,14 @@ function createAbortHandler(controller, abortBtn, rootEl) {
     };
 }
 
-function scropChatHistoryContainer(e){
+function scrollChatHistoryContainer(e){
     if (userScrolled) {  return; }
-    const laiChatMessageList = e.target.closest('#laiChatMessageList');
+    const shadowRoot = getShadowRoot();
+    const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
+    if(!laiChatMessageList){
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
+        return;
+    }
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
 }
 
@@ -1192,7 +1233,7 @@ function getParseAndRenderOptions(rootEl) {
     const abortHandler = createAbortHandler(controller, abortBtn, rootEl);
 
     rootEl.addEventListener('renderComplete', renderCompleteFired);
-    rootEl.addEventListener('rendering', scropChatHistoryContainer)
+    rootEl.addEventListener('rendering', scrollChatHistoryContainer);
     abortBtn?.addEventListener('click', abortHandler);
 
     return {  abortSignal: controller.signal  };
@@ -1298,11 +1339,6 @@ chrome.runtime.onMessage.addListener(async (response) => {
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
             break;
     }
-
-    // if (!userScrolled) {
-    //     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
-    //     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
-    // }
 
     if (response.error) {
         showMessage(response.error, 'error');

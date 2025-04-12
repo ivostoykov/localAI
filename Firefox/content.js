@@ -204,7 +204,7 @@ async function buildMainButton() {
     setTimeout(() => {
       theMainButton.classList.add('invisible');
       theMainButton.classList.remove('lai-faid-out');
-    }, 750);
+    }, 200);
   });
 }
 

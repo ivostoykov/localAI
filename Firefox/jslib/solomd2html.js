@@ -6,55 +6,52 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         abortSignal.addEventListener('abort', handleAbort, { once: true });
     }
 
-    let debounceTimeout;
-    const observer = new MutationObserver(() => {
-        clearTimeout(debounceTimeout);
-        debounceTimeout = setTimeout(() => {
-            console.debug(`>>> ${manifest.name} - [${getLineNumber()}]`);
-            rootEl.dispatchEvent(new CustomEvent('rendering'));
-            config.onRendering?.();
-        }, 50);
-    });
-    observer.observe(rootEl, { childList: true, characterData: true, subtree: true });
-
+    markdownText = normaliseMd(markdownText);
     rootEl.dataset.status = 'parsing';
-    rootEl.dispatchEvent(new CustomEvent('renderStarted'));
+    rootEl.dispatchEvent(new CustomEvent('renderStarted', { bubbles: true }));
     config.onRenderStarted?.();
 
-    const lines = markdownText.replace(/\r\n/g, '\n').split('\n');
+    const lines = normaliseMd(markdownText.replace(/\r\n/g, '\n')).split('\n');
     let blocks = processLines(lines);
     blocks = mergeConsecutiveHtmlBlocks(blocks);
 
     rootEl.dataset.status = 'rendering';
     for (const bl of blocks) {
-        config.onRendering?.(bl);
         if (abortSignal?.aborted) { return; }
 
         const el = renderBlock(bl);
         if (!el) { continue; }
         const nodes = Array.isArray(el) ? el : (el instanceof DocumentFragment ? Array.from(el.childNodes) : [el]);
         for (const node of nodes) {
+            if (node.tagName.toLowerCase() === 'details') {
+                node.open = true;
+            } else {
+                const openDetail = rootEl.querySelector('details[open]');
+                if (openDetail) openDetail.open = false;
+            }
+
             if (config.streamReply) {
                 await streamNode(node, rootEl);
             } else {
+                rootEl.dispatchEvent(new CustomEvent('rendering', { detail: { newElement: node }, bubbles: true }));
+                config.onRendering?.(bl);
                 rootEl.appendChild(node);
             }
         }
     }
     rootEl.dataset.status = 'renderCompleted';
-    rootEl.dispatchEvent(new CustomEvent('renderComplete'));
+    rootEl.dispatchEvent(new CustomEvent('renderComplete', { bubbles: true }));
     config.onRenderComplete?.();
     cleanup();
     /// end of the main block
 
     function cleanup() {
-        observer.disconnect();
         delete rootEl.dataset.status;
         abortSignal?.removeEventListener('abort', handleAbort);
     }
 
     function handleAbort() {
-        rootEl.dispatchEvent(new CustomEvent('renderAborted'));
+        rootEl.dispatchEvent(new CustomEvent('renderAborted', { bubbles: true }));
         cleanup();
         config.onAbort?.();
     }
@@ -65,14 +62,14 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
 
         for (const line of lines) {
             const trimmed = line.trim();
-            const blockType = currentBlock?.type === 'fence' ? 'fence' : detectBlockType(trimmed);
+            const blockType = ['fence', 'think'].includes(currentBlock?.type ) ? currentBlock?.type : detectBlockType(trimmed);
 
             if (!currentBlock) { currentBlock = { type: blockType, content: [] }; }
 
             if (shouldSwitchBlock(currentBlock, blockType, trimmed)) {
-                if (blockType === 'fence') { currentBlock.content.push(line); }
+                if (['fence', 'think'].includes(currentBlock?.type)) { currentBlock.content.push(line); }
                 result.push({ ...currentBlock, content: currentBlock.content.join('\n') });
-                currentBlock = blockType === 'fence' ? null : (trimmed ? { type: blockType, content: [line] } : null);
+                currentBlock = ['fence', 'think'].includes(currentBlock?.type ) ? null : (trimmed ? { type: blockType, content: [line] } : null);
             } else {
                 currentBlock.content.push(line);
             }
@@ -138,6 +135,16 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
                 break;
             case 'table':
                 return renderTable(block.content);
+            case 'details':
+                const det = document.createElement('details');
+                det.className = 'think-block';
+                const sum = document.createElement('summary');
+                sum.textContent = '🤔 Thought';
+                det.appendChild(sum);
+
+                const inner = renderMultilineContent(block.content.replace(/<\/?think>/g, '').trim());
+                inner.forEach(el => det.appendChild(el));
+                return det;
             default:
                 const res = renderMultilineContent(block.content);
                 if (Array.isArray(res)) return res; // <- return array directly
@@ -416,7 +423,8 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             "html": "pre",
             "hr": "hr",
             "heading": "heading",
-            "table": "table"
+            "table": "table",
+            "think": "details"
         }
 
         return el[type];
@@ -427,10 +435,12 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         if (/^\s{0,3}>/.test(line)) return 'blockquote';
         if (/^\s*([-+*]|\d+\.)\s/.test(line)) return 'list';
         if (/^(\s{4,}|\t)/.test(line)) return 'indented';
-        if (/^\s*<.+?>/.test(line)) return 'html';
         if (/^#{1,6}\s+/.test(line)) return 'heading';
         if (line === '') return 'empty';
         if (/^\s*(\||\+).+(\||\+)\s*$/.test(line)) return 'table';
+        if (/^\s*<\/?think>\s*$/.test(line)) return 'think';
+        if (/^\s*<.+?>/.test(line)) return 'html';
+        // if (/^\s*<(?!think\b).+?>/.test(line)) return 'html';
         return 'general';
     }
 
@@ -441,11 +451,13 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         if (currentType === 'html') return /<\/.+?>/.test(trimmed);
         if (currentType === 'general') return trimmed === '';
         if (currentType === 'fence') {
-            const iaFneceOpened = currentBlock.content.length > 1 && (/^\s*([`']{3,})/).test(currentBlock.content?.[0]);
+            const isFneceOpened = currentBlock.content.length > 1 && (/^\s*([`']{3,})/).test(currentBlock.content?.[0]);
             const isSameBlockType = currentType === newType;
-            const isFenceTerminator = (/^\s*([`']{3,})/).test(trimmed);
-            return iaFneceOpened && isSameBlockType && isFenceTerminator;
+            const isFenceTerminator = isFneceOpened && (/^\s*([`']{3,})/).test(trimmed);
+            return isFneceOpened && isSameBlockType && isFenceTerminator;
         }
+        if (currentType === 'think') {  return /^\s*<\/think>\s*$/.test(trimmed) || newType !== 'think';  }
+
         return currentType !== newType;
     }
 
@@ -472,6 +484,16 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             ?.replace(/\s{0,}at\s+/, '')
             ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
             || "Unknown";
+    }
+
+    function normaliseMd(text) {
+        return text
+            .replace(/([^\n])\n([`']{3,})/g, '$1\n\n$2')             // fenced code
+            .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')             // headings
+            .replace(/([^\n])\n(>)/g, '$1\n\n$2')                    // blockquotes
+            .replace(/([^\n])\n(\s*([-+*]|\d+\.)\s)/g, '$1\n\n$2')   // lists
+            .replace(/([^\n])\n(\|.*\|)/g, '$1\n\n$2')               // tables
+            .replace(/([^\n])\n(<[a-zA-Z])/g, '$1\n\n$2');           // HTML
     }
 }
 

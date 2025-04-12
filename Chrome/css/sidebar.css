@@ -1,5 +1,6 @@
-* {
+#localAI {
     font-size: initial;
+    all: initial;
 }
 
 /* main container */
@@ -115,6 +116,20 @@
     gap: 10px;
     overflow-y: auto;
     flex: 8;
+    overscroll-behavior: contain;
+}
+
+.lai-chat-message-list::before {
+    content: attr(data-watermark);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    opacity: 0.25;
+    font-size: 1.75rem;
+    color: #999;
+    font-weight: bold;
 }
 
 .lai-chat-history {
@@ -127,11 +142,11 @@
     padding: 0 0.75rem;
     text-align: left;
     line-height: normal;
+    position: relative;
 }
 
 .lai-ai-input {
     font-style: normal;
-    position: relative;
     box-shadow: 5px 5px 5px #888888;
 }
 
@@ -152,6 +167,7 @@
     padding: .25rem;
     overflow-x: auto;
     color: black;
+    background-color: #fff;
 }
 
 .lai-input-label::first-letter {
@@ -160,7 +176,6 @@
 
 .lai-user-input {
     margin-left: auto;
-    position: relative;
     box-shadow: -5px 5px 5px #888888;
 }
 
@@ -222,13 +237,18 @@
     display: flex;
     border: 1px solid #aaa;
     min-width: 85px;
-    background-color: #eee;
+    background-color: transparent;
     justify-content: space-evenly;
     z-index: 5;
     gap: 10px;
     flex-direction: row;
     padding: 5px;
     align-items: baseline;
+    opacity: 0.8;
+}
+.lai-action-icons:hover{
+    opacity: 1;
+    background-color: #eee;
 }
 
 .lai-chat-item-button {
