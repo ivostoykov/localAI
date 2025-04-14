@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.27.41] 2025-04-12 - latest
+## [1.27.45] 2025-04-14 - latest
+
+- fixed ordered liks rendering bug
+- transformed the version label
+- fixed rendering event bug
+- fixed normalization of markdown source
+
+## [1.27.41] 2025-04-12
 
 - fixed autoscroll
 - fixed bug in fonts and colours in some pages

@@ -54,9 +54,9 @@ async function start() {
 }
 
 async function allDOMContentLoaded(e) {
+  await updateTabPageContentStorage();
 
   document.addEventListener('click', async function (event) {
-    hideaictiveSessionMenu();
     if (isElementSelectionActive) { laiGetClickedSelectedElement(event); }
 
     const localAI = document.getElementById('localAI');
@@ -109,15 +109,6 @@ async function allDOMContentLoaded(e) {
 
   document.addEventListener('mouseout', clearElementOverDecoration, true);
 
-  // window?.navigation.addEventListener("navigate", (event) => {
-  //   setTimeout(async () => { await setActiveSessionPageData({ "url": document.location.href, "pageContent": getPageTextContent() }); }, 200);
-  // });
-  if ('navigation' in window) {
-    window?.navigation.addEventListener("currententrychange", e => {
-      setTimeout(async () => { await setActiveSessionPageData({ "url": document.location.href, "pageContent": getPageTextContent() }); }, 200)
-    });
-  } else {  console.error(`>>> ${manifest.name} - [${getLineNumber()}] - This browser does not support window.navigation. Current page won't be tracked properly!`); }
-
   try {
     await removeLocalStorageObject(activeSessionIndexStorageKey);
     await setActiveSessionPageData({"url": document.location.href, "pageContent": getPageTextContent()});
@@ -135,6 +126,46 @@ async function allDOMContentLoaded(e) {
   }
 }
 
+async function updateTabPageContentStorage() {
+  checkActiveTab();
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {  checkActiveTab(); }
+  });
+
+  ['pushState', 'replaceState'].forEach(type => {
+    const orig = history[type];
+    history[type] = function (...args) {
+      const result = orig.apply(this, args);
+      window.dispatchEvent(new Event(type.toLowerCase()));
+      return result;
+    };
+  });
+
+  if (!('navigation' in window)) {
+    window.addEventListener("popstate", triggerUpdate);
+    window.addEventListener("pushstate", triggerUpdate); // only if patched manually
+    window.addEventListener("replacestate", triggerUpdate); // only if patched manually
+  }
+}
+
+function triggerUpdate() {
+  console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - window url before active check: ${location.href}`);
+
+  checkActiveTab();
+}
+
+function checkActiveTab() {
+  chrome.runtime.sendMessage({ action: "CHECK_ACTIVE_TAB" }, async (isActive) => {
+    if (isActive) {
+      console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - window url after active check: ${location.href}`);
+      await setActiveSessionPageData({ url: location.href, pageContent: getPageTextContent() });
+    } else {
+      console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tab is not active, skipping: ${location.href}`);
+    }
+  });
+}
+
 async function init() {
   try {
     if (!chrome.runtime.id) { chrome.runtime.reload(); }
@@ -148,7 +179,7 @@ async function init() {
     localAI.attachShadow({ "mode": 'open' });
     await buildMainButton();
     await laiFetchAndBuildSidebarContent();
-    await laiInitSidebar();
+    await initSidebar();
     await laiUpdateMainButtonStyles();
   } catch (err) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);

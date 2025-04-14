@@ -26,7 +26,7 @@ function getMainButton(){
     return shadowRoot.getElementById('laiMainButton');
 }
 
-async function laiInitSidebar() {
+async function initSidebar() {
     const laiOptions = await getLaiOptions();
     if(!chrome.runtime.id){  chrome.runtime.reload();  }
     const root = getRootElement();
@@ -40,6 +40,18 @@ async function laiInitSidebar() {
         return;
     }
 
+    shadowRoot.addEventListener('click', function(e) {
+        const sr = e.currentTarget;
+        const clicked = e.target;
+        Object.entries({"#cogMenu": "#cogBtn", "#sessionHistMenu": "#sessionHistry", "#availableModelList": "#modelNameContainer"})
+            .forEach(([selector, coller]) => {
+                const pernt = sr.querySelector(coller);
+                const child = sr.querySelector(selector);
+                if(!child || child === clicked || child.classList?.contains('invisible')){  return;  }
+                pernt.click();
+            });
+    });
+
     shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => {
         let feedbackMessage = e.target;
         if(feedbackMessage?.id !== 'feedbackMessage'){
@@ -51,10 +63,7 @@ async function laiInitSidebar() {
         feedbackMessage.classList.remove('feedback-message-active')
     });
 
-    shadowRoot.querySelector('#version').textContent = `${manifest.name} - ${manifest.version}`;
     const ribbon = shadowRoot.querySelector('div.lai-ribbon');
-    ribbon.addEventListener('mouseenter', e => e.target.querySelector('#version')?.classList.remove('invisible'));
-    ribbon.addEventListener('mouseleave', e => e.target.querySelector('#version')?.classList.add('invisible'));
     ribbon.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
 
     const tempInput = ribbon.querySelector('#tempInput');
@@ -79,6 +88,7 @@ async function laiInitSidebar() {
 
     ribbon.querySelectorAll('img').forEach(el => laiSetImg(el));
     shadowRoot.querySelector('#cogBtn')?.addEventListener('click', function (e) {
+        e.stopPropagation();
         shadowRoot.querySelector('#cogMenu').classList.toggle('invisible');
     });
 
@@ -184,6 +194,11 @@ async function laiInitSidebar() {
     laiChatMessageList.dataset.watermark = `${manifest.name} - ${manifest.version}`;
     laiChatMessageList.addEventListener('click', hidePopups);
     laiChatMessageList.addEventListener('scroll', (e) => {
+        if (laiChatMessageList.dataset.scrollType === 'auto') {
+            delete laiChatMessageList.dataset.scrollType;
+            return;
+        }
+
         const fromBottom = laiChatMessageList.scrollHeight - laiChatMessageList.scrollTop - laiChatMessageList.clientHeight;
         userScrolled = fromBottom > 10 ? true : false;
         const chatList = e.target;
@@ -1213,6 +1228,7 @@ function scrollChatHistoryContainer(e){
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
         return;
     }
+    laiChatMessageList.dataset.scrollType = 'auto';
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
 }
 
@@ -1350,7 +1366,6 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const renderRootEl = laiGetRecipient();
-    console.debug(`[${getLineNumber()}] - rendering status: ${renderRootEl?.dataset.status}`);
     let textAres = shadowRoot.getElementById('laiUserInput');
     const laiAbortElem = shadowRoot.getElementById('laiAbort');
     // recipient.removeAttribute("id");
@@ -1793,6 +1808,7 @@ function clearChatHistoryUI(){
 async function showActiveSessionMenu(e) {
     const target = e.target;
     e.preventDefault();
+    e.stopPropagation();
     const allSessions = await getAllSessions();
     if (allSessions.length < 1) {
         showMessage('No stored sessions found.');
@@ -1802,8 +1818,13 @@ async function showActiveSessionMenu(e) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const headerSection = shadowRoot.querySelector('.lai-header');
-    headerSection.querySelector('#sessionHistMenu')?.remove();
+    const sessionList = headerSection.querySelector('#sessionHistMenu');
+    if(sessionList && !sessionList.classList.contains('invisible')){ // only close it
+        headerSection.querySelector('#sessionHistMenu')?.remove();
+        return;
+    }
 
+    headerSection.querySelector('#sessionHistMenu')?.remove(); // if hidden remove it
     const template = shadowRoot.getElementById('histMenuTemplate').content.cloneNode(true);
     const sessionHistMenu = template.children[0];
     sessionHistMenu.id = "sessionHistMenu";

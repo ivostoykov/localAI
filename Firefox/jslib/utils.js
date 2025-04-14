@@ -16,7 +16,7 @@ function importFromFile(e) {
         try {
             var json = JSON.parse(reader.result);
             chrome.storage.local.set({ ['aiUserCommands']: json })
-            .then(() => showMessage('User Commands imported successfully.', 'success'))
+                .then(() => showMessage('User Commands imported successfully.', 'success'))
                 .catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
             aiUserCommands = json;
         } catch (err) {

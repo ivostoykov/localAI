@@ -114,6 +114,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 .then(base64 => sendResponse({ base64 }))
                 .catch(() => sendResponse({ base64: null }));
             break;
+        case "CHECK_ACTIVE_TAB":
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                sendResponse(!!sender.tab?.id && tabs[0]?.id === sender.tab.id );
+                // sendResponse(tabs[0]?.id === sender.tab?.id);
+            });
+            break;
         default:
             console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
             sendResponse();

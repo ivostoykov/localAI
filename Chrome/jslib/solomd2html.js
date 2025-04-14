@@ -6,7 +6,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         abortSignal.addEventListener('abort', handleAbort, { once: true });
     }
 
-    markdownText = normaliseMd(markdownText);
     rootEl.dataset.status = 'parsing';
     rootEl.dispatchEvent(new CustomEvent('renderStarted', { bubbles: true }));
     config.onRenderStarted?.();
@@ -30,11 +29,11 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
                 if (openDetail) openDetail.open = false;
             }
 
+            rootEl.dispatchEvent(new CustomEvent('rendering', { detail: { newElement: node }, bubbles: true }));
+            config.onRendering?.(bl);
             if (config.streamReply) {
                 await streamNode(node, rootEl);
             } else {
-                rootEl.dispatchEvent(new CustomEvent('rendering', { detail: { newElement: node }, bubbles: true }));
-                config.onRendering?.(bl);
                 rootEl.appendChild(node);
             }
         }
@@ -488,10 +487,10 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
 
     function normaliseMd(text) {
         return text
-            .replace(/([^\n])\n([`']{3,})/g, '$1\n\n$2')             // fenced code
+            .replace(/([^\n])\n([']{3,})/g, '$1\n\n$2')             // fenced code
             .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')             // headings
             .replace(/([^\n])\n(>)/g, '$1\n\n$2')                    // blockquotes
-            .replace(/([^\n])\n(\s*([-+*]|\d+\.)\s)/g, '$1\n\n$2')   // lists
+            // .replace(/([^\n])\n(\s*([-+*]|\d+\.)\s)/g, '$1\n\n$2')   // lists
             .replace(/([^\n])\n(\|.*\|)/g, '$1\n\n$2')               // tables
             .replace(/([^\n])\n(<[a-zA-Z])/g, '$1\n\n$2');           // HTML
     }
