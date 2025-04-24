@@ -1,6 +1,32 @@
 # Local AI - Changelog
 
-## [1.27.45] 2025-04-14 - latest
+## [1.27.58] 2025-04-25 - latest
+- Optimised menu button click handlers.
+- Added delete individual history record from the history menu
+- Separated AbortControllers per‑tab replacing a single global controller/abort flag.
+- AbortController now cancels only the current tab’s request.
+- Removed obsolete objects and logic.
+- Enhanced session management with lazy creation with fallbacks to avoid undefined errors.
+- Refactored session storage helpers to handle return of undefined on error.
+- Fixed Options storage call.
+- Corrected error handling and return values from storage get/set.
+- User Import listens for change, and cleans up the element after use.
+- Added imports guard against missing file, parses JSON safely, uses proper error variables, and always removes the input.
+- Export As File revokes object URL after download, and removes the temporary link element.
+- Refactored element positioning calculation.
+- Simplified get Line Number used in console messages.
+- fixed Recycle Current Session Btn event listener to avoid errors when element is missing.
+- Spinner ensure side bar exists before operations, and improved error logging.
+- Show Message now catches errors from asynchronously opening the sidebar when displaying messages and logs them to avoid silent failures.
+- Resoring Options now displays an error message and falls back to default options if loading stored options fails.
+- Extension Main Button now guards against undefined button elements, logs an error, and returns early to avoid appending `undefined`.
+- Improved menu close behaviour.
+- Fixed session creation logic to correctly identify when no session exists.
+- hooks were removed and replaced by tools and functions
+- Session now stores the model as well
+- Additional menu added to insert selection into the prompt box
+
+## [1.27.45] 2025-04-14
 
 - fixed ordered liks rendering bug
 - transformed the version label
@@ -12,7 +38,7 @@
 - fixed autoscroll
 - fixed bug in fonts and colours in some pages
 - fixed rendering event bubbling
-- fixed scrolling behaviour separating extension and page scrolling behaviour.
+ - fixed scrolling behaviour separating extension and page scrolling behaviour.
 - enhanced rendering of output from reasoning models.
 
 ## [1.27.30] 2025-04-06

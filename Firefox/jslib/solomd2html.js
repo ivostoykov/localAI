@@ -1,6 +1,10 @@
 async function parseAndRender(markdownText, rootEl, options = {}) {
+    if (!rootEl) {
+        console.error('[solomd2html] parseAndRender: missing rootEl');
+        return;
+    }
     const defaults = { codeCopy: true, streamReply: true, abortSignal: null, onAbort: null, onRenderStarted: null, onRendering: null, onRenderComplete: null };
-    const config = Object.assign(defaults, options); 1
+    const config = Object.assign({}, defaults, options);
     const { abortSignal } = config;
     if (abortSignal) {
         abortSignal.addEventListener('abort', handleAbort, { once: true });
@@ -450,10 +454,11 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         if (currentType === 'html') return /<\/.+?>/.test(trimmed);
         if (currentType === 'general') return trimmed === '';
         if (currentType === 'fence') {
-            const isFneceOpened = currentBlock.content.length > 1 && (/^\s*([`']{3,})/).test(currentBlock.content?.[0]);
+            // Determine if a fenced code block has been opened
+            const isFenceOpened = currentBlock.content.length > 1 && (/^\s*([`']{3,})/).test(currentBlock.content?.[0]);
             const isSameBlockType = currentType === newType;
-            const isFenceTerminator = isFneceOpened && (/^\s*([`']{3,})/).test(trimmed);
-            return isFneceOpened && isSameBlockType && isFenceTerminator;
+            const isFenceTerminator = isFenceOpened && (/^\s*([`']{3,})/).test(trimmed);
+            return isFenceOpened && isSameBlockType && isFenceTerminator;
         }
         if (currentType === 'think') {  return /^\s*<\/think>\s*$/.test(trimmed) || newType !== 'think';  }
 
@@ -474,15 +479,16 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         }
     }
 
+    /**
+     * Returns the caller's location from the stack, skipping this function's own frame.
+     */
     function _getLineNumber() {
         const e = new Error();
-        const stackLines = e.stack.split("\n").map(line => line.trim());
-        let index = stackLines.findIndex(line => line.includes(getLineNumber.name));
-
-        return stackLines[index + 1]
-            ?.replace(/\s{0,}at\s+/, '')
-            ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
-            || "Unknown";
+        const lines = e.stack.split('\n').map(l => l.trim());
+        // lines[0] is error message, lines[1] is this function frame, so pick lines[2]
+        const frame = lines[2] || lines[1] || lines[0] || '';
+        // Remove leading 'at ' if present
+        return frame.replace(/^at\s+/, '');
     }
 
     function normaliseMd(text) {

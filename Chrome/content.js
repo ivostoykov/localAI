@@ -22,7 +22,7 @@ var images = [];
 var attachments = [];
 var userScrolled = false;
 var isElementSelectionActive = false;
-var dumpStream = false;
+// var dumpStream = false;
 var lastRegisteredErrorMessage = [];
 lastRegisteredErrorMessage.lastLength = 0;
 var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
@@ -30,20 +30,19 @@ var userPredefinedCmd = [
   { "commandName": "add", "commandDescription": "Create a new predefined prompt" },
   { "commandName": "edit(command_name)", "commandDescription": "Edit the command corresponding to name, provided in the brackets" },
   { "commandName": "error", "commandDescription": "Show last error" },
-  { "commandName": "list", "commandDescription": "Show all defined commands" },
-  { "commandName": "hooks", "commandDescription": "Show all defined hooks" },
-  { "commandName": "dump", "commandDescription": "Dump AI raw content into the console" },
-  { "commandName": "udump", "commandDescription": "Dump generated prompt including all data" }
+  { "commandName": "list", "commandDescription": "Show all defined commands" }
+  // { "commandName": "hooks", "commandDescription": "Show all defined hooks" },
+  // { "commandName": "dump", "commandDescription": "Dump AI raw content into the console" },
+  // { "commandName": "udump", "commandDescription": "Dump generated prompt including all data" }
 ];
 
-document.addEventListener('DOMContentLoaded', async function (e) {
-  // await allDOMContentLoaded(e);
-  await start();
-  chrome.storage.sync.get(null, items => {
-    console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Keys:`, Object.keys(items));
-    console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Raw:`, items);
-  });
-});
+function getRootElement() {  return document.documentElement.querySelector('localAI') || document.getElementById('localAI');  }
+function getShadowRoot() {  return getRootElement()?.shadowRoot;  }
+function getSideBar() {  return getShadowRoot()?.getElementById('laiSidebar');  }
+function getMainButton(){  return getShadowRoot()?.getElementById('laiMainButton');  }
+function getRibbon() {  return getShadowRoot()?.querySelector('div.lai-ribbon');}
+
+document.addEventListener('DOMContentLoaded', async (e) => await start());
 
 async function start() {
   if (document.readyState !== 'complete') {
@@ -59,6 +58,7 @@ async function allDOMContentLoaded(e) {
   document.addEventListener('click', async function (event) {
     if (isElementSelectionActive) { laiGetClickedSelectedElement(event); }
 
+    await closeAllDropDownRibbonMenus(event);
     const localAI = document.getElementById('localAI');
     if (localAI === event.target) { return; }
     const laiShadowRoot = localAI?.shadowRoot
@@ -71,23 +71,25 @@ async function allDOMContentLoaded(e) {
       return;
     }
 
-    await laiSwapSidebarWithButton();
-  }, true);
+    const options = await getLaiOptions()
+    if(options.closeOnClickOut && !isPinned()){ await laiSwapSidebarWithButton(event);  }
+  }, false);
 
   document.addEventListener('keydown', async function (e) {
     if (isElementSelectionActive) {
       if (e.key === "Escape") {
         isElementSelectionActive = false;
         document.querySelectorAll(`[data-original-border]`)?.forEach(el => {
-          const currentBorder = el.getAttribute('data-original-border');
-          el.style.border = currentBorder;
-          el.removeAttribute('data-original-border');
+            const currentBorder = el.getAttribute('data-original-border');
+            el.style.border = currentBorder;
+            el.removeAttribute('data-original-border');
         });
         return;
       }
     }
 
     if (e.key !== "Escape") { return; }
+    const laiOptions = getOptions();
     if (!laiOptions.closeOnClickOut) { return; }
 
     const pluginContainer = document.getElementById('localAI')?.shadowRoot?.getElementById('laiSidebar');
@@ -122,7 +124,7 @@ async function allDOMContentLoaded(e) {
   try {
     await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css' ]));
   } catch (error) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
+      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }
 }
 
@@ -158,7 +160,6 @@ function triggerUpdate() {
 function checkActiveTab() {
   chrome.runtime.sendMessage({ action: "CHECK_ACTIVE_TAB" }, async (isActive) => {
     if (isActive) {
-      console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - window url after active check: ${location.href}`);
       await setActiveSessionPageData({ url: location.href, pageContent: getPageTextContent() });
     } else {
       console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tab is not active, skipping: ${location.href}`);
@@ -186,6 +187,26 @@ async function init() {
   }
 }
 
+function getPageTextContent() {
+    const bodyClone = document.body.cloneNode(true);
+
+    const removed = document.createElement('div');
+    removed.style.display = 'none';
+    ['local-ai', 'script', 'link', 'button', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside', 'audio', 'video','embed', 'object', 'picture', 'source', 'track', 'canvas'].forEach(selector => {
+        bodyClone.querySelectorAll(selector).forEach(el => removed.appendChild(el));
+    });
+
+    let content = [];
+    const walker = document.createTreeWalker(bodyClone, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
+    while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node?.nodeValue || !(/[^\n\s\r]/.test(node?.nodeValue))) { continue; }
+        content.push(node.nodeValue?.trim());
+    }
+
+    return ` PAGE URL: ${document.location.href}\nPAGE CONTENT START: ${content.join('\n')} PAGE CONTENT END`;
+}
+
 function clearElementOverDecoration(e) {
   let el = e.target;
   const currentBorder = el.getAttribute('data-original-border') || '';
@@ -205,8 +226,8 @@ async function laiGetClickedSelectedElement(event) {
       if (!response.base64) { throw new Error(`Failed to get the image from ${el.src}`); }
 
       images.push(response?.base64);
-      showMessage('Image picked up successfully.', 'info')
-      updateStatusBar('Selected image added to the context.');
+    showMessage('Image picked up successfully.', 'info')
+    updateStatusBar('Selected image added to the context.');
       showAttachment(el.title || el.alt || el.src.split('/').pop());
     } catch (error) {
       showMessage(error.message);
@@ -221,6 +242,11 @@ async function laiGetClickedSelectedElement(event) {
 
 async function buildMainButton() {
   var theMainButton = await createMainButtonElement();
+  // Guard against createMainButtonElement returning nothing
+  if (!theMainButton) {
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to create main button element.`);
+    return;
+  }
   const shadowRoot = getShadowRoot();
   if (!shadowRoot) { return; }
   shadowRoot.appendChild(theMainButton);
@@ -229,12 +255,12 @@ async function buildMainButton() {
     e.stopPropagation();
     e.stopImmediatePropagation();
     const laiOptions = await getLaiOptions();
-    theMainButton.classList.add('lai-faid-out');
+    theMainButton.classList.add('lai-fade-out');
     laiOptions.showEmbeddedButton = false;
 
     setTimeout(() => {
       theMainButton.classList.add('invisible');
-      theMainButton.classList.remove('lai-faid-out');
+      theMainButton.classList.remove('lai-fade-out');
     }, 200);
   });
 }
@@ -290,25 +316,25 @@ async function laiFetchAndBuildSidebarContent() {
   }
 
   try {
-    const shadowRoot = getShadowRoot();
+      const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
-      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to find the shadow root!`, shadowRoot);
-      return;
-    }
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to find the shadow root!`, shadowRoot);
+        return;
+      }
 
     const response = await fetch(chrome.runtime.getURL('sidebar.html'));
     const data = await response.text();
 
-    var theSideBar = document.createElement('div');
-    theSideBar.id = "laiSidebar";
-    theSideBar.classList.add("lai-fixed-parent")
-    theSideBar.innerHTML = data;
+      var theSideBar = document.createElement('div');
+      theSideBar.id = "laiSidebar";
+      theSideBar.classList.add("lai-fixed-parent")
+      theSideBar.innerHTML = data;
     theSideBar.style.zIndex = getHighestZIndex();
 
-    shadowRoot.appendChild(theSideBar);
+      shadowRoot.appendChild(theSideBar);
   } catch (error) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error);
-  }
+      }
 }
 
 function laiFetchStyles(cssNames) {
@@ -347,8 +373,22 @@ function showMessage(messagesToShow, type) {
   const shadowRoot = getShadowRoot();
   if (!shadowRoot) { return; }
   const sideBar = getSideBar();
+  // Ensure sidebar element exists before using it
+  if (!sideBar) {
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - showMessage: sidebar element not found.`);
+    return;
+  }
   if (!sideBar.classList.contains('active')) {
-    setTimeout(async () => {  await laiSwapSidebarWithButton(); }, 0);
+    // Ensure sidebar is opened to show messages; catch errors to avoid silent failures
+    setTimeout(() => {
+      laiSwapSidebarWithButton()
+        .catch(error => {
+          console.error(
+            `>>> ${manifest.name} - [${getLineNumber()}] - Error opening sidebar for message: ${error.message}`,
+            error
+          );
+        });
+    }, 0);
   }
   let msg = shadowRoot.querySelector('#feedbackMessage');
   let oldTimerId = msg.getAttribute('data-timerId');
@@ -405,25 +445,32 @@ async function buildMenuDropdowns() {
 }
 
 async function getLaiOptions() {
-  const defaults = {
-    "openPanelOnLoad": false,
-    "aiUrl": "",
-    "aiModel": "",
-    "closeOnClickOut": true,
-    "closeOnCopy": false,
-    "closeOnSendTo": true,
-    "showEmbeddedButton": false,
-    "loadHistoryOnStart": false,
-    "systemInstructions": 'You are a helpful assistant.',
-    "personalInfo": ''
-  };
+    const defaults = {
+      "openPanelOnLoad": false,
+      "aiUrl": "",
+      "aiModel": "",
+      "closeOnClickOut": true,
+      "closeOnCopy": false,
+      "closeOnSendTo": true,
+      "showEmbeddedButton": false,
+      "loadHistoryOnStart": false,
+      "systemInstructions": 'You are a helpful assistant.',
+      "personalInfo": ''
+    };
 
-  try {
+    try {
     const obj = await getOptions();
     const laiOptions = Object.assign({}, defaults, obj ?? {});
-    return laiOptions;
+      return laiOptions;
   } catch (e) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+    // Inform the user and fall back to defaults
+    try {
+      showMessage( `Error loading options: ${e.message}. Using default settings.`, 'error' );
+    } catch (_) {
+      // ignore if UI not yet ready
+    }
+    return defaults;
   }
 }
 

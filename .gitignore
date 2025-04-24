@@ -4,3 +4,5 @@
 .vscode/
 *.log
 .continuerules
+Chrome.bak/
+Chrome_changes/

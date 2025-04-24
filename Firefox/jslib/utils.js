@@ -87,3 +87,17 @@ function hideSpinner() {
     if (!spinner) { return; }
     spinner.classList.add('invisible');
 }
+
+function checkExtensionState() {
+    if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
+    if (!chrome.runtime.id) {
+        if (typeof (showMessage) === 'function') {
+            showMessage(`${manifest.name} - Extension context invalidated. Please reload the tab.`, 'error');
+        } else {
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
+        }
+        return false;
+    }
+
+    return true;
+}

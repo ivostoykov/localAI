@@ -1,37 +1,52 @@
 async function createNewSession(text) {
+    let laiOptions;
+    let model;
     try {
+        laiOptions = await getOptions();
+        model = laiOptions?.aiModel || 'unknown';
         const sessions = await getAllSessions();
         const title = text.split(/\s+/).slice(0, 6).join(' ');
-        const newSession = { "title": title, "data": [] };
+        const newSession = { "title": title, "data": [], "model": model };
         sessions.push(newSession);
         await setAllSessions(sessions);
         await setActiveSessionIndex(sessions.length - 1);
         return newSession;
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        const title = text?.toString().split(/\s+/).slice(0, 6).join(' ') || '';
+        return { "title": title, "data": [], "model": model };
     }
 }
 
 async function getActiveSession() {
+    let laiOptions;
+    let model;
     try {
+        laiOptions = await getOptions();
+        model = laiOptions?.aiModel || 'unknown';
         const sessions = await getAllSessions();
         const index = await getActiveSessionIndex();
         if (typeof index !== 'number' || index < 0) {
-            showUIMessage("Failed to find an active session");
+            showMessage("Failed to find an active session", "error", "error");
             throw new Error(`Failed to find an active session at [${getLineNumber()}]`);
         }
-        return sessions[index] || {};
+        return sessions[index] || { "title": '', "data": [], "model": model || '' };
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        return { title: '', data: [], "model": model || '' };
     }
 }
 
 async function setActiveSession(session) {
     try {
+        if(!session.model || session.model?.toLowerCase() === 'unknown'){
+            const laiOptions = await getOptions();
+            session["model"] = laiOptions?.aiModel || 'unknown';
+        }
         const sessions = await getAllSessions();
         const index = await getActiveSessionIndex();
         if (typeof index !== 'number' || index < 0) {
-            showUIMessage("Failed to find an active session");
+            showMessage("Failed to find an active session", "error");
             throw new Error(`Failed to find an active session at [${getLineNumber()}]`);
         }
         sessions[index] = session;
@@ -46,7 +61,7 @@ async function deleteActiveSession() {
         const sessions = await getAllSessions();
         const index = await getActiveSessionIndex();
         if (typeof index !== 'number' || index < 0 || index >= sessions.length) {
-            showUIMessage("Failed to find an active session");
+            showMessage("Failed to find an active session", "error");
             throw new Error(`Failed to find an active session at [${getLineNumber()}]`);
         }
         sessions.splice(index, 1);
@@ -57,21 +72,45 @@ async function deleteActiveSession() {
     }
 }
 
+async function deleteSessionAtIndex(index) {
+    try {
+        const sessions = await getAllSessions();
+        if (typeof index !== 'number' || index < 0 || index >= sessions.length) {
+            throw new Error(`Invalid session index: ${index}`);
+        }
+        sessions.splice(index, 1);
+        await setAllSessions(sessions);
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - deleteSessionAtIndex: ${error.message}`, error);
+        throw error;
+    }
+}
+
+async function getSessionByIndex(index) {
+    try {
+        const sessions = await getAllSessions();
+        if (typeof index !== 'number' || index < 0 || index >= sessions.length) {
+            throw new Error(`Invalid session index: ${index}`);
+        }
+        return sessions[index];
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - getSessionByIndex: ${error.message}`, error);
+        return { title: '', data: [] }; // fallback empty session
+    }
+}
+
 async function getAllSessions() {
     try {
         const sessions = await chrome.storage.local.get([allSessionsStorageKey]);
         return sessions[allSessionsStorageKey] || [];
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        return [];
     }
 }
 
 async function setAllSessions(obj = []) {
     try {
-        if(obj.length < 1){
-            console.warn(`>>> ${manifest.name} - [${getLineNumber()}] - session object is missing or empty`, obj);
-            return;
-        }
         await chrome.storage.local.set({ [allSessionsStorageKey]: obj });
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
@@ -79,15 +118,19 @@ async function setAllSessions(obj = []) {
     return true;
 }
 
-async function getActiveSessionIndex(){
-    const index = await chrome.storage.local.get([activeSessionIndexStorageKey]);
-    let idx;
+async function getActiveSessionIndex() {
     try {
-        idx = typeof(index[activeSessionIndexStorageKey]) !== 'number' ? parseInt(index[activeSessionIndexStorageKey]) : index[activeSessionIndexStorageKey];
+        const result = await chrome.storage.local.get(activeSessionIndexStorageKey);
+        const raw = result[activeSessionIndexStorageKey];
+        const idx = Number(raw);
+        if (!Number.isInteger(idx) || idx < 0) {
+            return -1;
+        }
+        return idx;
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error, index);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        return -1;
     }
-    return idx;
 }
 
 async function setActiveSessionIndex(index){
@@ -102,8 +145,8 @@ async function deleteActiveSessionIndex() {
     try {
         await chrome.storage.local.remove(activeSessionIndexStorageKey);
 
-    } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
     }
 }
 
@@ -118,18 +161,21 @@ async function removeLocalStorageObject(key = '') {
 
 async function getAiUserCommands() {
     try {
-        const commands = await chrome.storage.local.get([storageUserCommandsKey]);
-        aiUserCommands = commands[storageUserCommandsKey] || [];
-    } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        const result = await chrome.storage.local.get([storageUserCommandsKey]);
+        const list = result[storageUserCommandsKey] || [];
+        aiUserCommands = list;
+        return list;
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        return [];
     }
 }
 
 async function setAiUserCommands() {
     try {
         await chrome.storage.local.set({ [storageUserCommandsKey]: aiUserCommands });
-    } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
     }
 }
 

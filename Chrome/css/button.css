@@ -34,3 +34,18 @@
   margin: auto;
   color: red;
 }
+
+.hist-btn{
+  position: absolute;
+  right: 5px;
+  cursor: pointer;
+}
+
+.hist-btn img{
+  width: 24px;
+  height: auto;
+}
+
+.hist-btn img:hover{
+  background: #ff000022;
+}

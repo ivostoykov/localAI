@@ -453,7 +453,7 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
     display: none !important;
 }
 
-.lai-faid-out {
+.lai-fade-out {
     opacity: 0;
     transition: opacity .75s ease-out;
 }

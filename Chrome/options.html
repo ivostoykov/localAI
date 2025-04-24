@@ -20,45 +20,45 @@
         <form id="laiOptionsForm">
 <!-- main settings -->
             <section id="general" class="js-tab-body">
-                <div class="el-holder">
-                    <input type="checkbox" name="showEmbeddedButton" id="showEmbeddedButton" />
-                    <label for="showEmbeddedButton">Show embedded button</label>
+            <div class="el-holder">
+                <input type="checkbox" name="showEmbeddedButton" id="showEmbeddedButton" />
+                <label for="showEmbeddedButton">Show embedded button</label>
                     <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon"
-                    title="Embedded button icon">
-                </div>
+                        title="Embedded button icon">
+            </div>
                 <div class="row-split">
-                    <div class="el-holder">
-                        <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
-                        <label for="openPanelOnLoad">Open panel on load</label>
-                    </div>
-                    <div class="el-holder">
+            <div class="el-holder">
+                <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
+                <label for="openPanelOnLoad">Open panel on load</label>
+            </div>
+            <div class="el-holder">
                         <input type="range" id="tempRange" name="tempRange" min="0" max="1" value="0.5" step="0.1">
-                        <input type="number" id="tempIntput" name="tempIntput" min="0" max="1" value="0.5" step="0.1">
+                        <input type="number" id="tempInput" name="tempInput" min="0" max="1" value="0.5" step="0.1">
                         <output for="tempRange" id="tempOutput">Neutral</output>
                     </div>
                 </div>
                 <div class="el-holder">
-                    <input type="checkbox" name="closeOnClickOut" id="closeOnClickOut" />
-                    <label for="closeOnClickOut">Close Sidebar when click outside</label>
-                </div>
-                <div class="el-holder">
-                    <input type="checkbox" name="closeOnSendTo" id="closeOnSendTo" />
-                    <label for="closeOnSendTo">Close adter Send To</label>
-                </div>
-                <div class="el-holder">
-                    <input type="checkbox" name="closeOnCopy" id="closeOnCopy" />
-                    <label for="closeOnCopy">Close Sidebar after copy</label>
-                </div>
-                <div class="el-holder">
-                    <input type="checkbox" name="loadHistoryOnStart" id="loadHistoryOnStart" />
-                    <label for="loadHistoryOnStart">Load last history session on start</label>
-                </div>
-                <div class="el-holder">
-                    <label for="aiUrl">End point:</label>
-                    <select name="aiUrl" id="aiUrl" class="url" data-list="urlList">
-                        <option value="" selected="selected">Select End Point</option>
-                    </select>
-                    <div id="urlButtons">
+                <input type="checkbox" name="closeOnClickOut" id="closeOnClickOut" />
+                <label for="closeOnClickOut">Close Sidebar when click outside</label>
+            </div>
+            <div class="el-holder">
+                <input type="checkbox" name="closeOnSendTo" id="closeOnSendTo" />
+                <label for="closeOnSendTo">Close adter Send To</label>
+            </div>
+            <div class="el-holder">
+                <input type="checkbox" name="closeOnCopy" id="closeOnCopy" />
+                <label for="closeOnCopy">Close Sidebar after copy</label>
+            </div>
+            <div class="el-holder">
+                <input type="checkbox" name="loadHistoryOnStart" id="loadHistoryOnStart" />
+                <label for="loadHistoryOnStart">Load last history session on start</label>
+            </div>
+            <div class="el-holder">
+                <label for="aiUrl">End point:</label>
+                <select name="aiUrl" id="aiUrl" class="url" data-list="urlList">
+                    <option value="" selected="selected">Select End Point</option>
+                </select>
+                <div id="urlButtons">
                         <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
                             title="Test connection">
                         <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
@@ -69,26 +69,26 @@
                             title="Remove from list">
                         <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
                             title="Remove the list">
-                        <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
                         <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
                             title="Soft List Desc">
-                        <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                    </div>
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                 </div>
-                <div class="el-holder">
-                    <label for="aiModel">Model:</label>
-                    <select name="aiModel" id="aiModel" class="url" data-list="modelList">
-                        <option value="" selected="selected">Select Model</option>
-                    </select>
-                    <div id="modelButtons">
-                        <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+            </div>
+            <div class="el-holder">
+                <label for="aiModel">Model:</label>
+                <select name="aiModel" id="aiModel" class="url" data-list="modelList">
+                    <option value="" selected="selected">Select Model</option>
+                </select>
+                <div id="modelButtons">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
                         <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
                             title="Soft List Desc">
                         <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
                             title="Reload models">
-                        <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                    </div>
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
                 </div>
+            </div>
                 <div class="el-holder">
                     <label for="tika">Document Converter</label>
                     <input type="url" name="tika" id="tika" class="url" size="1000" />
@@ -98,7 +98,7 @@
                     </div>
                 </div>
 
-                <div class="el-holder">
+            <div class="el-holder">
                     <label for="webHook">Tools/Functions</label>
                     <input type="url" name="toolFunc" id="toolFunc" class="url" size="1000" />
                     <div id="toolButtons">
@@ -107,34 +107,34 @@
                     </div>
                 </div>
 
-                <div class="el-holder">
-                    <label for="localPort">System Instructions:</label>
-                    <div class="tooltip">
-                        <span class="info-circle">&#9432;</span>
-                        <span class="tooltip-text">Enter any specific instructions for the session.</span>
-                    </div>
-                    <textarea id="systemInstructions" name="systemInstructions" rows="8"></textarea>
+            <div class="el-holder">
+                <label for="localPort">System Instructions:</label>
+                <div class="tooltip">
+                    <span class="info-circle">&#9432;</span>
+                    <span class="tooltip-text">Enter any specific instructions for the session.</span>
                 </div>
-                <div class="el-holder">
-                    <label for="personalInfo">Personal Information:</label>
-                    <div class="tooltip">
-                        <span class="info-circle">&#9432;</span>
-                        <span class="tooltip-text">
-                            Enter key/value pairs separated by semicolumn (";") or new line. Example: <br>
-                            name=John Dow<br>
-                            name: Jane Dow
-                        </span>
-                    </div>
-                    <textarea id="personalInfo" name="personalInfo" rows="8"></textarea>
+                <textarea id="systemInstructions" name="systemInstructions" rows="8"></textarea>
+            </div>
+            <div class="el-holder">
+                <label for="personalInfo">Personal Information:</label>
+                <div class="tooltip">
+                    <span class="info-circle">&#9432;</span>
+                    <span class="tooltip-text">
+                        Enter key/value pairs separated by semicolumn (";") or new line. Example: <br>
+                        name=John Dow<br>
+                        name: Jane Dow
+                    </span>
                 </div>
+                <textarea id="personalInfo" name="personalInfo" rows="8"></textarea>
+            </div>
 
-                <div class="ext-container">
-                    <button id="deleteAllSessions" type="button">Delete all previous sessions</button>
-                    <button id="exportSessions" type="button">Export sessions</button>
-                </div>
+            <div class="ext-container">
+                <button id="deleteAllSessions" type="button">Delete all previous sessions</button>
+                <button id="exportSessions" type="button">Export sessions</button>
+            </div>
 
-                <button type="submit">Save</button>
-                <button type="button" id="cancelButton">Cancel</button>
+            <button type="submit">Save</button>
+            <button type="button" id="cancelButton">Cancel</button>
             </section>
 
 <!-- prompt settings -->
@@ -224,6 +224,6 @@
         </div>
     </template>
 
-<script src="options.js"></script>
+    <script src="options.js"></script>
 </body>
 </html>

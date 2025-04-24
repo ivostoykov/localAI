@@ -1,30 +1,11 @@
-const laiWordEndings = /(?:\w+'(?:m|re|ll|s|d|ve|t))\s/;  // 'm, 're, 's, 'd, 'll, 've, 't
-const laiWordFormations = /(?:'(?:clock|til|bout|cause|em))/; // 'clock, 'til, 'bout, 'cause, 'em
+/**
+ * TODO (refactor UI):
+ *   Event delegation vs. per-element bindings.
+ *   We bind dozens of element-specific click handlers. As the UI grows you may hit listener bloat.
+ *   Consider delegating through a shared parent when practical (already done for the "feedbackMessage" div).
+ */
 let restartCounter = 0;
 const RESTART_LIMIT = 5;
-
-function getRootElement() {
-    return document.getElementById('localAI');
-}
-
-function getShadowRoot() {
-    const el = document.documentElement.querySelector('localAI') || document.getElementById('localAI')
-    return el?.shadowRoot;
-}
-
-function getSideBar() {
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-
-    return shadowRoot.getElementById('laiSidebar');
-}
-
-function getMainButton(){
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-
-    return shadowRoot.getElementById('laiMainButton');
-}
 
 async function initSidebar() {
     const laiOptions = await getLaiOptions();
@@ -40,17 +21,7 @@ async function initSidebar() {
         return;
     }
 
-    shadowRoot.addEventListener('click', function(e) {
-        const sr = e.currentTarget;
-        const clicked = e.target;
-        Object.entries({"#cogMenu": "#cogBtn", "#sessionHistMenu": "#sessionHistry", "#availableModelList": "#modelNameContainer"})
-            .forEach(([selector, coller]) => {
-                const pernt = sr.querySelector(coller);
-                const child = sr.querySelector(selector);
-                if(!child || child === clicked || child.classList?.contains('invisible')){  return;  }
-                pernt.click();
-            });
-    });
+    shadowRoot.addEventListener('click', e => {  closeAllDropDownRibbonMenus(e);  });
 
     shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => {
         let feedbackMessage = e.target;
@@ -63,18 +34,16 @@ async function initSidebar() {
         feedbackMessage.classList.remove('feedback-message-active')
     });
 
-    const ribbon = shadowRoot.querySelector('div.lai-ribbon');
-    ribbon.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
+    const ribbon = getRibbon();
+    if(!ribbon){  console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Main ribbon not found!`, ribbon);  }
+    ribbon?.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
 
-    const tempInput = ribbon.querySelector('#tempInput');
-    const temp = laiOptions?.tempIntput || "0.5";
-    tempInput.value = temp;
-    tempInput.title = parseFloat(temp) < 0.5 ? 'Stricter' : (temp > 0.5 ? 'More Createive' : 'Neutral');
 
     const userInput = shadowRoot.getElementById('laiUserInput');
-    userInput.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e));
-    userInput.addEventListener('click', userInputClicked);
-    userInput.addEventListener('blur', e => e.target.closest('div.lai-user-area').classList.remove('focused'));
+    if(!userInput){  console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Main ribbon not found!`, userInput);  }
+    userInput?.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e));
+    userInput?.addEventListener('click', userInputClicked);
+    userInput?.addEventListener('blur', e => e.target.closest('div.lai-user-area').classList.remove('focused'));
 
     if (root) {
         root.addEventListener('dragenter', onUserInputDragEnter);
@@ -86,109 +55,7 @@ async function initSidebar() {
         root.addEventListener('drop', async e => await onUserInputFileDropped(e));
     }
 
-    ribbon.querySelectorAll('img').forEach(el => laiSetImg(el));
-    shadowRoot.querySelector('#cogBtn')?.addEventListener('click', function (e) {
-        e.stopPropagation();
-        shadowRoot.querySelector('#cogMenu').classList.toggle('invisible');
-    });
-
-    shadowRoot.querySelector('#addUsrCmdMenu').addEventListener('click', e => {
-        shadowRoot.querySelector('#cogBtn').click();
-        popUserCommandEditor();
-    });
-    shadowRoot.querySelector('#listUsrCmdMenu').addEventListener('click', e => {
-        shadowRoot.querySelector('#cogBtn').click();
-        popUserCommandList(e);
-    });
-    shadowRoot.querySelector('#listSysCmdMenu').addEventListener('click', e => {
-        shadowRoot.querySelector('#cogBtn').click();
-        showHelp();
-    });
-    shadowRoot.querySelector('#createSessionCmdMenu').addEventListener('click', e => {
-        shadowRoot.querySelector('#cogBtn').click();
-        ribbon.querySelector('#newSession')?.click();
-    });
-    shadowRoot.querySelector('#delSessionsCmdMenu').addEventListener('click', e => {
-        shadowRoot.querySelector('#cogBtn').click();
-        const element = shadowRoot.getElementById('recycleCurrentSessionBtn');
-        if (!element) {  return; }
-        const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-        element.dispatchEvent(event);
-    });
-
-    shadowRoot.querySelector('#optionsMenu')?.addEventListener('click', async function (e) {
-        if (!checkExtensionState()) { return; }
-        const cogMenu = shadowRoot.querySelector('#cogMenu');
-        if (!cogMenu.classList.contains('invisible')) {
-            cogMenu.classList.add('invisible');
-        }
-
-        try {
-            updateStatusBar('Opening Option Page ...');
-            await chrome.runtime.sendMessage({ action: "openOptionsPage" })
-            if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        } catch (e) {
-            if (e.message.indexOf('Extension context invalidated.') > -1) {
-                showMessage(`${e.message}. Please reload the page.`, 'warning');
-            }
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-        }
-        finally {
-            resetStatusbar();
-            shadowRoot.getElementById('laiUserInput')?.focus();
-        }
-    });
-
-    const toolFunctions = ribbon.querySelector('#toolFunctions');
-    if(laiOptions?.toolsEnabled){
-        toolFunctions.classList.remove('disabled');
-    }else{
-        toolFunctions.classList.add('disabled');
-    }
-    toolFunctions?.addEventListener('click', async e => {
-        const el = e.target;
-        const options = await getOptions();
-        el.classList.toggle('disabled');
-        if (el.classList.contains('disabled')) {
-            el.alt = el.alt.replace(/Disable/g , 'Enable');
-            el.title = el.alt;
-            options["toolsEnabled"] = false;
-        } else {
-            el.alt = el.alt.replace(/Enable/g , 'Disable');
-            el.title = el.alt;
-            options["toolsEnabled"] = true;
-        }
-        updateStatusBar(`Tools are ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`)
-        setTimeout(() => resetStatusbar(), 3000);
-        await setOptions(options);
-    });
-    ribbon.querySelector('#systemIntructions').addEventListener('click', laiShowSystemInstructions);
-    ribbon.querySelector('#newSession').addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot));
-    ribbon.querySelector('#sessionHistry').addEventListener('click', async e => await showActiveSessionMenu(e));
-    ribbon.querySelector('#apiUrlList').addEventListener('change', async e => await selectMenuChanged(e));
-    ribbon.querySelector('#modelList').addEventListener('change', async e => await modelChanged(e) );
-    ribbon.querySelector('#hookList').addEventListener('change', async e => await selectMenuChanged(e));
-    ribbon.querySelector('#laiModelName').addEventListener('mouseenter', e => {
-      updateStatusBar('Click to toggle the list with available models.');
-      setTimeout(resetStatusbar, 10000);
-    });
-
-    shadowRoot.getElementById('recycleCurrentSessionBtn').addEventListener('click', async e => await recycleActiveSession(e, shadowRoot));
-    shadowRoot.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot));
-
-    shadowRoot.getElementById('laiAbort').addEventListener('click', async e => await laiAbortRequest(e));
-    if (laiOptions && laiOptions.openPanelOnLoad) {
-        await laiSwapSidebarWithButton();
-    }
-
-    shadowRoot.getElementById('laiSessionHistryMenu').querySelectorAll('img').forEach(el => laiSetImg(el));
-
-    const sysIntructInput = shadowRoot.querySelector('#laiSysIntructInput');
-    sysIntructInput.value = laiOptions.systemInstructions || '';
-
-    shadowRoot.getElementById('laiPinned').querySelectorAll('img').forEach(el => {
-        el.addEventListener('click', async e => await laiPushpinClicked(e));
-    });
+    await initRibbon();
 
     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
     laiChatMessageList.dataset.watermark = `${manifest.name} - ${manifest.version}`;
@@ -227,13 +94,7 @@ async function initSidebar() {
     resizeHandle.addEventListener('mousedown', e => laiResizeContainer(e));
 
     if (laiOptions.loadHistoryOnStart) {
-        restoreLastSession().catch(er => console.error(er));
-    }
-
-    const modelLabel = shadowRoot.getElementById('modelNameContainer');
-    if(modelLabel){
-        modelLabel.addEventListener('click', async (e) => await modelLabelClicked(e));
-        laiSetImg(modelLabel.querySelector('img'));
+        restoreHitorySessionClicked().catch(er => console.error(er));
     }
 
     shadowRoot.querySelectorAll('img.mic').forEach(img => {
@@ -245,6 +106,8 @@ async function initSidebar() {
 
     setModelNameLabel({ "model": laiOptions.aiModel });
     await buildMenuDropdowns();
+
+    await setActiveSessionPageData({"url": document.location.href, "pageContent": getPageTextContent()});
 };
 
 function getCurrentSystemInstructions(){
@@ -269,12 +132,10 @@ async function createNewSessionClicked(e, shadowRoot) {
 }
 
 async function onCloseSidebarClick(e, shadowRoot) {
-    const pinned = shadowRoot.getElementById('laiPinned');
-    const pinImg = pinned.querySelector('img[data-type="black_pushpin"]');
-    const isPinned = !pinImg.classList.contains('invisible');
-    if (isPinned) {
-        pinImg?.click();
-    }
+    // const pinned = shadowRoot.getElementById('laiPinned');
+    const pinImg = getShadowRoot()?.querySelector('img[data-type="black_pushpin"]');
+    // const isPinned = !pinImg.classList.contains('invisible');
+    if (isPinned()) {  pinImg?.click();  }
     await laiSwapSidebarWithButton(true);
 }
 
@@ -295,7 +156,7 @@ async function recycleAllSessions(e, shadowRoot) {
             removeLocalStorageObject(allSessionsStorageKey),
             chrome.storage.sync.remove(activeSessionKey)
         ]);
-        showMessage('Session history deleted.', 'success');
+            showMessage('Session history deleted.', 'success');
         await createNewSessionClicked(e, shadowRoot);
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
@@ -333,13 +194,13 @@ async function laiPushpinClicked(e) {
     shadowRoot.getElementById('laiUserInput')?.focus();
 }
 
-function checkForDump(userText) {
-    if (userText.indexOf('@{{dump}}') > -1 || userText.indexOf('@{{dumpStream}}') > -1) {
-        dumpStream = true;
-    }
+// function checkForDump(userText) {
+//     if (userText.indexOf('@{{dump}}') > -1 || userText.indexOf('@{{dumpStream}}') > -1) {
+//         dumpStream = true;
+//     }
 
-    return userText.replace('@{{dump}}', '').replace('@{{dumpStream}}', '');
-}
+//     return userText.replace('@{{dump}}', '').replace('@{{dumpStream}}', '');
+// }
 
 function laiInsertCommandText(text) {
     const shadowRoot = getShadowRoot();
@@ -402,105 +263,29 @@ function onUserInputDragLeave(e) {
     setTimeout(() => dropzone.classList.add('invisible'), 750); // wait transition to complete
 }
 
-function handleFileRead(fileName, result, isImageFile) {
-    if (isImageFile) {
-        const base64String = result.split(',')[1];
-        images.push(base64String);
-    } else {
-        attachments.push(`Attached file name is: ${fileName}; The file content is:\n[FILE] ${result} [/FILE]`);
-    }
-    showAttachment(fileName);
-}
+// function handleFileRead(fileName, result, isImageFile) {
+//     if (isImageFile) {
+//         const base64String = result.split(',')[1];
+//         images.push(base64String);
+//     } else {
+//         attachments.push(`Attached file name is: ${fileName}; The file content is:\n[FILE] ${result} [/FILE]`);
+//     }
+//     showAttachment(fileName);
+// }
 
-function processAttachmentFile(file) {
-    const fileName = file.name.split(/\\\//).pop();
-    const reader = new FileReader();
-    const isImageFile = isImage(file.type);
+// function processAttachmentFile(file) {
+//     const fileName = file.name.split(/\\\//).pop();
+//     const reader = new FileReader();
+//     const isImageFile = isImage(file.type);
 
-    reader.onload = function (e) {
-        handleFileRead(fileName, e.target.result, isImageFile);
-    };
+//     reader.onload = function (e) {
+//         handleFileRead(fileName, e.target.result, isImageFile);
+//     };
 
-    if (isImageFile) {  reader.readAsDataURL(file); }
-    else {  reader.readAsText(file);  }
-}
+//     if (isImageFile) {  reader.readAsDataURL(file); }
+//     else {  reader.readAsText(file);  }
+// }
 
-function readFileContent(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            resolve(event.target.result);
-        };
-        reader.onerror = function(error) {
-            reject(error); // Reject with the error
-        };
-        reader.readAsArrayBuffer(file);
-    });
-}
-
-async function onUserInputFileDropped(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    try{
-        const shadowRoot = getShadowRoot();
-        if (!shadowRoot) { return; }
-
-        const dropzone = shadowRoot.getElementById('dropzone');
-        dropzone.classList.remove('hover');
-        setTimeout(() => dropzone.classList.add('invisible'), 750);
-
-        console.log(`>>> ${manifest.name} - [${getLineNumber()}] - event files:`, e?.dataTransfer?.files);
-
-        for (let i = 0; i < e.dataTransfer.files.length; i++) {
-            const file = e.dataTransfer.files[i];
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - File ${i}: Name: ${file.name}; Type: ${file.type}; Size: ${file.size}`);
-
-            if (file.type.startsWith('image/')) {
-                try {
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    images.push(reader.result.split(',').pop());
-                    showAttachment(file.name);
-                  };
-                  reader.readAsDataURL(file);
-                } catch (imgErr) {
-                  console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Image read failed: ${imgErr.message}`, imgErr);
-                  showMessage(`Failed to read image ${file.name}`, 'error');
-                }
-
-                continue;
-            }
-
-            const fileContent = await readFileContent(file);
-            if (!fileContent) {
-                showMessage(`Failed to get content of ${file.name}.`, 'error');
-                continue;
-            }
-            let response;
-            try {
-                response = await chrome.runtime.sendMessage( {
-                        action: 'extractText',
-                        fileName: file.name,
-                        fileContent: btoa(String.fromCharCode(...new Uint8Array( fileContent)))});
-                if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-            } catch (be) {
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${be.message}`, be);
-                return;
-            }
-
-            const docText = typeof response === 'string' ? response : (typeof response.text === 'function' ? await response.text() : '');
-            if (docText) {
-                attachments.push(`File name is ${file.name}. Its content is between [FILE_${file.name}] and [/FILE_${file.name}]:\n[FILE_${file.name}] ${docText} [/FILE_${file.name}]. Use this as a context of your respond.`);
-                showAttachment(file.name);
-            } else {
-                showMessage(`${file.name} is either empty or extraction of its content failed!`, 'error');
-            }
-        }
-    } catch (err){
-        showMessage(err.message, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
-    }
-}
 
 function showAttachment(title) {
     const shadowRoot = getShadowRoot();
@@ -560,13 +345,13 @@ function clearAttachments() {
 
 function adjustHeight(userInput) {
     if (!userInput) { return; }
-    var initialRows = parseInt(userInput.getAttribute('rows'), 10);
+    var initialRows = parseInt(userInput?.getAttribute('rows'), 10);
     var lineHeight = parseFloat(window.getComputedStyle(userInput).lineHeight);
     if (isNaN(lineHeight)) { lineHeight = 1.2; }
     var maxAllowedHeight = lineHeight * initialRows * 2;
 
     userInput.style.height = 'auto'; // Reset the height to auto
-    var newHeight = userInput.scrollHeight + 'px';
+    var newHeight = userInput?.scrollHeight + 'px';
 
     if (userInput.scrollHeight <= maxAllowedHeight) {
         userInput.style.height = newHeight;
@@ -583,12 +368,11 @@ function userInputClicked(e) {
     hidePopups(e);
 }
 
-function hidePopups(e) {
+function hidePopups(e) { // obsolated?
     const shadowRoot = getShadowRoot();
 
-    shadowRoot.querySelector('#cogMenu')?.classList.add('invisible');
-    shadowRoot.querySelectorAll('#helpPopup').forEach(el => el.remove());
-    shadowRoot.querySelector('#commandListContainer')?.classList.add('invisible');
+    shadowRoot?.querySelectorAll('#helpPopup').forEach(el => el.remove());
+    shadowRoot?.querySelector('#commandListContainer')?.classList.add('invisible');
 }
 
 async function onPromptTextAreaKeyDown(e) {
@@ -614,7 +398,6 @@ async function onPromptTextAreaKeyDown(e) {
         }
 
         messages = [];
-        checkForDump(elTarget.value);
 
         // update UI
         addInputCardToUIChatHistory(elTarget.value, 'user', messages.length - 1);
@@ -629,7 +412,10 @@ async function onPromptTextAreaKeyDown(e) {
 
         try {
             dumpInConsole(`${[getLineNumber()]} - messages collected are ${messages.length}`, messages);
-            if(!await getActiveSessionIndex()) {  await createNewSession(elTarget.value);  }
+            const idx = await getActiveSessionIndex();
+            if (idx < 0) {
+                await createNewSession(elTarget.value);
+            }
             shadowRoot.getElementById('laiAbort')?.classList.remove('invisible');
             shadowRoot.querySelector('#attachContainer')?.classList.remove('active');
             elTarget.classList.add('invisible');
@@ -799,7 +585,7 @@ function addInputCardToUIChatHistory(inputText, type, index = -1) {
             "class": "lai-chat-item-button", "data-type": "edit", "data-index": index, "title": "Edit",
             "children": [{ "img": { "src": chrome.runtime.getURL('img/edit.svg') } }]
         }
-    }, {
+        }, {
         "span": {
             "class": "lai-chat-item-button", "data-type": "add", "title": "Add this prompt as User Command",
             "children": [{ "img": { "src": chrome.runtime.getURL('img/new.svg') } }]
@@ -837,7 +623,7 @@ function addInputCardToUIChatHistory(inputText, type, index = -1) {
                 el.style.top = `${elChatHist.offsetHeight - 4}px`;
                 el.style.bottom = '';
             } else {
-                el.style.top = `-${el.getBoundingClientRect().height}px`;
+            el.style.top = `-${el.getBoundingClientRect().height}px`;
                 el.style.bottom = '';
             }
         }
@@ -1043,6 +829,7 @@ function laiSourceTextClicked(e) {
 async function laiSwapSidebarWithButton(forceClose = false) {
     const laiOptions = await getLaiOptions();
     const shadowRoot = getShadowRoot();
+// TODO: close menues
     if (!shadowRoot) return;
 
     const slideElement = shadowRoot.getElementById('laiSidebar');
@@ -1099,7 +886,7 @@ async function laiAbortRequest(e) {
             await chrome.runtime.sendMessage({ action: "abortFetch" });
             if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${e.message}`, e);
+                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${e.message}`, e);
         }
     }
 
@@ -1122,18 +909,12 @@ async function queryAI() {
     }
 
     const shadowRoot = getShadowRoot();
-    let temp = 0.5;
-    if(shadowRoot){
-        const tempInput = shadowRoot.querySelector('#tempInput');
-        temp = tempInput?.value;
-    }
+    const tempInput = shadowRoot?.querySelector('#tempInput');
+    let temp = tempInput?.value || 0.5;
 
     const data = {
         "messages": messages,
-        // "stream": true,
-        "options": {
-            "temperature": parseFloat(temp || "0.5" )
-          }
+        "options": {  "temperature": parseFloat(temp || "0.5" )  }
     }
 
     if (laiOptions.aiUrl.indexOf('api') > -1) {
@@ -1174,17 +955,6 @@ async function queryAI() {
     }
 }
 
-function setModelNameLabel(data) {
-    if (!data) { return; }
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-    const modelName = shadowRoot.getElementById('laiModelName');
-    const model = data?.model;
-    if (!model) { return; }
-    modelName.textContent = (/\\|\//.test(model) ? model.split(/\\|\//).pop().split('.').slice(0, -1).join('.') : model) ?? '';
-    resetStatusbar();
-}
-
 function laiFinalPreFormat() {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
@@ -1223,7 +993,7 @@ function createAbortHandler(controller, abortBtn, rootEl) {
 function scrollChatHistoryContainer(e){
     if (userScrolled) {  return; }
     const shadowRoot = getShadowRoot();
-    const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
+    const laiChatMessageList = shadowRoot?.querySelector('#laiChatMessageList');
     if(!laiChatMessageList){
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
         return;
@@ -1275,7 +1045,6 @@ chrome.runtime.onMessage.addListener(async (response) => {
                 recipient?.setAttribute("id", "laiActiveAiInput");
             }
             if (!recipient && response.action.toLowerCase().startsWith('stream')) {
-            // if (!recipient && ['toggleSidebar', 'activePageSelection', 'activePageContent', 'toggleSelectElement', 'explainSelection'].indexOf(response.action) < 0) {
                 console.log(`>>> ${manifest.name} - [${getLineNumber()}] - no recipient`);
                 return;
             }
@@ -1326,6 +1095,17 @@ chrome.runtime.onMessage.addListener(async (response) => {
             showAttachment(`${response.selection?.split(/\s+/).slice(0, 5).join(' ')}...`);
             showMessage('Selection included.', 'info')
             updateStatusBar('Selected content added to the context.');
+            break;
+        case "inserSelectedInPrompt":
+            if(!response.selection){
+                showMessage('Element picked up successfully.', 'info')
+                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
+                break;
+            }
+            const isSidebarActive = getSideBar()?.classList.contains('active');
+            if(!isSidebarActive){  await laiSwapSidebarWithButton();  }
+            const promptVal = shadowRoot?.getElementById('laiUserInput')?.value;
+            shadowRoot.getElementById('laiUserInput').value += `${promptVal.length > 0 ? "\n" : ""}${response.selection}`;
             break;
         case "activePageContent":
             attachments.push(getPageTextContent());
@@ -1404,26 +1184,6 @@ function laiGetRecipient() {
     return recipient;
 }
 
-function getPageTextContent() {
-    const bodyClone = document.body.cloneNode(true);
-
-    const removed = document.createElement('div');
-    removed.style.display = 'none';
-    ['local-ai', 'script', 'link', 'button', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside', 'audio', 'video','embed', 'object', 'picture', 'source', 'track', 'canvas'].forEach(selector => {
-        bodyClone.querySelectorAll(selector).forEach(el => removed.appendChild(el));
-    });
-
-    let content = [];
-    const walker = document.createTreeWalker(bodyClone, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
-    while (walker.nextNode()) {
-        const node = walker.currentNode;
-        if (!node?.nodeValue || !(/[^\n\s\r]/.test(node?.nodeValue))) { continue; }
-        content.push(node.nodeValue?.trim());
-    }
-
-    return ` PAGE URL: ${document.location.href}\nPAGE CONTENT START: ${content.join('\n')} PAGE CONTENT END`;
-}
-
 async function ask2ExplainSelection(response) {
     if (!response) {
         showMessage('Nothing received to explain!', 'warning');
@@ -1457,7 +1217,7 @@ async function ask2ExplainSelection(response) {
     }
 
     userInput.value = `Focusing on abbreviations or non common content, explain briefly the meaning of the next snippet:\n- ${selection}`;
-    userInput.dispatchEvent(enterEvent);
+    userInput?.dispatchEvent(enterEvent);
 }
 
 function laiResizeContainer(e) {
@@ -1502,23 +1262,23 @@ function laiResizeContainer(e) {
     window.addEventListener('mouseup', onMouseUp);
 }
 
-async function checkForHooksCmd(e){
-    const userInput = e.target?.value?.trim() || '';
-    if (!userInput || !/(?<!\\)\/(web)?hooks?\s*/i.test(userInput.toLowerCase())) {  return false;  }
-    e.target.value = userInput.replace(/(?<!\\)\/(web)?hooks?\s*/g, '');
-    updateStatusBar('Loading defined hooks...');
-    try {
-        const res = await chrome.runtime.sendMessage({ action: "getHooks" });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        showHooks(res);
-    } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-    } finally {
-        resetStatusbar();
-    }
+// async function checkForHooksCmd(e){
+//     const userInput = e.target?.value?.trim() || '';
+//     if (!userInput || !/(?<!\\)\/(web)?hooks?\s*/i.test(userInput?.toLowerCase())) {  return false;  }
+//     e.target.value = userInput?.replace(/(?<!\\)\/(web)?hooks?\s*/g, '');
+//     updateStatusBar('Loading defined hooks...');
+//     try {
+//         const res = await chrome.runtime.sendMessage({ action: "getHooks" });
+//         if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+//         showHooks(res);
+//     } catch (e) {
+//         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+//     } finally {
+//         resetStatusbar();
+//     }
 
-    return true;
-}
+//     return true;
+// }
 
 function showHooks(res){
     if(!res || !res?.hooks) {  return;  }
@@ -1555,7 +1315,7 @@ function getRegExpMatches(regex, userInput) {
     const matches = [];
     let match;
 
-    while ((match = regex.exec(userInput.value)) !== null) {
+    while ((match = regex.exec(userInput?.value)) !== null) {
         if (match) {
             matches.push(match);
         }
@@ -1569,7 +1329,7 @@ async function checkCommandHandler(e) {
     const userInput = e.target;
     if (!userInput || (userInput?.value?.trim() || '') === '') { return res; }
 
-    if(await checkForHooksCmd(e)){  return true;  }
+    // if(await checkForHooksCmd(e)){  return true;  }
 
     const matches = getRegExpMatches(/\/(\w+)(?:\((\w+)\))?[\t\n\s]?/gi, userInput);
     if (matches.length < 1) { return res; }
@@ -1612,27 +1372,27 @@ async function checkCommandHandler(e) {
                 }
                 res = true;
                 break;
-            case 'dump':
-                let pos = parseInt(param, 10);
-                dumpRawContent('ai', isNaN(pos) ? undefined : pos);
-                res = true;
-                break;
-            case 'udump':
-                let i = parseInt(param, 10);
-                dumpRawContent('user', isNaN(i) ? undefined : i);
-                res = true;
-                break;
+            // case 'dump':
+            //     let pos = parseInt(param, 10);
+            //     dumpRawContent('ai', isNaN(pos) ? undefined : pos);
+            //     res = true;
+            //     break;
+            // case 'udump':
+            //     let i = parseInt(param, 10);
+            //     dumpRawContent('user', isNaN(i) ? undefined : i);
+            //     res = true;
+            //     break;
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
                 if (idx > -1) {
-                    userInput.value = `${userInput.value}${userInput.value?.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx]?.commandBody || ''}`;
+                    userInput.value = `${userInput?.value}${userInput?.value?.trim().length > 0 ? ' ' : ''}${aiUserCommands[idx]?.commandBody || ''}`;
                 }
                 res = idx > -1;
                 break;
         }
 
         if (res) {
-            userInput.value = userInput.value?.replace(matches[i][0], '');
+            userInput.value = userInput?.value?.replace(matches[i][0], '');
         }
         if (!continueLoop) { break; }
     }
@@ -1660,8 +1420,7 @@ function popUserCommandEditor(idx = -1) {
         const cmdData = {};
         inputs.forEach(el => {
             cmdData[el.id] = el.value || '';
-        })
-
+        });
         if (!cmdData.commandName || !cmdData.commandBody) {
             showMessage('Command must have name and boddy!', 'error');
             return;
@@ -1669,8 +1428,7 @@ function popUserCommandEditor(idx = -1) {
 
         addToUserCommands(cmdData, cmdIdx);
         closeBtn?.click();
-    })
-
+    });
     editor = loadUserCommandIntoEditor(idx, editor);
     theSidebar.appendChild(editor);
     editor.focus();
@@ -1706,13 +1464,13 @@ function addToUserCommands(cmdData, idx = -1) {
     }
 
     setAiUserCommands()
-        .then(e => showMessage('Successfully saved.', 'success'))
-        .catch(e => {
+    .then(e => showMessage('Successfully saved.', 'success'))
+    .catch(e => {
             if (e.message.indexOf('Extension context invalidated.') > -1) {
-                showMessage(`${e.message}. Please reload the page.`, 'error');
-            }
+            showMessage(`${e.message}. Please reload the page.`, 'error');
+        }
             console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-        });
+    });
 }
 
 function prompt2UserCommand(prompt = '') {
@@ -1739,7 +1497,7 @@ function showHelp() {
         li.addEventListener('click', e => {
             const userInput = shadowRoot.getElementById('laiUserInput');
             if (userInput) {
-                userInput.value = (`${userInput.value.trim()} ${command}`).trim();
+                userInput.value = (`${userInput?.value.trim()} ${command}`).trim();
             }
         });
     }
@@ -1754,46 +1512,14 @@ function isAskingForHelp(e) {
     if (!userInput) { return false; }
 
     const regex = /(@\{\{help\}\}|\/help|\/\?)[\t\n]?/gi;
-    if (regex.test(userInput.value.trim().toLowerCase())) {
-        const usrVal = userInput.value.replace(regex, '').trim();
+    if (regex.test(userInput?.value.trim().toLowerCase())) {
+        const usrVal = userInput?.value.replace(regex, '').trim();
         userInput.value = usrVal;
         showHelp();
         return true;
     }
 
     return false;
-}
-
-async function restoreLastSession(sessionIdx) {
-    const allSessions = await getAllSessions();
-    if(allSessions.length < 1){
-        showMessage('No stored sessions found.');
-        return;
-    }
-    if(isNaN(sessionIdx) || typeof(sessionIdx) !== 'number'){  sessionIdx = Math.max(allSessions.length -1, 0);  }
-    const session = allSessions[sessionIdx];
-    await setActiveSessionIndex(sessionIdx);
-    if (!session || !session.data || session.length < 1) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - No data found in current session.`, session);
-        return;
-    }
-    clearChatHistoryUI();
-    session.data?.forEach(async (msg, i) => {
-        const role = msg?.role?.replace(/assistant/i, 'ai');
-        if(!role) {  return;  }
-        if(role === 'ai'){
-            addInputCardToUIChatHistory('', role, i);
-            const aiReplyTextElement = laiGetRecipient();
-            await parseAndRender(msg.content, aiReplyTextElement, {streamReply: false});
-        }
-        else{  addInputCardToUIChatHistory(msg.content, role, i);  }
-    });
-
-    const shadowRoot = getShadowRoot();
-    const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
-    laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
-
-    showMessage(`session #${sessionIdx} restored.`, 'info');
 }
 
 function clearChatHistoryUI(){
@@ -1805,251 +1531,6 @@ function clearChatHistoryUI(){
     }
 }
 
-async function showActiveSessionMenu(e) {
-    const target = e.target;
-    e.preventDefault();
-    e.stopPropagation();
-    const allSessions = await getAllSessions();
-    if (allSessions.length < 1) {
-        showMessage('No stored sessions found.');
-        return;
-    }
-
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-    const headerSection = shadowRoot.querySelector('.lai-header');
-    const sessionList = headerSection.querySelector('#sessionHistMenu');
-    if(sessionList && !sessionList.classList.contains('invisible')){ // only close it
-        headerSection.querySelector('#sessionHistMenu')?.remove();
-        return;
-    }
-
-    headerSection.querySelector('#sessionHistMenu')?.remove(); // if hidden remove it
-    const template = shadowRoot.getElementById('histMenuTemplate').content.cloneNode(true);
-    const sessionHistMenu = template.children[0];
-    sessionHistMenu.id = "sessionHistMenu";
-    sessionHistMenu.classList.add('hist-top-menu', 'invisible');
-
-    headerSection.appendChild(sessionHistMenu);
-
-    const menuItemContent = allSessions.filter(a => a.title).filter(Boolean)
-    if(allSessions.length > 0 && menuItemContent.length < 1){
-        showMessage(`${allSessions.length} sessions found but failed to list them!`);
-        return;
-    }
-    else if (menuItemContent.length < 1) {
-        showMessage('No stored sessions found.');
-        return;
-    }
-
-    menuItemContent.push({"title": "---" });
-    menuItemContent.push({"title": "Delete all sessions" });
-    for (let i = 0, l = menuItemContent.length; i < l; i++) {
-        const userEl = menuItemContent[i];
-        let menuItem = document.createElement(userEl.title === '---' ? 'hr' : 'div');
-        if (userEl.title !== '---') {
-            menuItem.className = 'menu-item';
-            menuItem.textContent = `${(userEl?.title?.substring(0, 35)) || 'Noname'}${userEl?.title?.length > 35 ? '...' : ''}`;
-            if (i === l - 1) {
-                menuItem.addEventListener('click', async (e) => {
-                    const el = e.target;
-                    try {
-                        // await chrome.storage.local.remove(allSessionsStorageKey);
-                        // await chrome.storage.local.remove(activeSessionKey);
-                        await recycleAllSessions();
-                    } catch (error) {
-                        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
-                    }
-                    el.closest('div#sessionHistMenu').remove();
-                    showMessage('All sessions deleted.');
-                });
-            } else {
-                menuItem.addEventListener('click', async (e) => {
-                    const el = e.target;
-                    await restoreLastSession(i);
-                    el.closest('div#sessionHistMenu').remove();
-                });
-            }
-        }
-
-        sessionHistMenu.appendChild(menuItem);
-    }
-
-    sessionHistMenu.classList.remove('invisible');
-    sessionHistMenu.style.cssText = `top: ${e.clientY + 10}px;; left: ${e.clientX - (sessionHistMenu.offsetWidth / 4)}px;`;
-}
-
-async function modelChanged(e){
-    const laiOptions = await getLaiOptions();
-    const oldModelName = laiOptions.aiModel;
-    const newModelName = e.target.options[e.target.selectedIndex].value;
-    try {
-        await chrome.runtime.sendMessage({action: "prepareModels", modelName: oldModelName, unload: true });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        await chrome.runtime.sendMessage({action: "prepareModels", modelName: newModelName, unload: false });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-    } catch (err) {
-        console.log(`>>> ${manifest.name} - [${getLineNumber()}]`, err);
-    }
-    laiOptions.aiModel = newModelName;
-    await setOptions(laiOptions);
-    setModelNameLabel({ "model": laiOptions.aiModel });
-}
-
-async function selectMenuChanged(e) {
-    const laiOptions = await getLaiOptions();
-    const id = e.target.id;
-    switch (id) {
-        case 'apiUrlList':
-            laiOptions.aiUrl = e.target.options[e.target.selectedIndex].value;
-            break;
-        case 'hookList':
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - ${id} is not implemented yet`);
-            break;
-    }
-}
-
-function hideaictiveSessionMenu() {
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-    const headerSection = shadowRoot.querySelector('.lai-header');
-    headerSection?.querySelector('#sessionHistMenu')?.remove();
-}
-
-function popUserCommandList(e) {
-    if (e?.target?.value) {
-        e.target.value = e.target.value.replace('/list', '');
-    }
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-    const cmdList = shadowRoot.querySelector('#commandListContainer');
-    cmdList.querySelectorAll('img').forEach(img => { laiSetImg(img); });
-    const closeBtn = cmdList.querySelector('#cmdListClose')
-    closeBtn.addEventListener('click', e => cmdList.classList.add('invisible'));
-    const addNewBtn = cmdList.querySelector('#cmdListNew');
-    addNewBtn.addEventListener('click', e => {
-        closeBtn.click();
-        popUserCommandEditor()
-    });
-
-    cmdList.querySelector('#cmdImport').addEventListener('click', e => userImport(e));
-    cmdList.querySelector('#cmdExport').addEventListener('click', async (e) => await exportAsFile(e));
-
-    const container = cmdList.querySelector('div.user-command-block')
-
-    container.replaceChildren();
-
-    const clickHandler = e => closeBtn.click();
-    container.addEventListener('click', clickHandler);
-
-    const allCmds = [...userPredefinedCmd, ...aiUserCommands];
-
-    for (let i = 0; i < allCmds.length; i++) {
-        const cmd = allCmds[i];
-        const el = document.createElement('div');
-        el.setAttribute('data-index', i.toString());
-
-        const cmdItemButtons = addCmdItemButtons(document.createElement('div'), i);
-        const cmdItem = document.createElement('div');
-        cmdItem.classList.add('user-cmd-item-command');
-        cmdItem.innerHTML = `<b>/${cmd.commandName}</b> - ${cmd.commandDescription || 'No description provided.'}`
-
-        el.appendChild(cmdItemButtons);
-        el.appendChild(cmdItem);
-
-        container.appendChild(el);
-        el.classList.add('user-command-item');
-    }
-
-    cmdList.classList.remove('invisible');
-    cmdList.focus();
-}
-
-function addCmdItemButtons(item, index) {
-    if (!checkExtensionState()) { return; }
-    if (!item) { return; }
-    item.classList.add('user-cmd-item-btn');
-    const userPredefinedCmdCount = userPredefinedCmd.length
-    Object.keys(userCmdItemBtns).forEach(key => {
-        if ((key === 'edit' || key === 'delete') && index < userPredefinedCmdCount) { return; }
-        if (!userCmdItemBtns[key]) { userCmdItemBtns[key] = chrome.runtime.getURL(`img/${key}.svg`); }
-        const img = document.createElement('img');
-        img.src = userCmdItemBtns[key];
-        img.setAttribute('title', key);
-        img.setAttribute('alt', key);
-        img.setAttribute('data-index', (index - userPredefinedCmdCount).toString());
-        img.setAttribute('data-action', key);
-        item.appendChild(img);
-        img.addEventListener('click', userCmdItemBtnClicked);
-    });
-
-    return item;
-}
-
-function userCmdItemBtnClicked(e) {
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-
-    const clicked = e.target;
-    const action = e.target.getAttribute('data-action').toLowerCase();
-    const index = e.target.getAttribute('data-index');
-    const userInput = shadowRoot.getElementById('laiUserInput');
-
-    switch (action) {
-        case 'edit':
-            e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click()
-            popUserCommandEditor(index);
-            break;
-        case 'execute':
-            e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click();
-            let exVal = index < 0 ? `/${userPredefinedCmd.slice(index)[0]?.commandName}` : aiUserCommands[index]?.commandBody
-            userInput.value += exVal === '/' ? '' : exVal;
-            const enterEvent = new KeyboardEvent('keydown', {
-                bubbles: true,
-                cancelable: true,
-                key: 'Enter'
-            });
-            userInput.dispatchEvent(enterEvent);
-            break;
-        case 'paste':
-            let val = index < 0 ? `/${userPredefinedCmd.slice(index)[0]?.commandName}` : aiUserCommands[index]?.commandBody
-            userInput.value += val === '/' ? '' : val;
-            break;
-        case 'delete':
-            aiUserCommands.splice(index, 1);
-            setAiUserCommands()
-                .then(() => e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click())
-                .catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
-            break;
-        default:
-            console.warn(`>>> ${manifest.name} - [${getLineNumber()}] - Unknown action - ${action}`);
-    }
-
-    if (action !== 'edit') {
-        hidePopups(e);
-        userInput.dispatchEvent(new Event('click', { bubbles: true, cancelable: true }));
-    }
-}
-
-function checkExtensionState() {
-    if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
-    if (!chrome.runtime.id) {
-        if (typeof (showMessage) === 'function') {
-            showMessage(`${manifest.name} - Extension context invalidated. Please reload the tab.`, 'error');
-        } else {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
-        }
-        return false;
-    }
-
-    return true;
-}
-
-function showLastErrorMessage(e) {
-    e.stopPropagation();
-    showMessage(lastRegisteredErrorMessage.toReversed().slice(0, 5), 'error');
-}
-
 function adjustFontSize(elm, direction) {
     if (direction === 0) { return; }
     let scaleFactor = direction > 0 ? 1 : -1;
@@ -2058,118 +1539,6 @@ function adjustFontSize(elm, direction) {
     if (isNaN(fontSizeNumber)) { return; }
     elm.style.fontSize = `${fontSizeNumber + scaleFactor}px`;
     Array.from(elm.children).forEach(child => adjustFontSize(child, direction));
-}
-
-async function modelLabelClicked(e){
-    e.stopPropagation();
-    let container = e.target;
-    if(container.id !== 'modelNameContainer'){  container = e.target.closest('div#modelNameContainer');  }
-    if(!container){  return;  }
-
-    const isOpen = container.classList.contains('open');
-    if(!isOpen){
-        getAndShowModels();
-        container.classList.add('open');
-        return;
-    }
-
-    const shadowRoot = getShadowRoot();
-    const availableModelsList = shadowRoot.querySelector('#availableModelList');
-    availableModelsList.classList.add('invisible');
-    container.classList.remove('open');
-}
-
-async function getAndShowModels(){
-    const laiOptions = await getLaiOptions();
-    let response;
-    updateStatusBar('Loading model list...')
-    try {
-        response = await chrome.runtime.sendMessage({ action: "getModels" });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        if(typeof(response) === 'boolean') {  return;  }
-        if(!response){  throw new Error(`[${getLineNumber()}] - Server does not respond!`);  }
-        if(response.status !== 'success'){  throw new Error(response?.message || 'Unknown error!');  }
-        laiOptions.modelList = response.models?.map(m => m.name).sort() || [];
-        await setOptions(laiOptions);
-        fillAndShowModelList(response.models?.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (e) {
-        showMessage(e.message, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ERROR: ${e.message}`, e, response);
-    } finally {  resetStatusbar();  }
-
-}
-
-function fillAndShowModelList(models){
-    const shadowRoot = getShadowRoot();
-    const modelList = shadowRoot.querySelector('#availableModelList');
-    const modelsDropDown = shadowRoot.querySelector('#modelList');
-    let opt = modelsDropDown.options[0];
-    if(!modelList){
-        showMessage('Failed to find model list!', 'error');
-        return;
-    }
-
-    modelList.replaceChildren();
-    modelsDropDown.replaceChildren();
-    modelsDropDown.appendChild(opt);
-    models.forEach(async (model, idx) => {
-        const laiOptions = await getOptions();
-        const m = document.createElement('div');
-        m.textContent = `${model.name}${model.name === laiOptions.aiModel ? ' ✔': ''}`;
-        m.addEventListener('click', async e => {
-            e.stopPropagation();
-            modelsDropDown.selectedIndex = idx+1; // there is an extra empty option
-            await swapActiveModel(e, model.name);
-        });
-        modelList.appendChild(m);
-
-        opt = document.createElement('option');
-        opt.text = opt.value = model.name;
-        opt.selected = model.name === laiOptions.aiModel;
-        modelsDropDown.appendChild(opt);
-    });
-
-    modelList.classList.remove('invisible');
-}
-
-async function swapActiveModel(e, modelName){
-    e.stopPropagation();
-    const activatedModel = e.target;
-    const parent = activatedModel.parentElement;
-    const laiOptions = await getOptions();
-    const oldModel = laiOptions.aiModel;
-    if(!activatedModel){  return;  }
-    try {
-        showSpinner();
-        updateStatusBar(`Trying to remove ${oldModel} from the memory...`);
-        let response = await chrome.runtime.sendMessage({action: "prepareModels", modelName: oldModel, unload: true });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        if(response.status !== 200){
-            showMessage(`Failed to change the model!`, 'error');
-            return;
-        }
-
-        updateStatusBar(`Trying to load ${modelName} into the memory...`);
-        response = await chrome.runtime.sendMessage({action: "prepareModels", modelName: modelName, unload: false });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        if(response.status !== 200){
-            showMessage(`Failed to change the model!`, 'error');
-            return;
-        }
-
-        laiOptions.aiModel = modelName;
-        await setOptions(laiOptions);
-
-        setModelNameLabel({ "model": modelName });
-        Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
-        activatedModel.textContent = `${activatedModel.textContent} ✔`;
-        parent.classList.add('invisible');
-        const sideBar = getSideBar();
-        sideBar.querySelector('div#modelNameContainer')?.classList.remove('open')
-        showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error occured while changing the model`);
-    } finally{  hideSpinner();  }
 }
 
 function updateStatusBar(status){
@@ -2294,3 +1663,4 @@ function dumpInConsole(message = '', obj, consoleAction = 'log'){
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error parsing JSON or logging message: ${error.message}`, error);
     }
 }
+

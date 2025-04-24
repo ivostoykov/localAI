@@ -17,13 +17,12 @@ document.getElementById('cancelButton').addEventListener('click', cancelOptions)
 document.getElementById('deleteAllSessions').addEventListener('click', deleteAllAiSessions);
 document.getElementById('exportSessions').addEventListener('click', exportAsFile);
 document.getElementById('fileInput').addEventListener('change', importFromFile);
-document.getElementById('aiUrl').addEventListener('input', loadModels)
-
+document.getElementById('aiUrl').addEventListener('input', loadModels);
 document.getElementById("dlgBtnOK").addEventListener('click', closeDialog);
 document.getElementById("dlgBtnCancel").addEventListener('click', closeDialog);
 
 document.getElementById("tempRange").addEventListener('input', updateTempValue);
-document.getElementById("tempIntput").addEventListener('input', updateTempValue);
+document.getElementById("tempInput").addEventListener('input', updateTempValue);
 
 async function saveSettings(e) {
     e.preventDefault();
@@ -57,7 +56,7 @@ async function saveSettings(e) {
 
     laiOptions = optionsData;
     await chrome.storage.sync.set({ 'laiOptions': optionsData });
-    showMessage('Settings saved', 'success');
+        showMessage('Settings saved', 'success');
 }
 
 function loadSettings(e) {
@@ -90,7 +89,7 @@ function loadSettings(e) {
             }
         });
 
-        document.getElementById("tempIntput").dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById("tempInput").dispatchEvent(new Event('input', { bubbles: true }));
     });
 }
 
@@ -101,8 +100,7 @@ function attachListeners(e) {
 
     document.querySelectorAll('.navbar-item')?.forEach(item => {  item.addEventListener('click', async (e) => {  await switchSection(e);  });  });
     document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
-    document.querySelector('#newPromptBtn')?.addEventListener('click', async e => {  await createNewPrompt(e);  })
-
+    document.querySelector('#newPromptBtn')?.addEventListener('click', async e => {  await createNewPrompt(e);  });
     document.querySelectorAll('#exportPromptBtn, #exportFuncBtn')?.forEach(btn => {
         btn.addEventListener('click', async e => {  await exportAsFile(e);  });
     });
@@ -142,10 +140,10 @@ function cancelOptions() {
 
 function deleteAllAiSessions(e) {
     chrome.storage.local.remove(['aiSessions']).then(() => {
-        showMessage('All sessions have been deleted.', 'success');
-    }).catch(e => {
+    showMessage('All sessions have been deleted.', 'success');
+   }).catch(e => {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e)
-    });
+   });
 }
 
 async function deleteStorageCollection(e) {
@@ -283,13 +281,13 @@ async function loadModels(e) {
     let response;
     let models;
     try {
-        response = await fetch(urlVal, {
-            headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-            },
-        });
+      response = await fetch(urlVal, {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+      });
 
-        models = await response.json();
+      models = await response.json();
         if (models.models && Array.isArray(models.models)) { fillModelList(models.models); }
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
@@ -655,13 +653,13 @@ async function getAiUserCommands(){
 
     for (let x=0, l=aiUserCommands.length; x<l; x++) {
         const cmd = aiUserCommands[x];
-        const clone = document.importNode(promptTemplate, true);
-        clone.querySelector('.prompt-title').textContent = cmd.commandName;
-        clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
-        clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
-        clone.querySelector('.prompt-body').textContent = cmd.commandBody;
+            const clone = document.importNode(promptTemplate, true);
+            clone.querySelector('.prompt-title').textContent = cmd.commandName;
+            clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
+            clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
+            clone.querySelector('.prompt-body').textContent = cmd.commandBody;
         clone.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
-        promptContainer.appendChild(clone);
+            promptContainer.appendChild(clone);
     }
 }
 
@@ -774,12 +772,12 @@ async function savePrompts(e){
         case 'prompts':
             storageKey = 'aiUserCommands';
             section.querySelectorAll('.prompt-item')?.forEach(item => {
-                const cmd = {};
-                cmd['commandName'] = item.querySelector('.prompt-title').textContent.toLowerCase().replace(/\s+/g, '-');
-                cmd['commandDescription'] = item.querySelector('.prompt-description').textContent;
-                cmd['commandBody'] = item.querySelector('.prompt-body').textContent;
+        const cmd = {};
+        cmd['commandName'] = item.querySelector('.prompt-title').textContent.toLowerCase().replace(/\s+/g, '-');
+        cmd['commandDescription'] = item.querySelector('.prompt-description').textContent;
+        cmd['commandBody'] = item.querySelector('.prompt-body').textContent;
                 storageData.push(cmd);
-            });
+    });
             break;
     }
 
@@ -811,7 +809,7 @@ async function createNewPrompt(e){
 
 function updateTempValue(e){
     const originator = e.target;
-    const otherElId = originator.id === "tempRange" ? "tempIntput" : "tempRange";
+    const otherElId = originator.id === "tempRange" ? "tempInput" : "tempRange";
     const otherEl = document.getElementById(otherElId);
     const tempOutput = document.getElementById("tempOutput");
     if(!otherEl){

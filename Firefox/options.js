@@ -17,13 +17,12 @@ document.getElementById('cancelButton').addEventListener('click', cancelOptions)
 document.getElementById('deleteAllSessions').addEventListener('click', deleteAllAiSessions);
 document.getElementById('exportSessions').addEventListener('click', exportAsFile);
 document.getElementById('fileInput').addEventListener('change', importFromFile);
-document.getElementById('aiUrl').addEventListener('input', loadModels)
-
+document.getElementById('aiUrl').addEventListener('input', loadModels);
 document.getElementById("dlgBtnOK").addEventListener('click', closeDialog);
 document.getElementById("dlgBtnCancel").addEventListener('click', closeDialog);
 
 document.getElementById("tempRange").addEventListener('input', updateTempValue);
-document.getElementById("tempIntput").addEventListener('input', updateTempValue);
+document.getElementById("tempInput").addEventListener('input', updateTempValue);
 
 async function saveSettings(e) {
     e.preventDefault();
@@ -90,7 +89,7 @@ function loadSettings(e) {
             }
         });
 
-        document.getElementById("tempIntput").dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById("tempInput").dispatchEvent(new Event('input', { bubbles: true }));
     });
 }
 
@@ -101,8 +100,7 @@ function attachListeners(e) {
 
     document.querySelectorAll('.navbar-item')?.forEach(item => {  item.addEventListener('click', async (e) => {  await switchSection(e);  });  });
     document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
-    document.querySelector('#newPromptBtn')?.addEventListener('click', async e => {  await createNewPrompt(e);  })
-
+    document.querySelector('#newPromptBtn')?.addEventListener('click', async e => {  await createNewPrompt(e);  });
     document.querySelectorAll('#exportPromptBtn, #exportFuncBtn')?.forEach(btn => {
         btn.addEventListener('click', async e => {  await exportAsFile(e);  });
     });
@@ -811,7 +809,7 @@ async function createNewPrompt(e){
 
 function updateTempValue(e){
     const originator = e.target;
-    const otherElId = originator.id === "tempRange" ? "tempIntput" : "tempRange";
+    const otherElId = originator.id === "tempRange" ? "tempInput" : "tempRange";
     const otherEl = document.getElementById(otherElId);
     const tempOutput = document.getElementById("tempOutput");
     if(!otherEl){

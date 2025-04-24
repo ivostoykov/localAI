@@ -20,8 +20,6 @@
 - [Options](#options)
     - [End Points](#end-points)
         - [Models](#models)
-    - [Web Hooks](#web-hooks)
-        - [Format](#format)
 - [Troubleshoot](#troubleshoot)
     - [Ollama](#ollama)
         - [403 Error](#403-error)
@@ -74,7 +72,6 @@ The changes made here are temporary for the session, (until reload) and for the 
 
 * On the top is the API endpoint where AI prompts are sent to.
 * If [Ollama](https://ollama.com/) is used as an endpont, next dropdown will be populated with the available model names. **It is mandatory** to select one, otherwise an error will be trown.
-* See [Web Hook](#web-hooks) for more information
 * Create a new prompt and save it for future use.
 * Show a list of predefiend and save prompts.
 * Show a list of the availabel system commands.
