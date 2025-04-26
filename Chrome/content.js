@@ -31,16 +31,13 @@ var userPredefinedCmd = [
   { "commandName": "edit(command_name)", "commandDescription": "Edit the command corresponding to name, provided in the brackets" },
   { "commandName": "error", "commandDescription": "Show last error" },
   { "commandName": "list", "commandDescription": "Show all defined commands" }
-  // { "commandName": "hooks", "commandDescription": "Show all defined hooks" },
-  // { "commandName": "dump", "commandDescription": "Dump AI raw content into the console" },
-  // { "commandName": "udump", "commandDescription": "Dump generated prompt including all data" }
 ];
 
-function getRootElement() {  return document.documentElement.querySelector('localAI') || document.getElementById('localAI');  }
-function getShadowRoot() {  return getRootElement()?.shadowRoot;  }
-function getSideBar() {  return getShadowRoot()?.getElementById('laiSidebar');  }
-function getMainButton(){  return getShadowRoot()?.getElementById('laiMainButton');  }
-function getRibbon() {  return getShadowRoot()?.querySelector('div.lai-ribbon');}
+function getRootElement() { return document.documentElement.querySelector('localAI') || document.getElementById('localAI'); }
+function getShadowRoot() { return getRootElement()?.shadowRoot; }
+function getSideBar() { return getShadowRoot()?.getElementById('laiSidebar'); }
+function getMainButton() { return getShadowRoot()?.getElementById('laiMainButton'); }
+function getRibbon() { return getShadowRoot()?.querySelector('div.lai-ribbon'); }
 
 document.addEventListener('DOMContentLoaded', async (e) => await start());
 
@@ -72,7 +69,7 @@ async function allDOMContentLoaded(e) {
     }
 
     const options = await getLaiOptions()
-    if(options.closeOnClickOut && !isPinned()){ await laiSwapSidebarWithButton(event);  }
+    if(options.closeOnClickOut && !isPinned()) { await laiSwapSidebarWithButton(event); }
   }, false);
 
   document.addEventListener('keydown', async function (e) {
@@ -80,9 +77,9 @@ async function allDOMContentLoaded(e) {
       if (e.key === "Escape") {
         isElementSelectionActive = false;
         document.querySelectorAll(`[data-original-border]`)?.forEach(el => {
-            const currentBorder = el.getAttribute('data-original-border');
-            el.style.border = currentBorder;
-            el.removeAttribute('data-original-border');
+          const currentBorder = el.getAttribute('data-original-border');
+          el.style.border = currentBorder;
+          el.removeAttribute('data-original-border');
         });
         return;
       }
@@ -113,7 +110,7 @@ async function allDOMContentLoaded(e) {
 
   try {
     await removeLocalStorageObject(activeSessionIndexStorageKey);
-    await setActiveSessionPageData({"url": document.location.href, "pageContent": getPageTextContent()});
+    await setActiveSessionPageData({"url": document.location.href, "pageContent": getPageTextContent() });
     await getAiUserCommands(); //TODO: remove it as global
   } catch (err) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
@@ -122,9 +119,9 @@ async function allDOMContentLoaded(e) {
 
   init();
   try {
-    await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css' ]));
+    await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css']));
   } catch (error) {
-      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
+    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }
 }
 
@@ -132,7 +129,7 @@ async function updateTabPageContentStorage() {
   checkActiveTab();
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {  checkActiveTab(); }
+    if (document.visibilityState === "visible") { checkActiveTab(); }
   });
 
   ['pushState', 'replaceState'].forEach(type => {
@@ -188,23 +185,23 @@ async function init() {
 }
 
 function getPageTextContent() {
-    const bodyClone = document.body.cloneNode(true);
+  const bodyClone = document.body.cloneNode(true);
 
-    const removed = document.createElement('div');
-    removed.style.display = 'none';
-    ['local-ai', 'script', 'link', 'button', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside', 'audio', 'video','embed', 'object', 'picture', 'source', 'track', 'canvas'].forEach(selector => {
-        bodyClone.querySelectorAll(selector).forEach(el => removed.appendChild(el));
-    });
+  const removed = document.createElement('div');
+  removed.style.display = 'none';
+  ['local-ai', 'script', 'link', 'button', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside', 'audio', 'video', 'embed', 'object', 'picture', 'source', 'track', 'canvas'].forEach(selector => {
+    bodyClone.querySelectorAll(selector).forEach(el => removed.appendChild(el));
+  });
 
-    let content = [];
-    const walker = document.createTreeWalker(bodyClone, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
-    while (walker.nextNode()) {
-        const node = walker.currentNode;
-        if (!node?.nodeValue || !(/[^\n\s\r]/.test(node?.nodeValue))) { continue; }
-        content.push(node.nodeValue?.trim());
-    }
+  let content = [];
+  const walker = document.createTreeWalker(bodyClone, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!node?.nodeValue || !(/[^\n\s\r]/.test(node?.nodeValue))) { continue; }
+    content.push(node.nodeValue?.trim());
+  }
 
-    return ` PAGE URL: ${document.location.href}\nPAGE CONTENT START: ${content.join('\n')} PAGE CONTENT END`;
+  return ` PAGE URL: ${document.location.href}\nPAGE CONTENT START: ${content.join('\n')} PAGE CONTENT END`;
 }
 
 function clearElementOverDecoration(e) {
@@ -226,8 +223,8 @@ async function laiGetClickedSelectedElement(event) {
       if (!response.base64) { throw new Error(`Failed to get the image from ${el.src}`); }
 
       images.push(response?.base64);
-    showMessage('Image picked up successfully.', 'info')
-    updateStatusBar('Selected image added to the context.');
+      showMessage('Image picked up successfully.', 'info')
+      updateStatusBar('Selected image added to the context.');
       showAttachment(el.title || el.alt || el.src.split('/').pop());
     } catch (error) {
       showMessage(error.message);
@@ -307,34 +304,27 @@ async function laiMainButtonClicked(e) {
 }
 
 async function laiFetchAndBuildSidebarContent() {
-  if (!chrome.runtime.id && chrome.runtime.reload) {
-    chrome.runtime.reload();
-  }
-  if (!chrome.runtime.id) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
-    return;
-  }
+  if (!chrome.runtime.id && chrome.runtime.reload) {  chrome.runtime.reload();  }
 
   try {
-      const shadowRoot = getShadowRoot();
-    if (!shadowRoot) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to find the shadow root!`, shadowRoot);
-        return;
-      }
+    if (!chrome.runtime.id) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`); }
+
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to find the shadow root!`); }
 
     const response = await fetch(chrome.runtime.getURL('sidebar.html'));
     const data = await response.text();
 
-      var theSideBar = document.createElement('div');
-      theSideBar.id = "laiSidebar";
-      theSideBar.classList.add("lai-fixed-parent")
-      theSideBar.innerHTML = data;
+    var theSideBar = document.createElement('div');
+    theSideBar.id = "laiSidebar";
+    theSideBar.classList.add("lai-fixed-parent")
+    theSideBar.innerHTML = data;
     theSideBar.style.zIndex = getHighestZIndex();
 
-      shadowRoot.appendChild(theSideBar);
+    shadowRoot.appendChild(theSideBar);
   } catch (error) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error);
-      }
+  }
 }
 
 function laiFetchStyles(cssNames) {
@@ -445,28 +435,28 @@ async function buildMenuDropdowns() {
 }
 
 async function getLaiOptions() {
-    const defaults = {
-      "openPanelOnLoad": false,
-      "aiUrl": "",
-      "aiModel": "",
-      "closeOnClickOut": true,
-      "closeOnCopy": false,
-      "closeOnSendTo": true,
-      "showEmbeddedButton": false,
-      "loadHistoryOnStart": false,
-      "systemInstructions": 'You are a helpful assistant.',
-      "personalInfo": ''
-    };
+  const defaults = {
+    "openPanelOnLoad": false,
+    "aiUrl": "",
+    "aiModel": "",
+    "closeOnClickOut": true,
+    "closeOnCopy": false,
+    "closeOnSendTo": true,
+    "showEmbeddedButton": false,
+    "loadHistoryOnStart": false,
+    "systemInstructions": 'You are a helpful assistant.',
+    "personalInfo": ''
+  };
 
-    try {
+  try {
     const obj = await getOptions();
     const laiOptions = Object.assign({}, defaults, obj ?? {});
-      return laiOptions;
+    return laiOptions;
   } catch (e) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
     // Inform the user and fall back to defaults
     try {
-      showMessage( `Error loading options: ${e.message}. Using default settings.`, 'error' );
+      showMessage(`Error loading options: ${e.message}. Using default settings.`, 'error');
     } catch (_) {
       // ignore if UI not yet ready
     }

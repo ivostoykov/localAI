@@ -829,26 +829,25 @@ function laiSourceTextClicked(e) {
 async function laiSwapSidebarWithButton(forceClose = false) {
     const laiOptions = await getLaiOptions();
     const shadowRoot = getShadowRoot();
-// TODO: close menues
-    if (!shadowRoot) return;
+    if (!shadowRoot) {  return;  }
 
-    const slideElement = shadowRoot.getElementById('laiSidebar');
-    const button = shadowRoot.getElementById('laiMainButton');
-    if (!slideElement || !button) {
+    const sideBar = shadowRoot.getElementById('laiSidebar');
+    const mainButton = shadowRoot.getElementById('laiMainButton');
+    if (!sideBar || !mainButton) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Sidebar or button not found!`);
         return;
     }
 
-    const isSidebarActive = slideElement.classList.contains('active');
+    const isSidebarActive = sideBar.classList.contains('active');
 
-    if (!forceClose && isSidebarActive && !laiOptions?.closeOnClickOut) return;
+    if (!forceClose && isSidebarActive && !laiOptions?.closeOnClickOut) {  return;  }
 
-    slideElement.classList.toggle('active');
+    sideBar.classList.toggle('active');
 
-    const isNowActive = slideElement.classList.contains('active');
-    button.classList.toggle('invisible', isNowActive); // hide button if sidebar shown
+    const isNowActive = sideBar.classList.contains('active');
+    mainButton.classList.toggle('invisible', isNowActive); // hide button if sidebar shown
     if (isNowActive) {
-        slideElement.querySelector('textarea#laiUserInput')?.focus();
+        sideBar.querySelector('textarea#laiUserInput')?.focus();
     }
 }
 
@@ -1262,53 +1261,6 @@ function laiResizeContainer(e) {
     window.addEventListener('mouseup', onMouseUp);
 }
 
-// async function checkForHooksCmd(e){
-//     const userInput = e.target?.value?.trim() || '';
-//     if (!userInput || !/(?<!\\)\/(web)?hooks?\s*/i.test(userInput?.toLowerCase())) {  return false;  }
-//     e.target.value = userInput?.replace(/(?<!\\)\/(web)?hooks?\s*/g, '');
-//     updateStatusBar('Loading defined hooks...');
-//     try {
-//         const res = await chrome.runtime.sendMessage({ action: "getHooks" });
-//         if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-//         showHooks(res);
-//     } catch (e) {
-//         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-//     } finally {
-//         resetStatusbar();
-//     }
-
-//     return true;
-// }
-
-function showHooks(res){
-    if(!res || !res?.hooks) {  return;  }
-    if(res && res?.status !== 'success'){
-        showMessage(`${res.status}: ${res?.message || "Unknow error"}`);
-        return;
-    }
-
-    const container = document.createElement('div');
-    container.id = 'hookContainer';
-
-    const hooks = res.hooks;
-    const hookArray = hooks.split('\n');
-
-    hookArray.forEach(hook => {
-      const p = document.createElement('p');
-      p.textContent = hook.trim();
-      container.appendChild(p);
-    });
-
-    const closeButton = document.createElement('button');
-    closeButton.textContent = 'Close';
-    closeButton.onclick = () => container.remove();
-    container.appendChild(closeButton);
-
-    const sideBar = getSideBar();
-    sideBar.appendChild(container);
-    closeButton?.focus();
-}
-
 function getRegExpMatches(regex, userInput) {
     if (!regex instanceof RegExp) { return; }
 
@@ -1350,9 +1302,6 @@ async function checkCommandHandler(e) {
                 continueLoop = false;
                 res = true;
                 break;
-            case 'hooks':
-                showHooks();
-                break;
             case 'list':
                 continueLoop = false;
                 popUserCommandList(e);
@@ -1372,16 +1321,6 @@ async function checkCommandHandler(e) {
                 }
                 res = true;
                 break;
-            // case 'dump':
-            //     let pos = parseInt(param, 10);
-            //     dumpRawContent('ai', isNaN(pos) ? undefined : pos);
-            //     res = true;
-            //     break;
-            // case 'udump':
-            //     let i = parseInt(param, 10);
-            //     dumpRawContent('user', isNaN(i) ? undefined : i);
-            //     res = true;
-            //     break;
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
                 if (idx > -1) {

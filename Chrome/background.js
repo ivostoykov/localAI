@@ -526,10 +526,10 @@ async function fetchDataAction(request, sender) {
 
     // Prepend existing conversation context
     let context = activeSession.data.length > 0
-        ? activeSession.data.map(obj => `${obj.role}: ${obj.content}.`).join(' ')
+        ? activeSession.data.filter(obj => obj.role && obj.content).map(obj => `${obj.role}: ${obj.content}.`).join(' ').trim()
         : '';
     context = context
-        ? [{ role: "user", content: `\n\nChat context so far is: ${context}` }]
+        ? [{ role: "user", content: `\n\nUse the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer:\n\n ${context}\n\nQuestion: ` }]
         : [];
 
     // System instructions (if any)

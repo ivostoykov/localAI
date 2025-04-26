@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.27.58] 2025-04-25 - latest
+## [1.27.60] 2025-04-26 - latest
+
+- hooks removed
+- undefined context fixed
+- overlapping the sidebar fixed
+
+## [1.27.58] 2025-04-25
 - Optimised menu button click handlers.
 - Added delete individual history record from the history menu
 - Separated AbortControllers per‑tab replacing a single global controller/abort flag.
@@ -22,7 +28,7 @@
 - Extension Main Button now guards against undefined button elements, logs an error, and returns early to avoid appending `undefined`.
 - Improved menu close behaviour.
 - Fixed session creation logic to correctly identify when no session exists.
-- hooks were removed and replaced by tools and functions
+- hooks were replaced by tools and functions
 - Session now stores the model as well
 - Additional menu added to insert selection into the prompt box
 

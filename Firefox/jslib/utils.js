@@ -44,22 +44,18 @@ async function exportAsFile(e) {
 }
 
 function getHighestZIndex() {
-    let elements = document.getElementsByTagName('*');
+    let elements = document.body.getElementsByTagName('*')
     let highestZIndex = 0;
     let highestElement = null;
 
     for (let i = 0; i < elements.length; i++) {
-        let zIndex = window.getComputedStyle(elements[i]).zIndex;
-        if (zIndex === 'auto') { continue; }
-        if (highestZIndex > zIndex) { continue; }
-
-        highestZIndex = zIndex;
-        highestElement = elements[i];
+        let zIndex = parseInt(elements[i]?.style?.zIndex, 10);
+        if (isNaN(zIndex)) zIndex = parseInt(window.getComputedStyle(elements[i])?.zIndex, 10);
+        if (isNaN(zIndex)) {  continue;  }
+        if (zIndex > highestZIndex) {  highestZIndex = zIndex;  }
     }
 
-    let intZIndex = parseInt(highestZIndex, 10);
-
-    return isNaN(intZIndex) ? highestZIndex : intZIndex + 10;
+    return highestZIndex + 1000;
 }
 
 function getLineNumber() {

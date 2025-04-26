@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local AI helper",
-    "version": "1.27.58",
+    "version": "1.27.60",
   "options_page": "options.html",
   "permissions": [
     "activeTab",
@@ -25,11 +25,13 @@
         "<all_urls>"
       ],
       "js": [
+        "lai-main.js",
+        "jslib/files.js",
         "jslib/sessions.js",
         "jslib/solomd2html.js",
         "jslib/utils.js",
+        "jslib/ribbon.js",
         "jslib/stt.js",
-        "lai-main.js",
         "content.js"
       ],
       "run_at": "document_start"
