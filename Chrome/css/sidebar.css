@@ -1,7 +1,17 @@
-#localAI {
-    font-size: initial;
-    all: initial;
+html, body, local-ai, local-ai *, #localAI, #localAI * {
+    /* font-size: 16px !important;
+    all: initial !important;
+    font-family: initial !important; */
     position:relative;
+    all: initial;
+    box-sizing: border-box;
+    font-family: system-ui, sans-serif;
+    font-size: 16px;
+    color: black;
+    text-size-adjust: none;
+    -webkit-text-size-adjust: none;
+    -moz-text-size-adjust: none;
+    -ms-text-size-adjust: none;
 }
 
 /* main container */

@@ -1,69 +1,123 @@
-async function handleImageFile(file) {
+async function addAttachment(attachment) {
     try {
-        const reader = new FileReader();
-        reader.onload = () => {
-            images.push(reader.result.split(',').pop());
-            showAttachment(file.name);
-        };
-        reader.readAsDataURL(file);
+        if (!attachment) {
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Missing or empty attachment parameter!`, attachment);
+            return;
+        }
+        let activeSession = await getActiveSession();
+        if (!activeSession || !Array.isArray(activeSession.data)) {
+            // Create a session titled "Attachment Session" if none exists
+            activeSession = await createNewSession("Attachment Session");
+        }
+        if (!activeSession.attachments) { activeSession.attachments = []; }
+        activeSession.attachments.push(attachment);
+        await setActiveSession(activeSession);
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Image read failed: ${err.message}`, err);
-        showMessage(`Failed to read image ${file.name}`, 'error');
+        showMessage(err.message, 'error');
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
     }
 }
 
 async function handleImageFile(file) {
     try {
         const reader = new FileReader();
-        reader.onload = () => {
-            images.push(reader.result.split(',').pop());
+        reader.onload = async () => {
+            const base64Content = reader.result.split(',').pop();
+            if (!base64Content) {
+                showMessage(`Failed to read image ${file.name}.`, 'error');
+                return;
+            }
+
+            images.push(base64Content); // 1. Add to images array for immediate prompt sending
+
+            const attachment = {
+                id: crypto.randomUUID(),
+                type: 'file',
+                filename: file.name,
+                contentType: file.type || 'image/*',
+                content: base64Content,
+                sourceUrl: location.href
+            };
+
+            await addAttachment(attachment); // 2. Save it also as an attachment
             showAttachment(file.name);
         };
         reader.readAsDataURL(file);
     } catch (err) {
+        showMessage(`Failed to read image ${file.name}: ${err.message}`, 'error');
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Image read failed: ${err.message}`, err);
-        showMessage(`Failed to read image ${file.name}`, 'error');
     }
 }
 
 async function handleGenericFile(file) {
-    const fileContent = await readFileContent(file);
-    if (!fileContent) {
-        showMessage(`Failed to get content of ${file.name}.`, 'error');
-        return;
-    }
-
-    let response;
     try {
-        response = await chrome.runtime.sendMessage({
-            action: 'extractText',
-            fileName: file.name,
-            fileContent: btoa(String.fromCharCode(...new Uint8Array(fileContent)))
-        });
-        if (chrome.runtime.lastError) {
-            throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
+        const fileContent = await readFileContent(file);
+        if (!fileContent) {
+            showMessage(`Failed to get content of ${file.name}.`, 'error');
+            return;
         }
-    } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
-        return;
-    }
 
-    const docText = typeof response === 'string' ? response : (typeof response.text === 'function' ? await response.text() : '');
-    if (docText) {
-        attachments.push(`File name is ${file.name}. Its content is between [FILE_${file.name}] and [/FILE_${file.name}]:\n[FILE_${file.name}] ${docText} [/FILE_${file.name}]. Use this as a context of your respond.`);
+        let response;
+        try {
+            response = await chrome.runtime.sendMessage({
+                action: 'extractText',
+                fileName: file.name,
+                fileContent: btoa(String.fromCharCode(...new Uint8Array(fileContent)))
+            });
+            if (chrome.runtime.lastError) {
+                throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
+            }
+        } catch (err) {
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+            return;
+        }
+
+        const docText = typeof response === 'string' ? response : (typeof response.text === 'function' ? await response.text() : '');
+        if (!docText) {
+            showMessage(`${file.name} is either empty or extraction of its content failed!`, 'error');
+            return;
+        }
+
+        const attachment = {
+            id: crypto.randomUUID(),
+            type: 'file',
+            filename: file.name,
+            contentType: file.type || 'application/octet-stream',
+            content: docText,
+            sourceUrl: location.href
+        };
+
+        await addAttachment(attachment);
         showAttachment(file.name);
-    } else {
-        showMessage(`${file.name} is either empty or extraction of its content failed!`, 'error');
+    } catch (err) {
+        showMessage(`Failed to process file ${file.name}: ${err.message}`, 'error');
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
     }
 }
 
+
 async function handlePlainTextFile(file) {
-    const text = await file.text();
-    if (text) {
-        attachments.push(`File name is ${file.name}. Its content is between [FILE_${file.name}] and [/FILE_${file.name}]:\n[FILE_${file.name}] ${text} [/FILE_${file.name}]. Use this as a context of your respond.`);
+    try {
+        const text = await file.text();
+        if (!text) {
+            showMessage(`${file.name} appears to be empty.`, 'error');
+            return;
+        }
+
+        const attachment = {
+            id: crypto.randomUUID(),
+            type: 'file',
+            filename: file.name,
+            contentType: file.type || 'text/plain',
+            content: text,
+            sourceUrl: location.href
+        };
+
+        await addAttachment(attachment);
         showAttachment(file.name);
-    } else {
-        showMessage(`${file.name} appears to be empty.`, 'error');
+    } catch (err) {
+        showMessage(`Failed to read plain text file ${file.name}: ${err.message}`, 'error');
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
     }
 }
 

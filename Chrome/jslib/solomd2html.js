@@ -33,12 +33,12 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
                 if (openDetail) openDetail.open = false;
             }
 
-            rootEl.dispatchEvent(new CustomEvent('rendering', { detail: { newElement: node }, bubbles: true }));
-            config.onRendering?.(bl);
             if (config.streamReply) {
                 await streamNode(node, rootEl);
             } else {
                 rootEl.appendChild(node);
+                rootEl.dispatchEvent(new CustomEvent('rendering', { detail: { newElement: node }, bubbles: true }));
+                config.onRendering?.(bl);
             }
         }
     }
@@ -167,6 +167,10 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
                 async function typeChar() {
                     if (i < text.length) {
                         span.textContent += text[i++];
+                        if (i % 10 === 0 || text[i - 1] === '\n' || i >= text.length) {
+                            rootEl.dispatchEvent(new CustomEvent('rendering', { newElement: srcNode }, { bubbles: true }));
+                            config.onRendering?.(bl);
+                        }
                         await new Promise(resolve => setTimeout(resolve));
                         requestAnimationFrame(typeChar);
                     } else {
@@ -479,21 +483,16 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         }
     }
 
-    /**
-     * Returns the caller's location from the stack, skipping this function's own frame.
-     */
     function _getLineNumber() {
         const e = new Error();
         const lines = e.stack.split('\n').map(l => l.trim());
-        // lines[0] is error message, lines[1] is this function frame, so pick lines[2]
         const frame = lines[2] || lines[1] || lines[0] || '';
-        // Remove leading 'at ' if present
         return frame.replace(/^at\s+/, '');
     }
 
     function normaliseMd(text) {
         return text
-            .replace(/([^\n])\n([']{3,})/g, '$1\n\n$2')             // fenced code
+            .replace(/([^\n])\n([`']{3,}.*?\n)([^\n])/g, '$1\n\n$2\n$3')
             .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')             // headings
             .replace(/([^\n])\n(>)/g, '$1\n\n$2')                    // blockquotes
             // .replace(/([^\n])\n(\s*([-+*]|\d+\.)\s)/g, '$1\n\n$2')   // lists

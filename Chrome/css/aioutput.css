@@ -1,40 +1,40 @@
-/* all parser styles go as children of .lai-ai-input .lai-input-text */
+/* all parser styles go as children of .lai-input-text */
 
-.lai-ai-input .lai-input-text blockquote {
+.lai-input-text blockquote {
     padding-left: 10px;
     border-left: 7px solid #ccc;
 }
 
-.lai-ai-input .lai-input-text blockquote blockquote {
+.lai-input-text blockquote blockquote {
     margin-left: 0;
 }
 
-.lai-ai-input .lai-input-text code,
-.lai-ai-input .lai-input-text pre code {
-    color: #f8f8f2;
+.lai-input-text code,
+.lai-input-text pre code {
+    color: #dfdfdf;
     background-color: #272822;
     border-radius: 3px;
     overflow: auto;
 }
 
-.lai-ai-input .lai-input-text span code {
+.lai-input-text span code {
     color: #272822;
-    background-color: #f8f8f2;
+    background-color: #dfdfdf;
     border-radius: 3px;
     overflow: auto;
 }
 
-.lai-ai-input .lai-input-text code {
+.lai-input-text code {
     padding: 3px;
 }
 
-.lai-ai-input .lai-input-text pre {
+.lai-input-text pre {
     margin-top: 1.5em;
     padding: 1em;
     background: #f5f5f5;
 }
 
-.lai-ai-input .lai-input-text pre code {
+.lai-input-text pre code {
     display: inline-block;
     padding: 10px;
     line-height: 1.5em;
@@ -42,7 +42,7 @@
     overflow: auto;
 }
 
-.lai-ai-input .lai-input-text table {
+.lai-input-text table {
     border-collapse: separate;
     border-spacing: 0;
     border-width: 1px;
@@ -51,8 +51,8 @@
     border-style: solid;
 }
 
-.lai-ai-input .lai-input-text th,
-.lai-ai-input .lai-input-text td {
+.lai-input-text th,
+.lai-input-text td {
     padding: 5px 10px;
     vertical-align: top;
     border-color: #0d0015;
@@ -60,26 +60,26 @@
     border-width: 1px 0 0 1px;
 }
 
-.lai-ai-input .lai-input-text tr:first-child th,
-.lai-ai-input .lai-input-text tr:first-child td,
-.lai-ai-input .lai-input-text td:first-child,
-.lai-ai-input .lai-input-text th:first-child {
+.lai-input-text tr:first-child th,
+.lai-input-text tr:first-child td,
+.lai-input-text td:first-child,
+.lai-input-text th:first-child {
     border-left-width: 0;
 }
 
-.lai-ai-input .lai-input-text thead+tbody tr:first-child th,
-.lai-ai-input .lai-input-text thead+tbody tr:first-child td,
-.lai-ai-input .lai-input-text tfoot tr:first-child th,
-.lai-ai-input .lai-input-text tfoot tr:first-child td {
+.lai-input-text thead+tbody tr:first-child th,
+.lai-input-text thead+tbody tr:first-child td,
+.lai-input-text tfoot tr:first-child th,
+.lai-input-text tfoot tr:first-child td {
     border-top-width: 1px;
 }
 
-.lai-ai-input .lai-input-text .code-block {
+.lai-input-text .code-block {
     position: relative;
     margin-bottom: 1em;
 }
 
-.lai-ai-input .lai-input-text .code-ribbon {
+.lai-input-text .code-ribbon {
     background: #f90;
     color: #000;
     padding: 4px 8px;
@@ -96,7 +96,7 @@
     min-width: 100px;
 }
 
-.lai-ai-input .lai-input-text .code-copy-btn {
+.lai-input-text .code-copy-btn {
     background: transparent;
     border: none;
     font-size: 0.8em;
@@ -104,7 +104,7 @@
     cursor: pointer;
 }
 
-.lai-ai-input .lai-input-text .think-block {
+.lai-input-text .think-block {
     font-style: italic;
     opacity: 0.7;
     padding: 0.5em;

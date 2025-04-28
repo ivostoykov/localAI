@@ -46,7 +46,6 @@ async function exportAsFile(e) {
 function getHighestZIndex() {
     let elements = document.body.getElementsByTagName('*')
     let highestZIndex = 0;
-    let highestElement = null;
 
     for (let i = 0; i < elements.length; i++) {
         let zIndex = parseInt(elements[i]?.style?.zIndex, 10);

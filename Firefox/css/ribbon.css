@@ -97,7 +97,6 @@
 }
 
 .ribbon-label:hover {
-    font-size: 1.2rem !important;
     white-space: nowrap;
     border: 1px solid gray;
     background-color: #FFE;
@@ -115,12 +114,14 @@
 }
 
 .available-model-list div {
-    padding: 0 5px;
+    padding: 5px 25px;
 }
 
 .available-model-list div:hover {
     cursor: pointer;
     background-color: #eee;
+    padding: 5px 25px;
+
 }
 
 .lai-model {

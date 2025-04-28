@@ -2,7 +2,7 @@
  * - Switched to per‑tab AbortControllers (using controllers Map) instead of a single global controller/shouldAbort flag.
  * - Scoped fetchDataAction AbortController per tab, cleared old controller on new requests; abortFetch now cancels only the current tab’s request.
  * - Removed obsolete handleStreamingResponse and global shouldAbort logic.
- * - Enhanced session management: lazy creation of a new session on first user command; robust getActiveSession/getActiveSessionIndex/getAllSessions/createNewSession with fallbacks.
+ * - Enhanced session management: lazy creation of a new session on first user command; robust getActiveSession/getActiveSessionId/getAllSessions/createNewSession with fallbacks.
  * - Refactored session storage helpers: setAllSessions persists empty arrays; getAllSessions returns [] on storage errors; createNewSession and getActiveSession return fallback session objects on error.
  * - Fixed setOptions storage call signature (chrome.storage.sync.set({ [key]: value })).
  */
@@ -12,7 +12,7 @@ const storageUserCommandsKey = 'aiUserCommands';
 const activeSessionKey = 'activeSession';
 const allSessionsStorageKey = 'aiSessions';
 const storageToolsKey = 'aiTools';
-const activeSessionIndexStorageKey = 'activeSessionIndex';
+const activeSessionIdStorageKey = 'activeSessionId';
 const activePageStorageKey = 'activePage';
 
 const manifest = chrome.runtime.getManifest();
@@ -148,7 +148,14 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         case "sendSelectedText":
             if (!info.selectionText.length) { return; }
                 if (!tab.id) { return; }
+                await addAttachment({
+                    id: crypto.randomUUID(),
+                    type: "snippet",
+                    content: info.selectionText,
+                    sourceUrl: tab?.url || ""
+                });
                 await chrome.tabs.sendMessage(tab.id, { action: "activePageSelection", selection: info.selectionText });
+                // await chrome.tabs.sendMessage(tab.id, { action: "activePageSelection", selection: info.selectionText });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
             break;
         case "inserSelectedInPrompt":
@@ -515,6 +522,7 @@ async function fetchDataAction(request, sender) {
     if (currentPrompt.length < 1) {
         throw new Error("No prompt received!");
     }
+    const userInput = `\n\n# Question: '''${currentPrompt.map(el => el.content).join('')}'''`;
 
     // Ensure an active session exists; if not, create one on first use
     let activeSession = await getActiveSession();
@@ -526,11 +534,38 @@ async function fetchDataAction(request, sender) {
 
     // Prepend existing conversation context
     let context = activeSession.data.length > 0
-        ? activeSession.data.filter(obj => obj.role && obj.content).map(obj => `${obj.role}: ${obj.content}.`).join(' ').trim()
+        ? activeSession.data.filter(obj => obj.role && obj.content).map(obj => `${obj.role}: ${obj.content}.\n\n`).join('')
         : '';
-    context = context
-        ? [{ role: "user", content: `\n\nUse the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer:\n\n ${context}\n\nQuestion: ` }]
-        : [];
+    // context = context
+    //     ? [{ role: "user", content: `\n\nUse the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer:\n\n ${context}\n\nQuestion: ` }]
+    //     : [];
+    if(context) {
+        context = `\n\n# Context\n\n'''${context}'''\n\n# Instructions\n\nUse the context above to answer the question below. If you don't know, say "I don't know".\n\n`;
+    }
+    // attachments if any
+    let attachmentsContext = (activeSession.attachments || []).map(attachment => {
+        let header = `[ATTACHMENT ${attachment.type.toUpperCase()}]`;
+        if (attachment.filename) {
+            header += ` (${attachment.filename})`;
+        } else if (attachment.sourceUrl) {
+            const urlParts = attachment.sourceUrl.split('/');
+            const shortUrl = urlParts.slice(-2).join('/') || attachment.sourceUrl;
+            header += ` (from ${shortUrl})`;
+        }
+        return {
+            role: "user",
+            content: `${header}:\n${attachment.content}`
+        };
+    });
+
+    attachmentsContext = attachmentsContext.length > 0
+        ? `\n\n##Attachmenta\n\n'''${attachmentsContext.map(a => a.content).join('\n\n')}'''\n\n# Instructions\n\nUse the attachments for a better answer. If unsure, say "I" don't know."\n\n`
+        : '';
+
+    const userMessage = [{
+        role: "user",
+        content: `${attachmentsContext}\n\n${context}\n\n${userInput}`.replace(/\n{2,}/g, '\n\n')
+    }];
 
     // System instructions (if any)
     let sysInstruct = request.systemInstructions || laiOptions.systemInstructions || '';
@@ -541,7 +576,9 @@ async function fetchDataAction(request, sender) {
     await setActiveSession(activeSession);
 
     // Build final message list
-    request.data.messages = [...sysInstruct, ...context, ...currentPrompt];
+    // request.data.messages = [...sysInstruct, ...attachmentsContext, ...context, ...currentPrompt];
+    // request.data.messages = [...sysInstruct, ...contextMessages, ...currentPrompt];
+    request.data.messages = [...sysInstruct, ...userMessage];
 
     await dumpInFrontConsole(`[${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender.tab.id);
 
@@ -920,112 +957,125 @@ function getLineNumber() {
 
 /////////// storage helpers ///////////
 
-async function createNewSession(text) {
+async function createNewSession(text = `Session ${new Date().toISOString().replace(/[TZ]/g, ' ').trim()}`) {
+    let model;
+    const sessionId = crypto.randomUUID();
+    let newSession;
+    let sessions;
     try {
-        const sessions = await getAllSessions();
+        const laiOptions = await getOptions();
+        model = laiOptions?.aiModel || 'unknown';
+        sessions = await getAllSessions();
         const title = text.split(/\s+/).slice(0, 6).join(' ');
-        const newSession = { "title": title, "data": [] };
-        sessions.push(newSession);
-        await setAllSessions(sessions);
-        await setActiveSessionIndex(sessions.length - 1);
-        return newSession;
+
+        newSession = {
+            id: sessionId,
+            title: title,
+            data: [],
+            model: model,
+            attachments: []
+        };
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-        const title = text?.toString().split(/\s+/).slice(0, 6).join(' ') || '';
-        return { title: title, data: [] };
+        newSession = {
+            id: sessionId,
+            title: text?.toString().split(/\s+/).slice(0, 6).join(' ') || '',
+            data: [],
+            model: model || 'unknown',
+            attachments: []
+        };
+    } finally {
+        sessions.push(newSession);
+        await setAllSessions(sessions);
+        await setActiveSessionId(newSession.id);
     }
+    return newSession;
 }
 
 async function getActiveSession() {
+    let model;
     try {
+        const sessionId = await getActiveSessionId();
+        if (!sessionId) {  return await createNewSession();  }
+
+        const laiOptions = await getOptions();
+        model = laiOptions?.aiModel || 'unknown';
         const sessions = await getAllSessions();
-        const index = await getActiveSessionIndex();
-        if (typeof index !== 'number' || index < 0) {
-            showUIMessage("Failed to find an active session");
-            throw new Error(`Failed to find an active session at [${getLineNumber()}]`);
-        }
-        return sessions[index] || [];
+
+        const session = sessions.find(sess => sess.id === sessionId);
+        if (!session) {  return await createNewSession();  }
+
+        return session;
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+    }
+}
+
+async function getActiveSessionId() {
+    try {
+        const result = await chrome.storage.local.get(activeSessionIdStorageKey);
+        const sessionId = result[activeSessionIdStorageKey];
+        if (typeof sessionId !== 'string' || !sessionId.trim()) {
+            return null;
+        }
+        return sessionId;
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - getActiveSessionId error: ${error.message}`, error);
+        return null;
+    }
+}
+
+async function getAllSessions() {
+    try {
+        let sessions = await chrome.storage.local.get([allSessionsStorageKey]);
+        if(Object.keys(sessions).length < 1){  sessions = []; }
+        while (sessions && typeof sessions === 'object' && allSessionsStorageKey in sessions) {
+            sessions = sessions[allSessionsStorageKey]; // unwrap if needed
+        }
+        // migration code
+        if (sessions && Array.isArray(sessions) && sessions.length > 0) {
+            sessions?.forEach(session => {
+                if (!session.id) {
+                    session.id = crypto.randomUUID();
+                }
+            });
+            await setAllSessions(sessions);
+        }
+        // end of migration
+        return sessions || [];
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        return [];
     }
 }
 
 async function setActiveSession(session) {
     try {
+        if (!session?.id) {  throw new Error('Session object is missing a valid id!');  }
+
         const sessions = await getAllSessions();
-        const index = await getActiveSessionIndex();
-        if (typeof index !== 'number' || index < 0) {
-            showUIMessage("Failed to find an active session");
-            throw new Error(`Failed to find an active session at [${getLineNumber()}]`);
-        }
-        sessions[index] = session;
+        const idx = sessions.findIndex(s => s.id === session.id);
+
+        if (idx < 0) {  throw new Error(`Session with id ${session.id} not found!`);  }
+
+        sessions[idx] = session;
         await setAllSessions(sessions);
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-    }
-}
-
-
-async function getAllSessions() {
-    try {
-        const sessions = await chrome.storage.local.get([allSessionsStorageKey]);
-        return sessions[allSessionsStorageKey] || [];
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
-        // On storage error, return an empty sessions array
-        return [];
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
     }
 }
 
 async function setAllSessions(obj = []) {
     try {
-        // Store all sessions, including empty array
+        while(obj && typeof obj === 'object' && allSessionsStorageKey in obj){
+            obj = obj[allSessionsStorageKey];
+        }
+
         await chrome.storage.local.set({ [allSessionsStorageKey]: obj });
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
     }
     return true;
-}
-
-async function getActiveSessionIndex() {
-    try {
-        const result = await chrome.storage.local.get(activeSessionIndexStorageKey);
-        const raw = result[activeSessionIndexStorageKey];
-        const idx = Number(raw);
-        // Only valid integer indexes are allowed
-        if (!Number.isInteger(idx) || idx < 0) {
-            return -1;
-    }
-    return idx;
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
-        return -1;
-    }
-}
-
-async function setActiveSessionIndex(index){
-    try {
-        await chrome.storage.local.set({ [activeSessionIndexStorageKey]: index });
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error, index);
-    }
-}
-
-async function deleteActiveSessionIndex() {
-    try {
-        await chrome.storage.local.remove(activeSessionIndexStorageKey);
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
-    }
-}
-
-async function removeLocalStorageObject(key = '') {
-    try {
-        if (!key) {  throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - Storage key is either missing or empty [${key}]`);  }
-        await chrome.storage.local.remove(key);
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
-    }
 }
 
 async function getOptions(){

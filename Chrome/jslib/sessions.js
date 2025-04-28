@@ -1,116 +1,168 @@
-async function createNewSession(text) {
-    let laiOptions;
+async function createNewSession(text = `Session ${new Date().toISOString().replace(/[TZ]/g, ' ').trim()}`) {
     let model;
+    const sessionId = crypto.randomUUID();
+    let newSession;
+    let sessions;
     try {
-        laiOptions = await getOptions();
+        const laiOptions = await getOptions();
         model = laiOptions?.aiModel || 'unknown';
-        const sessions = await getAllSessions();
+        sessions = await getAllSessions();
         const title = text.split(/\s+/).slice(0, 6).join(' ');
-        const newSession = { "title": title, "data": [], "model": model };
+
+        newSession = {
+            id: sessionId,
+            title: title,
+            data: [],
+            model: model,
+            attachments: []
+        };
+    } catch (e) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        newSession = {
+            id: sessionId,
+            title: text?.toString().split(/\s+/).slice(0, 6).join(' ') || '',
+            data: [],
+            model: model || 'unknown',
+            attachments: []
+        };
+    } finally {
         sessions.push(newSession);
         await setAllSessions(sessions);
-        await setActiveSessionIndex(sessions.length - 1);
-        return newSession;
-    } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-        const title = text?.toString().split(/\s+/).slice(0, 6).join(' ') || '';
-        return { "title": title, "data": [], "model": model };
+        await setActiveSessionId(newSession.id);
     }
-}
-
-async function getActiveSession() {
-    let laiOptions;
-    let model;
-    try {
-        laiOptions = await getOptions();
-        model = laiOptions?.aiModel || 'unknown';
-        const sessions = await getAllSessions();
-        const index = await getActiveSessionIndex();
-        if (typeof index !== 'number' || index < 0) {
-            showMessage("Failed to find an active session", "error", "error");
-            throw new Error(`Failed to find an active session at [${getLineNumber()}]`);
-        }
-        return sessions[index] || { "title": '', "data": [], "model": model || '' };
-    } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-        return { title: '', data: [], "model": model || '' };
-    }
-}
-
-async function setActiveSession(session) {
-    try {
-        if(!session.model || session.model?.toLowerCase() === 'unknown'){
-            const laiOptions = await getOptions();
-            session["model"] = laiOptions?.aiModel || 'unknown';
-        }
-        const sessions = await getAllSessions();
-        const index = await getActiveSessionIndex();
-        if (typeof index !== 'number' || index < 0) {
-            showMessage("Failed to find an active session", "error");
-            throw new Error(`Failed to find an active session at [${getLineNumber()}]`);
-        }
-        sessions[index] = session;
-        await setAllSessions(sessions);
-    } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-    }
+    return newSession;
 }
 
 async function deleteActiveSession() {
     try {
+        const sessionId = await getActiveSessionId();
+        if (!sessionId) {  throw new Error('No active session ID found!');  }
+
         const sessions = await getAllSessions();
-        const index = await getActiveSessionIndex();
-        if (typeof index !== 'number' || index < 0 || index >= sessions.length) {
-            showMessage("Failed to find an active session", "error");
-            throw new Error(`Failed to find an active session at [${getLineNumber()}]`);
-        }
-        sessions.splice(index, 1);
+        if(sessions.length < 1)  {  return;  }
+
+        const idx = sessions.findIndex(s => s.id === sessionId);
+        if (idx < 0) {  throw new Error(`Session with id ${sessionId} not found!`);  }
+
+        sessions.splice(idx, 1);
         await setAllSessions(sessions);
-        await deleteActiveSessionIndex();
+        await deleteActiveSessionId();
+    } catch (e) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Delete Active Session error: ${e.message}`, e);
+    }
+}
+
+async function deleteSessionById(sessionId) {
+    try {
+        if (!sessionId) {  throw new Error('No session ID provided for deletion!'); }
+
+        const sessions = await getAllSessions();
+        if(sessions.length < 1)  {  return;  }
+
+        const idx = sessions.findIndex(sess => sess.id === sessionId);
+        if (idx < 0) {  throw new Error(`Session with id ${sessionId} not found!`); }
+
+        sessions.splice(idx, 1);
+        await setAllSessions(sessions);
+
+        // if you just deleted active session, clear activeSessionId
+        const activeSessionId = await getActiveSessionId();
+        if (activeSessionId === sessionId) {  await deleteActiveSessionId();  }
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - deleteSessionById error: ${error.message}`, error);
+    }
+}
+
+async function deleteActiveSessionId() {
+    try {
+        await chrome.storage.local.remove(activeSessionIdStorageKey);
+
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+    }
+}
+
+async function getActiveSession() {
+    let model;
+    try {
+        const sessionId = await getActiveSessionId();
+        if (!sessionId) {  return await createNewSession();  }
+
+        const laiOptions = await getOptions();
+        model = laiOptions?.aiModel || 'unknown';
+        const sessions = await getAllSessions();
+
+        const session = sessions.find(sess => sess.id === sessionId);
+        if (!session) {  return await createNewSession();  }
+
+        return session;
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
     }
 }
 
-async function deleteSessionAtIndex(index) {
+async function getActiveSessionById(sessionId) {
+    let model;
     try {
-        const sessions = await getAllSessions();
-        if (typeof index !== 'number' || index < 0 || index >= sessions.length) {
-            throw new Error(`Invalid session index: ${index}`);
-        }
-        sessions.splice(index, 1);
-        await setAllSessions(sessions);
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - deleteSessionAtIndex: ${error.message}`, error);
-        throw error;
-    }
-}
+        if(!sessionId){  throw new Error("Invalid or missing session id!"); }
 
-async function getSessionByIndex(index) {
-    try {
+        const laiOptions = await getOptions();
+        model = laiOptions?.aiModel || 'unknown';
         const sessions = await getAllSessions();
-        if (typeof index !== 'number' || index < 0 || index >= sessions.length) {
-            throw new Error(`Invalid session index: ${index}`);
-        }
-        return sessions[index];
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - getSessionByIndex: ${error.message}`, error);
-        return { title: '', data: [] }; // fallback empty session
+
+        const session = sessions.find(sess => sess.id === sessionId);
+
+        return session || null;
+    } catch (e) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        return null;
     }
 }
 
 async function getAllSessions() {
     try {
-        const sessions = await chrome.storage.local.get([allSessionsStorageKey]);
-        return sessions[allSessionsStorageKey] || [];
+        let sessions = await chrome.storage.local.get([allSessionsStorageKey]);
+        if(Object.keys(sessions).length < 1){  sessions = []; }
+        while (sessions && typeof sessions === 'object' && allSessionsStorageKey in sessions) {
+            sessions = sessions[allSessionsStorageKey]; // unwrap if needed
+        }
+        // migration code
+        if (sessions && Array.isArray(sessions) && sessions.length > 0) {
+            sessions?.forEach(session => {
+                if (!session.id) {
+                    session.id = crypto.randomUUID();
+                }
+            });
+            await setAllSessions(sessions);
+        }
+        // end of migration
+        return sessions || [];
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
         return [];
     }
 }
 
+async function getActiveSessionId() {
+    try {
+        const result = await chrome.storage.local.get(activeSessionIdStorageKey);
+        const sessionId = result[activeSessionIdStorageKey];
+        if (typeof sessionId !== 'string' || !sessionId.trim()) {
+            return null;
+        }
+        return sessionId;
+    } catch (error) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - getActiveSessionId error: ${error.message}`, error);
+        return null;
+    }
+}
+
 async function setAllSessions(obj = []) {
     try {
+        if (obj && typeof obj === 'object' && allSessionsStorageKey in obj) {
+            obj = obj[allSessionsStorageKey]; // unwrap if needed
+        }
+
         await chrome.storage.local.set({ [allSessionsStorageKey]: obj });
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
@@ -118,35 +170,30 @@ async function setAllSessions(obj = []) {
     return true;
 }
 
-async function getActiveSessionIndex() {
+async function setActiveSessionId(sessionId) {
     try {
-        const result = await chrome.storage.local.get(activeSessionIndexStorageKey);
-        const raw = result[activeSessionIndexStorageKey];
-        const idx = Number(raw);
-        if (!Number.isInteger(idx) || idx < 0) {
-            return -1;
+        if (!sessionId || typeof sessionId !== 'string') {
+            throw new Error(`Invalid session ID provided: ${sessionId}`);
         }
-        return idx;
+        await chrome.storage.local.set({ [activeSessionIdStorageKey]: sessionId });
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
-        return -1;
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - setActiveSessionId error: ${error.message}`, error);
     }
 }
 
-async function setActiveSessionIndex(index){
+async function setActiveSession(session) {
     try {
-        await chrome.storage.local.set({ [activeSessionIndexStorageKey]: index });
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error, index);
-    }
-}
+        if (!session?.id) {  throw new Error('Session object is missing a valid id!');  }
 
-async function deleteActiveSessionIndex() {
-    try {
-        await chrome.storage.local.remove(activeSessionIndexStorageKey);
+        const sessions = await getAllSessions();
+        const idx = sessions.findIndex(s => s.id === session.id);
 
-    } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        if (idx < 0) {  throw new Error(`Session with id ${session.id} not found!`);  }
+
+        sessions[idx] = session;
+        await setAllSessions(sessions);
+    } catch (e) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
     }
 }
 

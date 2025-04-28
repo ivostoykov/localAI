@@ -1,6 +1,15 @@
 # Local AI - Changelog
 
-## [1.27.60] 2025-04-26 - latest
+## [1.27.68] 2025-04-27 - latest
+
+- replace session index with unique id
+- fixed bug in deleting session by index
+- attachment are now kept in the session history
+- user input support some markdown formating
+- fixed layout to be independent from the layout of the page rendered in the active tab
+- fixed `rendering` event to avoid gaps on longer text chunks
+
+## [1.27.60] 2025-04-26
 
 - hooks removed
 - undefined context fixed

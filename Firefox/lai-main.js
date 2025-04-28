@@ -59,7 +59,7 @@ async function initSidebar() {
 
     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
     laiChatMessageList.dataset.watermark = `${manifest.name} - ${manifest.version}`;
-    laiChatMessageList.addEventListener('click', hidePopups);
+    laiChatMessageList.addEventListener('click', hidePopups, false);
     laiChatMessageList.addEventListener('scroll', (e) => {
         if (laiChatMessageList.dataset.scrollType === 'auto') {
             delete laiChatMessageList.dataset.scrollType;
@@ -94,7 +94,7 @@ async function initSidebar() {
     resizeHandle.addEventListener('mousedown', e => laiResizeContainer(e));
 
     if (laiOptions.loadHistoryOnStart) {
-        restoreHitorySessionClicked().catch(er => console.error(er));
+        restoreHistorySessionClicked().catch(er => console.error(er));
     }
 
     shadowRoot.querySelectorAll('img.mic').forEach(img => {
@@ -127,7 +127,7 @@ async function createNewSessionClicked(e, shadowRoot) {
     } else {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
-    removeLocalStorageObject(activeSessionIndexStorageKey);
+    removeLocalStorageObject(activeSessionIdStorageKey);
     showMessage('New session created.', 'success');
 }
 
@@ -368,7 +368,7 @@ function userInputClicked(e) {
     hidePopups(e);
 }
 
-function hidePopups(e) { // obsolated?
+function hidePopups(e) {
     const shadowRoot = getShadowRoot();
 
     shadowRoot?.querySelectorAll('#helpPopup').forEach(el => el.remove());
@@ -400,8 +400,8 @@ async function onPromptTextAreaKeyDown(e) {
         messages = [];
 
         // update UI
-        addInputCardToUIChatHistory(elTarget.value, 'user', messages.length - 1);
-        addInputCardToUIChatHistory('', 'ai');
+        await addInputCardToUIChatHistory(elTarget.value, 'user', messages.length - 1);
+        await addInputCardToUIChatHistory('', 'ai');
 
         // update data
         addcommandPlaceholdersValues(elTarget.value);
@@ -412,8 +412,8 @@ async function onPromptTextAreaKeyDown(e) {
 
         try {
             dumpInConsole(`${[getLineNumber()]} - messages collected are ${messages.length}`, messages);
-            const idx = await getActiveSessionIndex();
-            if (idx < 0) {
+            const idx = await getActiveSessionId();
+            if (!idx) {
                 await createNewSession(elTarget.value);
             }
             shadowRoot.getElementById('laiAbort')?.classList.remove('invisible');
@@ -471,7 +471,7 @@ function transformTextInHtml(inputText) {
     const lastChatText = document.createElement('span');
     lastChatText.className = "lai-input-text";
 
-    const lines = inputText.split(/\n/).map(line => document.createTextNode(line));
+    const lines = inputText?.split(/\n/)?.map(line => document.createTextNode(line)) || [];
     lines.forEach((line, index) => {
         lastChatText.appendChild(line);
         if (index < lines.length - 1) {
@@ -533,7 +533,7 @@ function buildElements(elements) {
     return fragment.childNodes.length === 1 ? fragment.firstChild : fragment;
 }
 
-function addInputCardToUIChatHistory(inputText, type, index = -1) {
+async function addInputCardToUIChatHistory(inputText, type, index = -1) {
     if (!checkExtensionState()) { return; }
 
     const shadowRoot = getShadowRoot();
@@ -554,6 +554,16 @@ function addInputCardToUIChatHistory(inputText, type, index = -1) {
         innerHTML: `${type === 'ai' ? type.toUpperCase() : type}:&nbsp;`
     });
     const lastChatText = transformTextInHtml(inputText);
+
+    //experimental
+    // if(type !== 'ai'){
+    //     // lastChatText.innerHTML = '';
+    //     // await parseAndRender(inputText, lastChatText, {streamReply: false});
+    //     const pre = document.createElement('pre');
+    //     pre.textContent = inputText;
+    //     lastChatText.innerHTML = '';
+    //     lastChatText.appendChild(pre);
+    // }
     const arrButtons = [
         {
             "span": {
@@ -671,6 +681,8 @@ function addInputCardToUIChatHistory(inputText, type, index = -1) {
     }
 
     messageList.scrollTop = messageList.scrollHeight;
+
+    return lastChatText;
 }
 
 function insertIntoDocument(e, type){
@@ -1036,6 +1048,7 @@ chrome.runtime.onMessage.addListener(async (response) => {
     }
 
     let recipient;
+    // TODO: is this still needed?
     try {
         if(['dumpInConsole'].indexOf(response.action)< 0){
             recipient = shadowRoot.getElementById('laiActiveAiInput');
@@ -1059,11 +1072,11 @@ chrome.runtime.onMessage.addListener(async (response) => {
             let dataChunk;
             let streamDataError;
             try {
-                const activeSession = await getActiveSession();
+                // const activeSession = await getActiveSession();
                 dataChunk = laiExtractDataFromResponse(response);
                 if (!dataChunk) { return; }
-                activeSession.data.push(dataChunk);
-                await setActiveSession(activeSession);
+                // activeSession.data.push(dataChunk);
+                // await setActiveSession(activeSession);
                 updateStatusBar('Receiving and processing data...');
                 const rootRecipient = laiGetRecipient();
                 if(!rootRecipient) {  throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - Target element not found!`) }
@@ -1090,8 +1103,15 @@ chrome.runtime.onMessage.addListener(async (response) => {
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
                 break;
             }
-            attachments.push(response.selection);
-            showAttachment(`${response.selection?.split(/\s+/).slice(0, 5).join(' ')}...`);
+            await addAttachment({
+                id: crypto.randomUUID(),
+                type: "snippet",
+                content: el.innerText ?? '',
+                sourceUrl: location.href
+              });
+            showAttachment(`${el?.innerText?.split(/\s+/)?.slice(0, 5).join(' ')}...` || 'Selected element');
+            // attachments.push(response.selection);
+            // showAttachment(`${response.selection?.split(/\s+/).slice(0, 5).join(' ')}...`);
             showMessage('Selection included.', 'info')
             updateStatusBar('Selected content added to the context.');
             break;
@@ -1107,7 +1127,13 @@ chrome.runtime.onMessage.addListener(async (response) => {
             shadowRoot.getElementById('laiUserInput').value += `${promptVal.length > 0 ? "\n" : ""}${response.selection}`;
             break;
         case "activePageContent":
-            attachments.push(getPageTextContent());
+            // attachments.push(getPageTextContent());
+            await addAttachment({
+                id: crypto.randomUUID(),
+                type: "snippet",
+                content: getPageTextContent(),
+                sourceUrl: location.href
+            });
             showAttachment(document?.title || 'Current page');
             showMessage('Page included.', 'info')
             updateStatusBar('Selected content added to the context.');

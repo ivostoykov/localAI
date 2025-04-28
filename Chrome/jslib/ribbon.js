@@ -89,22 +89,22 @@ async function initRibbon(){
     }else{
         toolFunctions.classList.add('disabled');
     }
-    toolFunctions?.addEventListener('click', async e => onToolFunctionsBtnClick(e));
-    ribbon?.querySelector('#systemIntructions').addEventListener('click', laiShowSystemInstructions);
-    ribbon?.querySelector('#newSession').addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot));
-    ribbon?.querySelector('#sessionHistory').addEventListener('click', async e => await openCloseSessionHistoryMenu(e));
+    toolFunctions?.addEventListener('click', async e => onToolFunctionsBtnClick(e), false);
+    ribbon?.querySelector('#systemIntructions').addEventListener('click', laiShowSystemInstructions, false);
+    ribbon?.querySelector('#newSession').addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot), false);
+    ribbon?.querySelector('#sessionHistory').addEventListener('click', async e => await openCloseSessionHistoryMenu(e), false);
     ribbon?.querySelector('#apiUrlList').addEventListener('change', async e => await selectMenuChanged(e));
-    ribbon?.querySelector('#modelList').addEventListener('change', async e => await modelChanged(e) );
-    ribbon?.querySelector('#hookList').addEventListener('change', async e => await selectMenuChanged(e));
+    ribbon?.querySelector('#modelList').addEventListener('change', async e => await modelChanged(e), false );
+    ribbon?.querySelector('#hookList').addEventListener('change', async e => await selectMenuChanged(e), false);
     ribbon?.querySelector('#laiModelName').addEventListener('mouseenter', e => {
       updateStatusBar('Click to toggle the list with available models.');
       setTimeout(resetStatusbar, 10000);
-    });
+    }, false);
 
-    shadowRoot?.getElementById('recycleCurrentSessionBtn').addEventListener('click', async e => await recycleActiveSession(e, shadowRoot));
-    shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot));
+    shadowRoot?.getElementById('recycleCurrentSessionBtn').addEventListener('click', async e => await recycleActiveSession(e, shadowRoot), false);
+    shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
 
-    shadowRoot?.getElementById('laiAbort').addEventListener('click', async e => await laiAbortRequest(e));
+    shadowRoot?.getElementById('laiAbort').addEventListener('click', async e => await laiAbortRequest(e), false);
     if (laiOptions && laiOptions.openPanelOnLoad) {
         await laiSwapSidebarWithButton();
     }
@@ -155,7 +155,7 @@ async function createNewSessionClicked(e, shadowRoot) {
     } else {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
-    removeLocalStorageObject(activeSessionIndexStorageKey);
+    removeLocalStorageObject(activeSessionIdStorageKey);
     showMessage('New session created.', 'success');
 }
 
@@ -189,7 +189,9 @@ async function openCloseSessionHistoryMenu(e) {
 
     headerSection.appendChild(sessionHistMenu);
 
-    const menuItemContent = allSessions.filter(a => a.title).filter(Boolean)
+    const menuItemContent = allSessions
+        .filter(a => a && a.title)
+        .map(a => ({ id: a.id, title: a.title }));
     if(allSessions.length > 0 && menuItemContent.length < 1){
         showMessage(`${allSessions.length} sessions found but failed to list them!`);
         return;
@@ -217,13 +219,13 @@ async function openCloseSessionHistoryMenu(e) {
             if (i === l - 1) {
                 menuItem.addEventListener('click', async (e) => deleteAllHistorySessionsClicked(e), false);
             } else {
-                menuItem.addEventListener('click', async (e) => restoreHitorySessionClicked(e, i), false);
+                menuItem.addEventListener('click', async (e) => restoreHistorySessionClicked(e, userEl.id), false);
             }
         }
 
         if(i < l-2) {
             const delBtn = histDelBtn.cloneNode(true);
-            delBtn.setAttribute('data-index', i);
+            delBtn.setAttribute('data-sessionId', userEl.id);
             delBtn.addEventListener('click', async (e) => deleteHistoryMenuItemClicked(e), false);
             menuItem.appendChild(delBtn);
         }
@@ -542,48 +544,52 @@ function isPinned(){
     return !pinImg?.classList.contains('invisible');
 }
 
-async function restoreHitorySessionClicked(e, sessionIdx) {
+async function restoreHistorySessionClicked(e, sessionIdx) {
     e.stopPropagation();
     e.stopImmediatePropagation();
     const el = e.target;
     await closeAllDropDownRibbonMenus(e);
     // el.closest('div#sessionHistMenu')?.remove();
-    const session = await getSessionByIndex(sessionIdx);
+    const session = await getActiveSessionById(sessionIdx);
     if (!session || !session.data || session.length < 1) {
-        showMessage(`No session data found on session ${sessionIdx}`, warning);
+        showMessage(`No session data found on session ${sessionIdx}`, "warning");
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - No data found in current session.`, session);
         return;
     }
 
-    await setActiveSessionIndex(sessionIdx);
+    await setActiveSessionId(sessionIdx);
     clearChatHistoryUI();
     session?.data?.forEach(async (msg, i) => {
         const role = msg?.role?.replace(/assistant/i, 'ai');
         if(!role) {  return;  }
-        if(role === 'ai'){
-            addInputCardToUIChatHistory('', role, i);
-            const aiReplyTextElement = laiGetRecipient();
-            await parseAndRender(msg.content, aiReplyTextElement, {streamReply: false});
-        }
-        else{  addInputCardToUIChatHistory(msg.content, role, i);  }
+
+        const aiReplyTextElement = await addInputCardToUIChatHistory('', role, i);
+        await parseAndRender(msg.content, aiReplyTextElement, {streamReply: false});
+
+        // if(role === 'ai'){
+        //     addInputCardToUIChatHistory('', role, i);
+        //     const aiReplyTextElement = laiGetRecipient();
+        //     await parseAndRender(msg.content, aiReplyTextElement, {streamReply: false});
+        // }
+        // else{  addInputCardToUIChatHistory(msg.content, role, i);  }
     });
 
     const shadowRoot = getShadowRoot();
     const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
 
-    showMessage(`session #${sessionIdx} restored.`, 'info');
+    showMessage(`session "${session.title}" restored.`, 'info');
 }
 
 async function deleteHistoryMenuItemClicked(e) {
     e.stopPropagation();
     e.stopImmediatePropagation();
     const btn = e.currentTarget;
-    const idx = Number(btn.getAttribute('data-index'));
+    const sessionId = btn.getAttribute('data-sessionId');
     const menuItem = btn.closest('div.menu-item');
     const title = menuItem?.textContent.trim() || '';
     try {
-        await deleteSessionAtIndex(idx);
+        await deleteSessionById(sessionId);
         if (menuItem) { menuItem.remove(); }
         updateStatusBar(`Deleted session "${title}"`);
         setTimeout(() => resetStatusbar(), 1500);

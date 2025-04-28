@@ -4,7 +4,7 @@ const storageOptionKey = 'laiOptions';
 const storageUserCommandsKey = 'aiUserCommands';
 const activeSessionKey = 'activeSession';
 const allSessionsStorageKey = 'aiSessions';
-const activeSessionIndexStorageKey = 'activeSessionIndex';
+const activeSessionIdStorageKey = 'activeSessionId';
 const activePageStorageKey = 'activePage';
 const commandPlaceholders = {
   "@{{page}}": "Include page into the prompt",
@@ -109,7 +109,8 @@ async function allDOMContentLoaded(e) {
   document.addEventListener('mouseout', clearElementOverDecoration, true);
 
   try {
-    await removeLocalStorageObject(activeSessionIndexStorageKey);
+    await removeLocalStorageObject('activeSessionIndex'); // TODO: for sync - to be removed
+    await removeLocalStorageObject(activeSessionIdStorageKey);
     await setActiveSessionPageData({"url": document.location.href, "pageContent": getPageTextContent() });
     await getAiUserCommands(); //TODO: remove it as global
   } catch (err) {
@@ -172,6 +173,23 @@ async function init() {
 
     const localAI = document.createElement('local-ai');
     localAI.id = "localAI";
+    const style = document.createElement('style');
+    style.textContent = `
+        #localAI {
+            all: initial;
+            box-sizing: border-box;
+            font-family: system-ui, sans-serif;
+            font-size: 16px;
+            color: black;
+            text-size-adjust: none;
+            -webkit-text-size-adjust: none;
+            -moz-text-size-adjust: none;
+            -ms-text-size-adjust: none;
+            position: fixed; /* or relative, your choice */
+            z-index: 2147483647; /* high enough for UI */
+        }
+    `;
+    localAI.appendChild(style);
 
     document.documentElement.appendChild(localAI);
     localAI.attachShadow({ "mode": 'open' });
@@ -230,7 +248,12 @@ async function laiGetClickedSelectedElement(event) {
       showMessage(error.message);
     }
   } else {
-    attachments.push(el.innerText ?? ''); // get the visible text only
+    await addAttachment({
+      id: crypto.randomUUID(),
+      type: "snippet",
+      content: el.innerText ?? '',
+      sourceUrl: location.href
+    });
     showAttachment(`${el?.innerText?.split(/\s+/)?.slice(0, 5).join(' ')}...` || 'Selected element');
     showMessage('Element picked up successfully.', 'info')
     updateStatusBar('Selected content added to the context.');
