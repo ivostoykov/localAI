@@ -1,6 +1,28 @@
 # Local AI - Changelog
 
-## [1.27.68] 2025-04-27 - latest
+## [1.27.80] 2025-06-25 - latest
+
+- Fixed a bug that was duplicating attachment icons
+- Refactored model calls to simplify the code base
+- Fixed Firefox select element bug when document has iframes
+- Added some useful Model modifiers menu
+
+## [1.27.72] 2025-06-12
+
+- Attachments are now visible when the input field is focused.
+- AI session title generation has been added.
+- The session menu can now be scrolled.
+- If a session menu item's title is too long to fit, it will be displayed as a tooltip.
+
+## [1.27.70] 2025-05-20
+
+- Main menu not closing - fixed
+- Page content scrapping improved
+- Fix problem with changing the model when the active one has been deleted
+- Adjusted the list of models.
+
+
+## [1.27.68] 2025-04-27
 
 - replace session index with unique id
 - fixed bug in deleting session by index
