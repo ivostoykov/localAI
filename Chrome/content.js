@@ -19,10 +19,9 @@ var aiSessions = [];
 var aiUserCommands = [];
 var userCmdItemBtns = { 'edit': null, 'execute': null, 'paste': null, 'delete': null };
 var images = [];
-var attachments = [];
+// var attachments = [];
 var userScrolled = false;
 var isElementSelectionActive = false;
-// var dumpStream = false;
 var lastRegisteredErrorMessage = [];
 lastRegisteredErrorMessage.lastLength = 0;
 var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
@@ -51,6 +50,7 @@ async function start() {
 
 async function allDOMContentLoaded(e) {
   await updateTabPageContentStorage();
+  attachElementSelectionListenersToFrames();
 
   document.addEventListener('click', async function (event) {
     if (isElementSelectionActive) { laiGetClickedSelectedElement(event); }
@@ -70,7 +70,7 @@ async function allDOMContentLoaded(e) {
 
     const options = await getLaiOptions()
     if(options.closeOnClickOut && !isPinned()) { await laiSwapSidebarWithButton(event); }
-  }, false);
+  }, true);
 
   document.addEventListener('keydown', async function (e) {
     if (isElementSelectionActive) {
@@ -124,6 +124,41 @@ async function allDOMContentLoaded(e) {
   } catch (error) {
     console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }
+}
+
+function attachElementSelectionListenersToFrames() {
+  const frames = document.querySelectorAll('iframe, frame');
+  frames.forEach((frame) => {
+    frame.addEventListener('load', () => {
+      try {
+        const doc = frame.contentWindow.document;
+
+        doc.addEventListener('mouseover', function (event) {
+          if (!isElementSelectionActive) return;
+          const el = event.target;
+          const currentBorder = el.style.border;
+          el.setAttribute('data-original-border', currentBorder);
+          el.style.border = "5px double lime";
+        }, true);
+
+        doc.addEventListener('mouseout', function (event) {
+          if (!isElementSelectionActive) return;
+          const el = event.target;
+          const original = el.getAttribute('data-original-border') || '';
+          el.style.border = original;
+        }, true);
+
+        doc.addEventListener('click', function (event) {
+          if (isElementSelectionActive) {
+            laiGetClickedSelectedElement(event);
+          }
+        }, true);
+
+      } catch (e) {
+        console.warn('Access denied to frame:', e);
+      }
+    });
+  });
 }
 
 async function updateTabPageContentStorage() {
@@ -211,15 +246,33 @@ function getPageTextContent() {
     bodyClone.querySelectorAll(selector).forEach(el => removed.appendChild(el));
   });
 
-  let content = [];
+  const structure = [];
+  const headings = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+  let currentSection = { title: '', content: [] };
+
   const walker = document.createTreeWalker(bodyClone, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
   while (walker.nextNode()) {
     const node = walker.currentNode;
-    if (!node?.nodeValue || !(/[^\n\s\r]/.test(node?.nodeValue))) { continue; }
-    content.push(node.nodeValue?.trim());
-  }
+    if (!node?.nodeValue || !(/[^\n\r\t ]/.test(node.nodeValue))) {  continue;  }
 
-  return ` PAGE URL: ${document.location.href}\nPAGE CONTENT START: ${content.join('\n')} PAGE CONTENT END`;
+    const parentTag = node.parentElement?.tagName || '';
+    const text = node.nodeValue.trim();
+
+    if (headings.includes(parentTag)) {
+      if (currentSection.content.length) {  structure.push(currentSection);  }
+      currentSection = { title: text, content: [] };
+    } else {
+      currentSection.content.push(text);
+    }
+  }
+  if (currentSection.content.length) {  structure.push(currentSection);  }
+
+  const finalText = structure.map(section => {
+    const title = section.title ? `\n\n## ${section.title}\n` : '';
+    return `${title}${section.content.join('\n')}`;
+  }).join('\n');
+
+  return `PAGE URL: ${document.location.href}\nPAGE CONTENT START:${finalText}\nPAGE CONTENT END`;
 }
 
 function clearElementOverDecoration(e) {
@@ -234,7 +287,9 @@ async function laiGetClickedSelectedElement(event) {
   clearElementOverDecoration(event);
   let el = event.target;
   let isImg = el.tagName === 'IMG';
+  let theAttachment;
   if (isImg) {
+// TODO: add image to the attachments with type image
     try {
       const response = await chrome.runtime.sendMessage({ action: 'getImageBase64', url: el.src });
       if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
@@ -248,13 +303,14 @@ async function laiGetClickedSelectedElement(event) {
       showMessage(error.message);
     }
   } else {
-    await addAttachment({
+    theAttachment = {
       id: crypto.randomUUID(),
       type: "snippet",
       content: el.innerText ?? '',
       sourceUrl: location.href
-    });
-    showAttachment(`${el?.innerText?.split(/\s+/)?.slice(0, 5).join(' ')}...` || 'Selected element');
+    };
+    await addAttachment(theAttachment);
+    showAttachment(theAttachment);
     showMessage('Element picked up successfully.', 'info')
     updateStatusBar('Selected content added to the context.');
   }

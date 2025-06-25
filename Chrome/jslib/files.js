@@ -14,7 +14,33 @@ async function addAttachment(attachment) {
         await setActiveSession(activeSession);
     } catch (err) {
         showMessage(err.message, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error occured while adding attachment: ${err.message}`, err, attachment);
+    }
+}
+
+async function getAttachments() {
+    try {
+        const activeSession = await getActiveSession();
+        return Array.isArray(activeSession?.attachments) ? activeSession.attachments : [];
+    } catch (err) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error occured while getting attachments: ${err.message}`, err);
+        return [];
+    }
+}
+
+async function deleteAttachment(id) {
+    try {
+        if (!id) {  return;  }
+
+        const activeSession = await getActiveSession();
+        if (!activeSession?.attachments) {  return;  }
+
+        const updated = activeSession.attachments.filter(att => att.id !== id);
+        activeSession.attachments = updated;
+        await setActiveSession(activeSession);
+    } catch (err) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error occured while deleting attachment id ${id}: ${err.message}`, err);
+        showMessage(err.message, 'error');
     }
 }
 

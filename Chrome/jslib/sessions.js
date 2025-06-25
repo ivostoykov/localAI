@@ -194,6 +194,7 @@ async function setActiveSession(session) {
         await setAllSessions(sessions);
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - the session thrown the error`, session);
     }
 }
 

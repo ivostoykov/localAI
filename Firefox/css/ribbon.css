@@ -19,10 +19,16 @@
     font-size: .9rem;
 }
 
+.temp-range-wrapper{
+    cursor: pointer;
+}
+
 .temp-range-wrapper::after {
+    position: relative;
     content: "🌡";
     display: inline-block;
     margin-left: -2px;
+    margin-top: 8px;
 }
 
 .rib-section.left {
@@ -111,6 +117,8 @@
     line-height: 25px;
     background-color: #ffe;
     z-index: 100;
+    overflow-y: auto;
+    height: 75vh;
 }
 
 .available-model-list div {

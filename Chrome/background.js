@@ -43,7 +43,7 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
 chrome.action.onClicked.addListener(async (tab) => {
     if (tab?.url?.startsWith('http')) {
         try {
-            const res = await chrome.tabs.sendMessage(tab.id, { action: "toggleSidebar" });
+            const res = await chrome.tabs.sendMessage(tab?.id, { action: "toggleSidebar" });
             if (chrome.runtime.lastError) {  throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);  }
         } catch (e) {
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
@@ -73,7 +73,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             getModels()
             .then(response => sendResponse(response) )
             .catch(async error => {
-                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender.tab.id);
+                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender?.tab?.id);
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
@@ -81,24 +81,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             fetchDataAction(request, sender)
             .then(response => { sendResponse(response);  })
             .catch(async error => {
-                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender.tab.id);
+                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender?.tab?.id);
                 sendResponse({ status: 'error', message: error.toString() });
             });
             break;
-        // case "getHooks":
-        //     getHooks()
-        //     .then(response => sendResponse(response) )
-        //     .catch(async error => {
-        //         await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender.tab.id);
-        //         sendResponse({ status: 'error', message: error.toString() });
-        //     });
-        //     break;
         case 'abortFetch':
             // Abort the in-flight fetchDataAction for this tab
             if (tabId != null) {
                 const ctrl = controllers.get(tabId);
                 if (ctrl) {
-                    ctrl.abort();
+                    ctrl.abort('User aborted last request.');
                     controllers.delete(tabId);
                 }
             }
@@ -108,7 +100,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             convertFileToText(request.fileContent)
                 .then(response => sendResponse(response))
                 .catch(async e => {
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender.tab.id);
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
             break;
@@ -120,7 +112,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             prepareModels(request.modelName, request.unload, sender.tab)
                 .then(response => sendResponse({status: response.status, text: response.statusText}))
                 .catch(async e => {
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender.tab.id);
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
         break;
@@ -131,7 +123,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             break;
         case "CHECK_ACTIVE_TAB":
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                sendResponse(!!sender.tab?.id && tabs[0]?.id === sender.tab.id );
+                sendResponse(!!sender.tab?.id && tabs[0]?.id === sender?.tab?.id );
                 // sendResponse(tabs[0]?.id === sender.tab?.id);
             });
             break;
@@ -147,36 +139,36 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     switch (info.menuItemId) {
         case "sendSelectedText":
             if (!info.selectionText.length) { return; }
-                if (!tab.id) { return; }
-                await addAttachment({
-                    id: crypto.randomUUID(),
-                    type: "snippet",
-                    content: info.selectionText,
-                    sourceUrl: tab?.url || ""
-                });
-                await chrome.tabs.sendMessage(tab.id, { action: "activePageSelection", selection: info.selectionText });
-                // await chrome.tabs.sendMessage(tab.id, { action: "activePageSelection", selection: info.selectionText });
+                if (!tab?.id) { return; }
+                // await addAttachment({
+                //     id: crypto.randomUUID(),
+                //     type: "snippet",
+                //     content: info.selectionText,
+                //     sourceUrl: tab?.url || ""
+                // });
+                await chrome.tabs.sendMessage(tab?.id, { action: "activePageSelection", selection: info.selectionText });
+                // await chrome.tabs.sendMessage(tab?.id, { action: "activePageSelection", selection: info.selectionText });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
             break;
         case "inserSelectedInPrompt":
             if (!info.selectionText.length) { return; }
-                if (!tab.id) { return; }
-                await chrome.tabs.sendMessage(tab.id, { action: "inserSelectedInPrompt", selection: info.selectionText });
+                if (!tab?.id) { return; }
+                await chrome.tabs.sendMessage(tab?.id, { action: "inserSelectedInPrompt", selection: info.selectionText });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
             break;
         case "askAiExplanation":
             await askAIExplanation(info, tab);
             break;
         case "sendPageContent":
-            await chrome.tabs.sendMessage(tab.id, { action: "activePageContent" });
+            await chrome.tabs.sendMessage(tab?.id, { action: "activePageContent" });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
             break;
         case "selectAndSendElement":
             if (!tab?.id) {
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Expected tab.id; received ${tab?.id}`, tab);
+                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Expected tab?.id; received ${tab?.id}`, tab);
                 return;
             }
-                await chrome.tabs.sendMessage(tab.id, { action: "toggleSelectElement", selection: true });
+                await chrome.tabs.sendMessage(tab?.id, { action: "toggleSelectElement", selection: true });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
             break;
         case "openOptions":
@@ -299,7 +291,7 @@ async function handleResponse(responseData = '', senderTabId) {
 
 async function askAIExplanation(info, tab) {
     try {
-        await chrome.tabs.sendMessage(tab.id, { action: "explainSelection", selection: info.selectionText });
+        await chrome.tabs.sendMessage(tab?.id, { action: "explainSelection", selection: info.selectionText });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (e) {
         await showUIMessage(e.message, 'error');
@@ -390,7 +382,7 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
 
         const funcType = availableTools.find(f => f.function.name === call.function.name)?.type || null;
         const funcUrl = `${toolBaseUrl}/${call.function.name}`;
-        updateUIStatusBar(`Calling ${call.function.name}...`);
+        await updateUIStatusBar(`Calling ${call.function.name}...`);
         console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} call request`, call);
         await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} call request`, call, 'debug');
         let data;
@@ -443,13 +435,13 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
                 break;
             }
 
-            updateUIStatusBar(`${call.function.name} response received.`);
+            await updateUIStatusBar(`${call.function.name} response received.`);
             console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
             await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
 
         } catch (err) {
 
-            updateUIStatusBar(`Error occured while calling ${call.function.name}...`);
+            await updateUIStatusBar(`Error occured while calling ${call.function.name}...`);
             console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error calling ${call.function.name}`, err, call, res);
             if (err.name === 'TypeError' && err.message.includes('fetch')) {
                 showUIMessage(`External tools endpoint (${funcUrl}) seems missing to be down!`, "error");
@@ -481,14 +473,7 @@ async function fetchDataAction(request, sender) {
     const promptTools = await getPromptTools();
     const remainingTools = new Set(promptTools.map(t => t.function.name));
 
-    if (!laiOptions?.aiUrl) {
-        let msg = 'Missing API endpoint!';
-        await showUIMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error', sender.tab);
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg}`, laiOptions);
-        return { "status": "error", "message": msg };
-    }
-
-    let url = request?.url ?? laiOptions?.aiUrl;
+    let url = request?.url ?? await getAiUrl();
     if (!url) {
         let msg = `Faild to compose the request URL - ${url}`;
         await showUIMessage(msg, 'error', sender.tab);
@@ -503,32 +488,35 @@ async function fetchDataAction(request, sender) {
         controllers.set(tabId, controller);
     }
 
-    if (laiOptions?.aiModel) {
-        request.data['model'] = laiOptions?.aiModel || '';
-    }
+    let model = await getAiModel()
+    if (model) {  request.data['model'] = model;  }
+
+    let res = await await chrome.tabs.sendMessage(tabId, { action: "getModelModifiers" });
+    let modelModifiers = res?.options;
+    if(modelModifiers) {  request.data['options'] = modelModifiers;  }
+    console.debug(`>>> [${getLineNumber()}] - request.data.options.`, request.data['options']);
 
     if (laiOptions.toolsEnabled && promptTools.length > 0) {
         request.data["tools"] = promptTools;
         request.data["tool_choice"] = "auto"
     } else {
-        await dumpInFrontConsole(`[${getLineNumber()}] - tools are disabled in the settings. Skipping them.`, laiOptions, 'debug', sender.tab.id)
-        console.debug(`[${getLineNumber()}] - tools are disabled in the settings. Skipping them.`, laiOptions)
+        await dumpInFrontConsole(`[${getLineNumber()}] - tools are disabled in the settings. Skipping them.`, laiOptions, 'debug', sender?.tab?.id)
+        console.debug(`>>> [${getLineNumber()}] - tools are disabled in the settings. Skipping them.`, laiOptions)
     }
     request.data["stream"] = false;
     request["format"] = "json";
 
     // Extract incoming user prompt messages
     const currentPrompt = request?.data?.messages || [];
-    if (currentPrompt.length < 1) {
-        throw new Error("No prompt received!");
-    }
-    const userInput = `\n\n# Question: '''${currentPrompt.map(el => el.content).join('')}'''`;
+    if (currentPrompt.length < 1) {  throw new Error("No prompt received!");  }
+    const userInput = `\n\n${currentPrompt.map(el => el.content).join('')}`;
 
-    // Ensure an active session exists; if not, create one on first use
+    let titleSeed;
+    const userMsgs = currentPrompt.filter(m => m.role === 'user');
+
     let activeSession = await getActiveSession();
     if (!activeSession || !Array.isArray(activeSession.data)) {
-        // Use concatenated prompt content as session title seed
-        const titleSeed = currentPrompt.map(m => m.content).join(' ').substring(0, 80);
+        if(!titleSeed) {  titleSeed = currentPrompt.map(m => m.content).join(' ').substring(0, 80);  }
         activeSession = await createNewSession(titleSeed);
     }
 
@@ -536,12 +524,10 @@ async function fetchDataAction(request, sender) {
     let context = activeSession.data.length > 0
         ? activeSession.data.filter(obj => obj.role && obj.content).map(obj => `${obj.role}: ${obj.content}.\n\n`).join('')
         : '';
-    // context = context
-    //     ? [{ role: "user", content: `\n\nUse the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer:\n\n ${context}\n\nQuestion: ` }]
-    //     : [];
     if(context) {
         context = `\n\n# Context\n\n'''${context}'''\n\n# Instructions\n\nUse the context above to answer the question below. If you don't know, say "I don't know".\n\n`;
     }
+
     // attachments if any
     let attachmentsContext = (activeSession.attachments || []).map(attachment => {
         let header = `[ATTACHMENT ${attachment.type.toUpperCase()}]`;
@@ -575,12 +561,10 @@ async function fetchDataAction(request, sender) {
     activeSession.data.push(...currentPrompt);
     await setActiveSession(activeSession);
 
-    // Build final message list
-    // request.data.messages = [...sysInstruct, ...attachmentsContext, ...context, ...currentPrompt];
-    // request.data.messages = [...sysInstruct, ...contextMessages, ...currentPrompt];
     request.data.messages = [...sysInstruct, ...userMessage];
 
-    await dumpInFrontConsole(`[${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender.tab.id);
+    await dumpInFrontConsole(`[${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender?.tab?.id);
+    console.debug(`>>> [${getLineNumber()}] - request.data`, request.data);
 
     let response;
     let body;
@@ -595,6 +579,7 @@ async function fetchDataAction(request, sender) {
         response = await fetchExtResponse(url, reqOpt);
         responseText = await response.clone().text();
         body = await response.json();
+        await dumpInFrontConsole(`[${getLineNumber()}] - response received.`, {"responseText": responseText, "body": body}, 'log', sender?.tab?.id);
         if (response.status > 299) { throw new Error(`${response.status}: ${response.statusText} - ${body?.error || 'No response error provided...'}`); }
 
 
@@ -622,6 +607,7 @@ async function fetchDataAction(request, sender) {
                 }
             }
 
+            await updateUIStatusBar(`Context updated. Waiting for response.`, sender?.tab?.id);
             response = await fetchExtResponse(url, {
               ...reqOpt,
               body: JSON.stringify(request.data),
@@ -629,27 +615,35 @@ async function fetchDataAction(request, sender) {
 
             responseText = await response.clone().text();
             body = await response.json();
+            await dumpInFrontConsole(`[${getLineNumber()}] - response received.`, {"responseText": responseText, "body": body}, 'log', sender?.tab?.id);
         }
 
-        updateUIStatusBar(`Final response received...`);
+        await updateUIStatusBar(`Final response received...`, sender?.tab?.id);
         activeSession.data.push(body.message); // ai reply is stored raw
+
+        if(userMsgs.length === 1){
+            titleSeed = await generateSessionTitle(userMsgs[0].content ?? '');
+            let oldTitle = activeSession.title.replace(/session/ig, '');
+            if(titleSeed) {  activeSession.title = `${titleSeed}${oldTitle}`;  }
+        }
+
         await setActiveSession(activeSession);
-        await handleResponse(body, sender.tab.id);
+        await handleResponse(body, sender?.tab?.id);
     }
     catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
         if (e.name === 'AbortError') {
             try {
-                await chrome.tabs.sendMessage(sender.tab.id, { action: "streamAbort" });
+                await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamAbort" });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
             } catch (e1) {
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e1.message}`, e1);
             }
         } else {
             try {
-                await chrome.tabs.sendMessage(sender.tab.id, { action: "streamError", error: e.toString() });
+                await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamError", error: e.toString() });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-                await dumpInFrontConsole(`[${getLineNumber()}] Error: ${e.message}`, e, 'error', sender.tab.id);
+                await dumpInFrontConsole(`[${getLineNumber()}] Error: ${e.message}`, e, 'error', sender?.tab?.id);
 
             } catch (e2) {
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e2.message}`, e2);
@@ -660,7 +654,7 @@ async function fetchDataAction(request, sender) {
     }
     finally {
         try {
-            await chrome.tabs.sendMessage(sender.tab.id, { action: "userPrompt", data: JSON.stringify(request.data) });
+            await chrome.tabs.sendMessage(sender?.tab?.id, { action: "userPrompt", data: JSON.stringify(request.data) });
             if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e3) {
             console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e3.message}`, e3);
@@ -682,7 +676,7 @@ async function fetchExtResponse(url, options, resentWithoutTools = true) {
         const toolsUnsupported = (body?.error || '').toLowerCase().includes("does not support tools");
         if (toolsUnsupported && options.body) {
             requestBody = JSON.parse(options.body); // to remove tools if errors occurs
-            updateUIStatusBar(`${requestBody.model || 'This model'} does not support tools. It will try without them.`);
+            await updateUIStatusBar(`${requestBody.model || 'This model'} does not support tools. It will try without them.`);
             delete requestBody.tools;
             delete requestBody.tool_choice;
             requestBody.messages.push({ role: "tool", content: "Briefly inform the user that you do not support tool usage or web searches. Provide the best answer based solely on your existing knowledge." })
@@ -766,7 +760,7 @@ async function showUIMessage(message, type = '', tab) {
     if (!tab) { tab = await getCurrentTab(); }
     if (!/^http/i.test(tab?.url)) { return; }
     try {
-        await chrome.tabs.sendMessage(tab.id, { "action": "showMessage", message: message, messageType: type });
+        await chrome.tabs.sendMessage(tab?.id, { "action": "showMessage", message: message, messageType: type });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (err) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
@@ -777,7 +771,7 @@ async function updateUIStatusBar(message, tab) {
     if (!tab) { tab = await getCurrentTab(); }
     if (!/^http/i.test(tab?.url)) { return; }
     try {
-        await chrome.tabs.sendMessage(tab.id, { "action": "updateStatusbar", message: message });
+        await chrome.tabs.sendMessage(tab?.id, { "action": "updateStatusbar", message: message });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
@@ -843,33 +837,6 @@ async function getModels() {
     }
 }
 
-// async function getHooks() {
-//     const laiOptions = await getLaiOptions();
-//     let urlVal = laiOptions?.toolFunc;
-//     if (!urlVal) {
-//         let msg = `No API endpoint found - ${urlVal}!`;
-//         return { "status": "error", "message": msg };
-//     }
-
-//     if (!urlVal.startsWith('http')) {
-//         let msg = `Invalid API endpoint - ${urlVal}!`;
-//         return { "status": "error", "message": msg };
-//     }
-
-//     let response;
-//     let hooks;
-//     try {
-//         urlVal = (new URL(urlVal)).origin
-//         response = await fetch(urlVal);
-
-//         hooks = await response.text();
-//         if (!hooks) { return { "status": "error", "message": "No hooks returned. Is server running?" }; }
-//         return { "status": "success", "hooks": hooks };
-//     } catch (err) {
-//         return { "status": "error", "message": `toolFunc seems invalud - ${urlVal}! Error: ${err.message}` };
-//     }
-// }
-
 function tryReloadExtension() {
     try {
         console.log(`>>> ${manifest.name} - [${getLineNumber()}] - trying to reload`);
@@ -910,11 +877,11 @@ async function prepareModels(modelName, remove = false, tab) {
             body: JSON.stringify(data)
         });
     } catch (err) {
-        await dumpInFrontConsole(err.message, err, "error", tab.id);
+        await dumpInFrontConsole(err.message, err, "error", tab?.id);
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
     }
 
-    await dumpInFrontConsole(`${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab.id);
+    await dumpInFrontConsole(`${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab?.id);
     console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - response`, response);
     return response;
 }
@@ -955,6 +922,60 @@ function getLineNumber() {
     return e.stack.split("\n")[2].trim().replace(/\s{0,}at (.+)/, "[$1]");
 }
 
+async function getAiUrl(){
+    const laiOptions = await getLaiOptions();
+    if (!laiOptions?.aiUrl) {
+        let msg = 'Missing API endpoint!';
+        await showUIMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error', sender.tab);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg}`, laiOptions);
+        return null;
+    }
+
+    let url = laiOptions?.aiUrl;
+    if (!url) {
+        let msg = `Faild to compose the request URL - ${url}`;
+        await showUIMessage(msg, 'error', sender.tab);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+        return null;
+    }
+
+    return url;
+}
+
+async function getAiModel(){
+    const laiOptions = await getOptions();
+    return laiOptions?.aiModel;
+}
+
+async function generateSessionTitle(text) {
+    if (!text || text === '') { return null; }
+    let url = await getAiUrl();
+    let model = await getAiModel();
+    if(!model) {  return;  }
+    url = new URL(url);
+    url = `${url.protocol}//${url.host}/api/generate`;
+    let jsonPrompt = {
+       "model": model,
+       "stream":false,
+       "prompt": `You are an AI assistant. Given the following text, generate the shortest meaningful title that captures its essence. Max length is 35 chars. Respond with the title only, no extra text.
+
+Text:
+“{{${text}}}”
+`
+    };
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(jsonPrompt)
+        });
+        const data = await res.json();
+        return data.response.split('\n').slice(-1)?.[0]?.trim() ?? null;
+    } catch (err) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        return null;
+    }
+}
 /////////// storage helpers ///////////
 
 async function createNewSession(text = `Session ${new Date().toISOString().replace(/[TZ]/g, ' ').trim()}`) {
@@ -963,8 +984,7 @@ async function createNewSession(text = `Session ${new Date().toISOString().repla
     let newSession;
     let sessions;
     try {
-        const laiOptions = await getOptions();
-        model = laiOptions?.aiModel || 'unknown';
+        model = await getAiModel();
         sessions = await getAllSessions();
         const title = text.split(/\s+/).slice(0, 6).join(' ');
 
@@ -998,8 +1018,7 @@ async function getActiveSession() {
         const sessionId = await getActiveSessionId();
         if (!sessionId) {  return await createNewSession();  }
 
-        const laiOptions = await getOptions();
-        model = laiOptions?.aiModel || 'unknown';
+        model = await getAiModel();
         const sessions = await getAllSessions();
 
         const session = sessions.find(sess => sess.id === sessionId);
@@ -1116,4 +1135,3 @@ async function setActiveSessionPageData(data) {
 async function removeActiveSessionPageData() {
     await chrome.storage.local.remove(activePageStorageKey);
 }
-

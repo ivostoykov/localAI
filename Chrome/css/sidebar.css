@@ -97,14 +97,30 @@ html, body, local-ai, local-ai *, #localAI, #localAI * {
 /* history menu */
 .hist-top-menu {
     position: fixed;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
     background-color: #fff;
     border: 1px solid #ccc;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
     width: 300px;
+    max-height: 50vh;
     z-index: 100;
 }
 
+.hist-top-menu > .scrollable {
+    overflow-y: auto;
+    max-height: 50vh;
+    flex: 1;
+}
+
+.hist-top-menu > .fixed-bottom {
+    border-top: 1px solid #eee;
+    background: #fff;
+}
+
 .menu-item {
+    position: relative;
     padding: 10px;
     cursor: pointer;
     border-bottom: 1px solid #eee;

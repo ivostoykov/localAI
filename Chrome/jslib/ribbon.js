@@ -28,18 +28,19 @@ async function initRibbon(){
         laiSetImg(modelLabel.querySelector('img'));
     }
 
-    ribbon?.querySelector('#cogBtn')?.addEventListener('click', function (e) {
+    ribbon?.querySelector('#cogBtn')?.addEventListener('click', async function (e) {
         const el = e.target;
         e.stopPropagation();
-        closeAllDropDownRibbonMenus(e);
+        await closeAllDropDownRibbonMenus(e);
         shadowRoot.querySelector('#cogMenu').classList.toggle('invisible');
         el.classList.toggle('js-menu-is-open');
-    });
+    }, false);
 
     shadowRoot?.querySelector('#addUsrCmdMenu').addEventListener('click', e => {
         shadowRoot?.querySelector('#cogBtn').click();
         popUserCommandEditor();
     });
+
     shadowRoot?.querySelector('#listUsrCmdMenu').addEventListener('click', e => {
         shadowRoot?.querySelector('#cogBtn').click();
         popUserCommandList(e);
@@ -121,15 +122,27 @@ async function initRibbon(){
 }
 
 async function closeAllDropDownRibbonMenus(e) {
-    // if(["sessionHistory", "laiModelName", "cogBtn"].includes(e?.target?.id) && !e?.target?.classList.contains('js-menu-is-open')){  return;  }
-    const originator = e.currentTarget; // e?.target;
     const shadowRoot = getShadowRoot();
     if(!shadowRoot){
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - shadowRoot element not found!`, shadowRoot);
         return;
     }
-    shadowRoot.querySelectorAll('.js-menu-is-open').forEach(el => {
-        if(el?.id === originator?.id){ return;  }
+
+    const openMenus = Array.from(shadowRoot.querySelectorAll('.js-menu-is-open'));
+    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - openMenus:`, openMenus);
+    if(openMenus.length < 1){  return;  }
+
+    const compPath = e.composedPath(); // check for sidebar - if not in there, head button is clicked
+    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - compPath`, compPath);
+    if(compPath.findIndex(e => e.id === 'laiMainButton') > -1){  return;  } // ext main buttono was clicked
+
+    const originator = compPath?.[0]; // e?.target;
+    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - originator:`, originator);
+
+    openMenus.forEach(el => {
+        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - compPath inside forEach`, compPath);
+        if(el === originator){ return;  }
+        if(compPath.findIndex(p => p === el) > 0){  return;  } // clicked inside the menu
         el?.click();
     });
 }
@@ -163,7 +176,7 @@ async function openCloseSessionHistoryMenu(e) {
     const el = e.target;
     e.preventDefault();
     e.stopPropagation();
-    closeAllDropDownRibbonMenus(e);
+    await closeAllDropDownRibbonMenus(e);
 
     const shadowRoot = getShadowRoot();
     const headerSection = shadowRoot.querySelector('.lai-header');
@@ -209,6 +222,8 @@ async function openCloseSessionHistoryMenu(e) {
           "children": [{ "img": { "src": chrome.runtime.getURL('img/remove-all.svg') } }]
         }
       }]);
+      const scrollable = buildElements([{"div": {"class": "scrollable"}}]);
+      const histBootom = buildElements([{"div": {"class": "fixed-bottom"}}]);
 
     for (let i = 0, l = menuItemContent.length; i < l; i++) {
         const userEl = menuItemContent[i];
@@ -216,6 +231,7 @@ async function openCloseSessionHistoryMenu(e) {
         if (userEl.title !== '---') {
             menuItem.className = 'menu-item';
             menuItem.textContent = `${(userEl?.title?.substring(0, 35)) || 'Noname'}${userEl?.title?.length > 35 ? '...' : ''}`;
+            menuItem.title = userEl?.title || 'Noname';
             if (i === l - 1) {
                 menuItem.addEventListener('click', async (e) => deleteAllHistorySessionsClicked(e), false);
             } else {
@@ -228,10 +244,16 @@ async function openCloseSessionHistoryMenu(e) {
             delBtn.setAttribute('data-sessionId', userEl.id);
             delBtn.addEventListener('click', async (e) => deleteHistoryMenuItemClicked(e), false);
             menuItem.appendChild(delBtn);
+            scrollable.appendChild(menuItem)
+        } else {
+            // menuItem.replaceChildren();
+            histBootom.appendChild(menuItem);
         }
-        sessionHistMenu.appendChild(menuItem);
+        // sessionHistMenu.appendChild(menuItem);
     }
 
+    sessionHistMenu.appendChild(scrollable);
+    sessionHistMenu.appendChild(histBootom);
     sessionHistMenu.classList.remove('invisible');
     sessionHistMenu.style.cssText = `top: ${e.clientY + 10}px;; left: ${e.clientX - (sessionHistMenu.offsetWidth / 4)}px;`;
 }
@@ -241,9 +263,12 @@ async function modelChanged(e){
     const oldModelName = laiOptions.aiModel;
     const newModelName = e.target.options[e.target.selectedIndex].value;
     try {
-    await chrome.runtime.sendMessage({action: "prepareModels", modelName: oldModelName, unload: true });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-    await chrome.runtime.sendMessage({action: "prepareModels", modelName: newModelName, unload: false });
+        await chrome.runtime.sendMessage({action: "prepareModels", modelName: oldModelName, unload: true });
+        if (chrome.runtime.lastError) {
+            console.error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
+            // throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
+        }
+        await chrome.runtime.sendMessage({action: "prepareModels", modelName: newModelName, unload: false });
         if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (err) {
         console.log(`>>> ${manifest.name} - [${getLineNumber()}]`, err);
@@ -397,9 +422,9 @@ async function modelLabelClicked(e){
     e.stopPropagation();
     e.preventDefault();
     let container = e?.currentTarget; // e.target;
-    closeAllDropDownRibbonMenus(e);
     if(container.id !== 'modelNameContainer'){  container = e.target.closest('div#modelNameContainer');  }
     if(!container){  return;  }
+    await closeAllDropDownRibbonMenus(e);
 
     const isOpen = container.classList.contains('open');
     if(!isOpen){
@@ -436,6 +461,7 @@ async function getAndShowModels(){
 
 async function fillAndShowModelList(models){
     const shadowRoot = getShadowRoot();
+    const modelNameContainer = shadowRoot.querySelector('#modelNameContainer');
     const modelList = shadowRoot.querySelector('#availableModelList');
     const modelsDropDown = shadowRoot.querySelector('#modelList');
     let opt = modelsDropDown.options[0];
@@ -454,7 +480,7 @@ async function fillAndShowModelList(models){
         m.textContent = `${model.name}${model.name === laiOptions.aiModel ? ' ✔': ''}`;
         m.addEventListener('click', async e => {
             e.stopPropagation();
-            closeAllDropDownRibbonMenus(e);
+            await closeAllDropDownRibbonMenus(e);
             modelsDropDown.selectedIndex = idx+1; // there is an extra empty option
             await swapActiveModel(e, model.name);
         });
@@ -480,17 +506,17 @@ async function swapActiveModel(e, modelName){
         showSpinner();
         updateStatusBar(`Trying to remove ${oldModel} from the memory...`);
         let response = await chrome.runtime.sendMessage({action: "prepareModels", modelName: oldModel, unload: true });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        if(response.status !== 200){
-            showMessage(`Failed to change the model!`, 'error');
-            return;
+        if (chrome.runtime.lastError) {
+            console.error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
+            // throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
         }
+        if(response.status !== 200){  showMessage(`Problem occured when unloading the ${oldModel} model!`, 'warning');  }
 
         updateStatusBar(`Trying to load ${modelName} into the memory...`);
         response = await chrome.runtime.sendMessage({action: "prepareModels", modelName: modelName, unload: false });
         if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         if(response.status !== 200){
-            showMessage(`Failed to change the model!`, 'error');
+            showMessage(`Failed to load ${modelName} model!`, 'error');
             return;
         }
 
@@ -548,6 +574,7 @@ async function restoreHistorySessionClicked(e, sessionIdx) {
     e.stopPropagation();
     e.stopImmediatePropagation();
     const el = e.target;
+    const shadowRoot = getShadowRoot();
     await closeAllDropDownRibbonMenus(e);
     // el.closest('div#sessionHistMenu')?.remove();
     const session = await getActiveSessionById(sessionIdx);
@@ -574,7 +601,6 @@ async function restoreHistorySessionClicked(e, sessionIdx) {
         // else{  addInputCardToUIChatHistory(msg.content, role, i);  }
     });
 
-    const shadowRoot = getShadowRoot();
     const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
 
@@ -612,3 +638,41 @@ async function deleteAllHistorySessionsClicked(e){
     showMessage('All sessions deleted.');
 }
 
+function modifiersClicked(e){
+    let el = e.target;
+    let menu = el?.querySelector('.session-menu');
+    if(!menu){
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - .session-menu element not found`);
+        return;
+    }
+
+    e.stopPropagation();
+
+    if(menu.classList.contains('invisible')){
+        menu.classList.remove('invisible');
+        el.classList.add('js-menu-is-open');
+    }else{
+        el.classList.remove('js-menu-is-open');
+        menu.classList.add('invisible');
+    }
+}
+
+function getModelModifiers() {
+  const shadowRoot = getShadowRoot();
+  const elements = Array.from(shadowRoot?.querySelectorAll('#modifiers input'))?.filter(el => el.value);
+  if(elements.length < 1) {  return;  }
+  const settings = {};
+  elements.forEach(el => {
+    const { name, value, type, step } = el;
+    if (!value) {  return; }
+
+    let parsed = value;
+    if (type === 'number') {
+    parsed = step && step.includes('.')
+        ? parseFloat(value)
+        : parseInt(value, 10);
+    }
+    settings[name] = parsed;
+  });
+  return settings;
+}

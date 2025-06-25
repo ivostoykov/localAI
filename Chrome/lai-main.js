@@ -21,7 +21,7 @@ async function initSidebar() {
         return;
     }
 
-    shadowRoot.addEventListener('click', e => {  closeAllDropDownRibbonMenus(e);  });
+    shadowRoot.addEventListener('click', async e => await closeAllDropDownRibbonMenus(e));
 
     shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => {
         let feedbackMessage = e.target;
@@ -37,13 +37,15 @@ async function initSidebar() {
     const ribbon = getRibbon();
     if(!ribbon){  console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Main ribbon not found!`, ribbon);  }
     ribbon?.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
+    ribbon?.querySelector('.temp-range-wrapper')?.addEventListener('click', modifiersClicked, true);
 
 
     const userInput = shadowRoot.getElementById('laiUserInput');
     if(!userInput){  console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Main ribbon not found!`, userInput);  }
-    userInput?.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e));
+    userInput?.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e), false);
     userInput?.addEventListener('click', userInputClicked);
-    userInput?.addEventListener('blur', e => e.target.closest('div.lai-user-area').classList.remove('focused'));
+    userInput?.addEventListener('focus', async e => await userInputFocused(e));
+    userInput?.addEventListener('blur', e => {  e.target.closest('div.lai-user-area').classList.remove('focused');  }, { capture: false });
 
     if (root) {
         root.addEventListener('dragenter', onUserInputDragEnter);
@@ -194,14 +196,6 @@ async function laiPushpinClicked(e) {
     shadowRoot.getElementById('laiUserInput')?.focus();
 }
 
-// function checkForDump(userText) {
-//     if (userText.indexOf('@{{dump}}') > -1 || userText.indexOf('@{{dumpStream}}') > -1) {
-//         dumpStream = true;
-//     }
-
-//     return userText.replace('@{{dump}}', '').replace('@{{dumpStream}}', '');
-// }
-
 function laiInsertCommandText(text) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
@@ -263,31 +257,7 @@ function onUserInputDragLeave(e) {
     setTimeout(() => dropzone.classList.add('invisible'), 750); // wait transition to complete
 }
 
-// function handleFileRead(fileName, result, isImageFile) {
-//     if (isImageFile) {
-//         const base64String = result.split(',')[1];
-//         images.push(base64String);
-//     } else {
-//         attachments.push(`Attached file name is: ${fileName}; The file content is:\n[FILE] ${result} [/FILE]`);
-//     }
-//     showAttachment(fileName);
-// }
-
-// function processAttachmentFile(file) {
-//     const fileName = file.name.split(/\\\//).pop();
-//     const reader = new FileReader();
-//     const isImageFile = isImage(file.type);
-
-//     reader.onload = function (e) {
-//         handleFileRead(fileName, e.target.result, isImageFile);
-//     };
-
-//     if (isImageFile) {  reader.readAsDataURL(file); }
-//     else {  reader.readAsText(file);  }
-// }
-
-
-function showAttachment(title) {
+function showAttachment(theAttachment) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
@@ -296,36 +266,43 @@ function showAttachment(title) {
         attachmentContainer.classList.add('active');
     }
 
-    const img = createAttachmentImage(title);
+    const img = createAttachmentImage(theAttachment);
     if (img) {
         attachmentContainer.appendChild(img);
+        img.addEventListener('click', async e => await attachmentImgClicked(e), { capture: true });
     }
 }
 
-function createAttachmentImage(title) {
+async function attachmentImgClicked(e){
+    e.preventDefault();
+    let el = e.target;
+    let attachemtnId = el.getAttribute('data-index');
+    if(!attachemtnId){
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Attachment Id not found`);
+        console.error(el);
+        return;
+    }
+
+    await deleteAttachment(attachemtnId);
+    await attachmentDeleted();
+    el.remove();
+}
+
+function createAttachmentImage(theAttachment) {
     if (!checkExtensionState()) { return; }
     const img = document.createElement('img');
     img.src = chrome.runtime.getURL('img/attachment.svg');
     img.style.cursor = `url('${chrome.runtime.getURL('img/del.svg')}'), auto`;
     img.setAttribute('alt', 'Attachment');
-    img.setAttribute('title', title);
-    img.setAttribute('data-index', attachments.length - 1);
+    img.setAttribute('title', theAttachment?.title || `${theAttachment?.content?.split(/\s+/)?.slice(0, 5).join(' ')}...` || 'Noname' );
+    img.setAttribute('data-index', theAttachment?.id);
     img.classList.add('attached');
-    img.addEventListener('click', (e) => {
-        e.preventDefault();
-        const idx = parseInt(e.target.getAttribute('data-index'), 10);
-        if (!isNaN(idx) && idx >= 0) {
-            attachments.splice(idx, 1);
-        }
-
-        attachmentDeleted();
-        e.target.remove();
-    });
 
     return img;
 }
 
-function attachmentDeleted() {
+async function attachmentDeleted() {
+    let attachments = await getAttachments()
     if (attachments.length > 0) { return; }
 
     const shadowRoot = getShadowRoot();
@@ -340,7 +317,7 @@ function clearAttachments() {
     if (!attachmentContainer) { return; }
     attachmentContainer.replaceChildren();
     attachmentContainer.classList.remove('active');
-    attachments = [];
+    // attachments = [];
 }
 
 function adjustHeight(userInput) {
@@ -366,6 +343,17 @@ function adjustHeight(userInput) {
 function userInputClicked(e) {
     e.target.closest('div.lai-user-area')?.classList.add('focused');
     hidePopups(e);
+}
+
+async function userInputFocused(e){
+    try {
+        let attachments = await getAttachments();
+        if(attachments.lengh < 1) {  return;  }
+        clearAttachments();
+        attachments.forEach(a => showAttachment(a));
+    } catch (err) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+    }
 }
 
 function hidePopups(e) {
@@ -405,7 +393,7 @@ async function onPromptTextAreaKeyDown(e) {
 
         // update data
         addcommandPlaceholdersValues(elTarget.value);
-        addAttachmentsToUserInput();
+        // addAttachmentsToUserInput();
 
         messages = [{"role": "user", "content": `${elTarget.value}\n${messages.map(e => e.content).join('\n')}`}];
         if(images.length > 0){  messages[0]["images"] = images;  }
@@ -429,7 +417,8 @@ async function onPromptTextAreaKeyDown(e) {
     }
 }
 
-function addAttachmentsToUserInput() {
+// TODO: delete
+/* function addAttachmentsToUserInput() {
     if (attachments.length < 1) { return false; }
     const l = attachments.length;
     const content = [];
@@ -441,7 +430,7 @@ function addAttachmentsToUserInput() {
 
     content.push(`PAGE URL: ${document.location.href}\n`);
     messages.push({ "role": "user", "content": content.join('\n') });
-}
+} */
 
 function addcommandPlaceholdersValues(userInputValue){
     const userCommands = [...userInputValue.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
@@ -1036,7 +1025,7 @@ function getParseAndRenderOptions(rootEl) {
     return {  abortSignal: controller.signal  };
 }
 
-chrome.runtime.onMessage.addListener(async (response) => {
+chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
         if(restartCounter < RESTART_LIMIT){
@@ -1067,6 +1056,10 @@ chrome.runtime.onMessage.addListener(async (response) => {
 
 
     switch (response.action) {
+        case 'getModelModifiers':
+            const modifiers = getModelModifiers();
+            sendResponse({ options: modifiers });
+            break;
         case "streamData":
 
             let dataChunk;
@@ -1103,15 +1096,14 @@ chrome.runtime.onMessage.addListener(async (response) => {
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
                 break;
             }
-            await addAttachment({
+            let newActivePageSelectionAttachment = {
                 id: crypto.randomUUID(),
                 type: "snippet",
-                content: el.innerText ?? '',
+                content: response.selection ?? '',
                 sourceUrl: location.href
-              });
-            showAttachment(`${el?.innerText?.split(/\s+/)?.slice(0, 5).join(' ')}...` || 'Selected element');
-            // attachments.push(response.selection);
-            // showAttachment(`${response.selection?.split(/\s+/).slice(0, 5).join(' ')}...`);
+            };
+            await addAttachment(newActivePageSelectionAttachment);
+            showAttachment(newActivePageSelectionAttachment);
             showMessage('Selection included.', 'info')
             updateStatusBar('Selected content added to the context.');
             break;
@@ -1127,14 +1119,14 @@ chrome.runtime.onMessage.addListener(async (response) => {
             shadowRoot.getElementById('laiUserInput').value += `${promptVal.length > 0 ? "\n" : ""}${response.selection}`;
             break;
         case "activePageContent":
-            // attachments.push(getPageTextContent());
-            await addAttachment({
+            let newActivePageContentAttachment = {
                 id: crypto.randomUUID(),
                 type: "snippet",
                 content: getPageTextContent(),
                 sourceUrl: location.href
-            });
-            showAttachment(document?.title || 'Current page');
+            };
+            await addAttachment(newActivePageContentAttachment);
+            showAttachment(newActivePageContentAttachment);
             showMessage('Page included.', 'info')
             updateStatusBar('Selected content added to the context.');
             break;

@@ -1,5 +1,6 @@
 *.zip
 *.bak
+*.new
 *.back
 .vscode/
 *.log

@@ -98,6 +98,14 @@ When you hover over the [Ribbon](#ribbon), you'll see the extension's version nu
 
 Sessions can be managed also from the [Options](#options) page.
 
+### Modifiers
+
+These options control how the AI gives answers. For example, the temperature changes how creative or random the answers are. A low number means more serious and focused replies; a higher one makes them more varied. The seed makes the answers repeatable—using the same seed gives the same result. Other settings help guide how long or detailed the reply should be, or how much it avoids repeating itself.
+
+A helping table with short description is available [here](https://github.com/ollama/ollama/blob/main/docs/modelfile.md#valid-parameters-and-values).
+
+![modifiers](media/modifiers.png)
+
 ### Tools
 
 <img src="Chrome/img/tools.svg" height="30" alt="Tools"/> - Enable or disable the tools. Also avaliable in the [Options](#options) page - see [Tools](#functions-tools).
