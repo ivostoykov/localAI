@@ -61,6 +61,30 @@ async function initRibbon(){
         element.dispatchEvent(event);
     });
 
+    shadowRoot?.querySelector('#mainHelpMenu').addEventListener('click', async (e) => {
+        try {
+            await chrome.runtime.sendMessage({ action: "openMainHelpMenu" })
+            if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        } catch (e) {
+            if (e.message.indexOf('Extension context invalidated.') > -1) {
+                showMessage(`${e.message}. Please reload the page.`, 'warning');
+            }
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        }
+    });
+
+    shadowRoot?.querySelector('#modifiersHelp').addEventListener('click', async (e) => {
+        try {
+            await chrome.runtime.sendMessage({ action: "openModifiersHelpMenu" })
+            if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        } catch (e) {
+            if (e.message.indexOf('Extension context invalidated.') > -1) {
+                showMessage(`${e.message}. Please reload the page.`, 'warning');
+            }
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        }
+    });
+
     shadowRoot?.querySelector('#optionsMenu')?.addEventListener('click', async function (e) {
         if (!checkExtensionState()) { return; }
         const cogMenu = shadowRoot?.querySelector('#cogMenu');

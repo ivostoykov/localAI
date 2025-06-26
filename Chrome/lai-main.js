@@ -912,10 +912,13 @@ async function queryAI() {
     const tempInput = shadowRoot?.querySelector('#tempInput');
     let temp = tempInput?.value || 0.5;
 
-    const data = {
-        "messages": messages,
-        "options": {  "temperature": parseFloat(temp || "0.5" )  }
-    }
+    const data = {  "messages": messages,  };
+    let options = getModelModifiers();
+    if(options){  data["options"] = options;  }
+    // const data = {
+    //     "messages": messages,
+    //     "options": {  "temperature": parseFloat(temp || "0.5" )  }
+    // }
 
     if (laiOptions.aiUrl.indexOf('api') > -1) {
         if (laiOptions.aiModel.trim() === '') {
@@ -1056,10 +1059,6 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
 
 
     switch (response.action) {
-        case 'getModelModifiers':
-            const modifiers = getModelModifiers();
-            sendResponse({ options: modifiers });
-            break;
         case "streamData":
 
             let dataChunk;
@@ -1157,6 +1156,8 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
         showMessage(response.error, 'error');
         resetStatusbar();
     }
+
+    return true;
 });
 
 function laiHandleStreamActions(logMessage, recipient, abortText = '') {

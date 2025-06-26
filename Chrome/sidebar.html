@@ -29,6 +29,8 @@
                     <div id="delSessionsCmdMenu" class="cog-menu-item">Delete Session History</div>
                     <hr>
                     <div id="optionsMenu" class="cog-menu-item">Options</div>
+                    <hr>
+                    <div id="mainHelpMenu" class="cog-menu-item">Help</div>
                 </div>
                 <img src="" id="errorMsgBtn" class="invisible" alt="Show last error" title="Show last error" data-type="error">
             </div>
@@ -39,42 +41,44 @@
                 <img src="" id="recycleCurrentSessionBtn" alt="Delete Current Session" title="Delete Current Session"
                     data-type="recycle" />
                 <div id="modifiers" class="temp-range-wrapper">
-                    <!-- <input type="number" name="tempInput" id="tempInput" value="0.5" max="1" min="0" step="0.1" class="temp-range" title="Neutral" /> -->
                     <div class="session-menu invisible">
-                        <label>num_ctx
+                        <label title="Context window size (tokens)">num_ctx
                             <input type="number" name="num_ctx" id="num_ctx" title="Context window size (tokens)" />
                         </label>
-                        <label>repeat_last_n
+                        <label title="Number of last tokens to penalise repeats">repeat_last_n
                             <input type="number" name="repeat_last_n" id="repeat_last_n" title="Number of last tokens to penalise repeats" />
                         </label>
-                        <label>repeat_penalty
+                        <label title="Penalty factor for repeated tokens">repeat_penalty
                             <input type="number" name="repeat_penalty" id="repeat_penalty" min="0.01" max="10" step="0.01"
                                 title="Penalty factor for repeated tokens" />
                         </label>
-                        <label>temperature
+                        <label title="Sampling temperature">temperature
                             <input type="number" name="temperature" id="tempInput" min="0" max="1" step="0.01" class="temp-range"
                                 title="Sampling temperature" />
                         </label>
-                        <label>seed
+                        <label title="Random seed for reproducibility">seed
                             <input type="number" name="seed" id="seed" title="Random seed for reproducibility" />
                         </label>
-                        <label>stop
+                        <label title="Stop sequence for generation">stop
                             <input type="text" name="stop" id="stop" title="Stop sequence for generation" />
                         </label>
-                        <label>num_predict
+                        <label title="Maximum number of tokens to generate">num_predict
                             <input type="number" name="num_predict" id="num_predict" title="Maximum number of tokens to generate" />
                         </label>
-                        <label>top_k
+                        <label title="Top-K sampling threshold">top_k
                             <input type="number" name="top_k" id="top_k" min="0" max="1000" step="1"
                                 title="Top-K sampling threshold" />
                         </label>
-                        <label>top_p
+                        <label title="Top-p (nucleus) sampling cumulative probability">top_p
                             <input type="number" name="top_p" id="top_p" min="0" max="1" step="0.01"
                                 title="Top-p (nucleus) sampling cumulative probability" />
                         </label>
-                        <label>min_p
+                        <label title="Minimum token probability threshold">min_p
                             <input type="number" name="min_p" id="min_p" min="0" max="1" step="0.01"
                                 title="Minimum token probability threshold" />
+                        </label>
+                        <label title="Help about the listed modifiers.">
+                            <div id="modifiersHelp" title="Help about the listed modifiers.">Help</div>
                         </label>
                     </div>
                 </div>

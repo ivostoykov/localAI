@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.27.80] 2025-06-25 - latest
+## [1.27.85] 2025-06-26 - latest
+- Message exchange bug fixed
+- Dynamic setting Model options bug fixed
+- Added Help in the main menu
+- Added help in the model settings menu
+
+## [1.27.80] 2025-06-25
 
 - Fixed a bug that was duplicating attachment icons
 - Refactored model calls to simplify the code base

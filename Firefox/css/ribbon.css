@@ -21,6 +21,7 @@
 
 .temp-range-wrapper{
     cursor: pointer;
+    font-size: initial;
 }
 
 .temp-range-wrapper::after {
@@ -185,4 +186,57 @@
 
 .disabled{
     opacity: 0.25;
+}
+
+/* model props drop down */
+.session-menu {
+    max-width: 320px;
+    margin: 0 auto;
+    background: #f9f9f9;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 5px 5px 10px #aaa;
+    border: 1px solid #bbb;
+    position: absolute;
+    top: 100%;
+    left: 8vh;
+    z-index: 100;
+}
+
+.session-menu label {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    font-size: 1rem;
+    justify-content: right;
+}
+
+.session-menu input {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 75px;
+}
+
+@media (max-width: 500px) {
+    .session-menu {
+        max-width: 100%;
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .session-menu label {
+        font-size: 0.95rem;
+    }
+
+    .session-menu input {
+        font-size: 0.95rem;
+        padding: 6px;
+    }
+}
+
+#modifiersHelp {
+    cursor: pointer;
 }

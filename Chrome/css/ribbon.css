@@ -21,6 +21,7 @@
 
 .temp-range-wrapper{
     cursor: pointer;
+    font-size: initial;
 }
 
 .temp-range-wrapper::after {
@@ -234,4 +235,8 @@
         font-size: 0.95rem;
         padding: 6px;
     }
+}
+
+#modifiersHelp {
+    cursor: pointer;
 }

@@ -1,11 +1,3 @@
-/* Unreleased Changes:
- * - Switched to per‑tab AbortControllers (using controllers Map) instead of a single global controller/shouldAbort flag.
- * - Scoped fetchDataAction AbortController per tab, cleared old controller on new requests; abortFetch now cancels only the current tab’s request.
- * - Removed obsolete handleStreamingResponse and global shouldAbort logic.
- * - Enhanced session management: lazy creation of a new session on first user command; robust getActiveSession/getActiveSessionId/getAllSessions/createNewSession with fallbacks.
- * - Refactored session storage helpers: setAllSessions persists empty arrays; getAllSessions returns [] on storage errors; createNewSession and getActiveSession return fallback session objects on error.
- * - Fixed setOptions storage call signature (chrome.storage.sync.set({ [key]: value })).
- */
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const storageOptionKey = 'laiOptions';
 const storageUserCommandsKey = 'aiUserCommands';
@@ -14,6 +6,8 @@ const allSessionsStorageKey = 'aiSessions';
 const storageToolsKey = 'aiTools';
 const activeSessionIdStorageKey = 'activeSessionId';
 const activePageStorageKey = 'activePage';
+const mainHelpPageUrl = 'https://github.com/ivostoykov/localAI/blob/main/documentation.md';
+const modifiersHelpUrl = 'https://github.com/ivostoykov/localAI/blob/main/documentation.md#modifiers';
 
 const manifest = chrome.runtime.getManifest();
 
@@ -103,6 +97,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
+            break;
+        case "openModifiersHelpMenu":
+            chrome.tabs.create({ url: modifiersHelpUrl });
+            sendResponse();
+            break;
+        case "openMainHelpMenu":
+            chrome.tabs.create({ url: mainHelpPageUrl });
+            sendResponse();
             break;
         case "openOptionsPage":
             chrome.tabs.create({url: chrome.runtime.getURL('options.html')});
@@ -484,17 +486,10 @@ async function fetchDataAction(request, sender) {
     // Initialize a new AbortController for this tab's request
     const tabId = sender.tab?.id;
     const controller = new AbortController();
-    if (tabId != null) {
-        controllers.set(tabId, controller);
-    }
+    if (tabId != null) {  controllers.set(tabId, controller);  }
 
     let model = await getAiModel()
     if (model) {  request.data['model'] = model;  }
-
-    let res = await await chrome.tabs.sendMessage(tabId, { action: "getModelModifiers" });
-    let modelModifiers = res?.options;
-    if(modelModifiers) {  request.data['options'] = modelModifiers;  }
-    console.debug(`>>> [${getLineNumber()}] - request.data.options.`, request.data['options']);
 
     if (laiOptions.toolsEnabled && promptTools.length > 0) {
         request.data["tools"] = promptTools;
