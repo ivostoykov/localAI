@@ -28,14 +28,6 @@ async function initRibbon(){
         laiSetImg(modelLabel.querySelector('img'));
     }
 
-    ribbon?.querySelector('#cogBtn')?.addEventListener('click', async function (e) {
-        const el = e.target;
-        e.stopPropagation();
-        await closeAllDropDownRibbonMenus(e);
-        shadowRoot.querySelector('#cogMenu').classList.toggle('invisible');
-        el.classList.toggle('js-menu-is-open');
-    }, false);
-
     shadowRoot?.querySelector('#addUsrCmdMenu').addEventListener('click', e => {
         shadowRoot?.querySelector('#cogBtn').click();
         popUserCommandEditor();
@@ -104,16 +96,11 @@ async function initRibbon(){
         }
         finally {
             resetStatusbar();
-        shadowRoot?.getElementById('laiUserInput')?.focus();
+            shadowRoot?.getElementById('laiUserInput')?.focus();
         }
     });
 
     const toolFunctions = ribbon?.querySelector('#toolFunctions');
-    if(laiOptions?.toolsEnabled){
-        toolFunctions.classList.remove('disabled');
-    }else{
-        toolFunctions.classList.add('disabled');
-    }
     toolFunctions?.addEventListener('click', async e => onToolFunctionsBtnClick(e), false);
     ribbon?.querySelector('#systemIntructions').addEventListener('click', laiShowSystemInstructions, false);
     ribbon?.querySelector('#newSession').addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot), false);
@@ -125,6 +112,20 @@ async function initRibbon(){
       updateStatusBar('Click to toggle the list with available models.');
       setTimeout(resetStatusbar, 10000);
     }, false);
+    ribbon?.querySelector('#cogBtn')?.addEventListener('click', async function (e) {
+        const el = e.target;
+        e.stopPropagation();
+        await closeAllDropDownRibbonMenus(e);
+        shadowRoot.querySelector('#cogMenu').classList.toggle('invisible');
+        el.classList.toggle('js-menu-is-open');
+    }, false);
+
+    ribbon?.querySelector('#modelThinking')?.addEventListener('click', e => {
+        e.target.classList.toggle('disabled')
+        updateStatusBar(`Thinking ${e.target.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
+        setTimeout(() => {  resetStatusbar();  }, 1000);
+    });
+    await adjustThinkingStatus(ribbon?.querySelector('#modelThinking'));
 
     shadowRoot?.getElementById('recycleCurrentSessionBtn').addEventListener('click', async e => await recycleActiveSession(e, shadowRoot), false);
     shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
@@ -545,7 +546,8 @@ async function swapActiveModel(e, modelName){
         }
 
     laiOptions.aiModel = modelName;
-        await setOptions(laiOptions);
+    await setOptions(laiOptions);
+    await adjustThinkingStatus();
 
     setModelNameLabel({ "model": modelName });
     Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
@@ -574,7 +576,7 @@ async function onToolFunctionsBtnClick(e){
     }
     updateStatusBar(`Tools are ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`)
     setTimeout(() => resetStatusbar(), 3000);
-    await setOptions(options);
+    // await setOptions(options); // no persisten storage anymore - only for the current session
 }
 
 function setModelNameLabel(data) {
@@ -699,4 +701,21 @@ function getModelModifiers() {
     settings[name] = parsed;
   });
   return settings;
+}
+
+async function adjustThinkingStatus(thinkingIconEl){
+    if(!thinkingIconEl){
+        let shadowRoot = getShadowRoot();
+        thinkingIconEl = shadowRoot?.querySelector('#modelThinking');
+        if(!thinkingIconEl) {  return;  }
+    }
+    const model = await getAiModel();
+    const url = await getAiUrl()
+    if(await modelCanThink(model, url)){
+        thinkingIconEl.classList.remove('disabled');
+    } else {
+        thinkingIconEl.classList.add('disabled');
+    }
+    updateStatusBar(`Thinking ${thinkingIconEl.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
+    setTimeout(() => {  resetStatusbar();  }, 1000);
 }

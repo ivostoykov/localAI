@@ -43,12 +43,12 @@ async function saveSettings(e) {
         optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
     }
 
-    const dataLists = ['modelList', 'urlList'];
+    const dataLists = ['modelList', 'urlList', 'generativeHelperList'];
     for (let i = 0; i < dataLists.length; i++) {
         const list = dataLists[i];
         const el = document.querySelector(`select[data-list="${list}"]`);
         const options = Array.from(el.options);
-        if (/^Select/i.test(options[0].text)) { options.shift(); }
+        if (/^Select/i.test(options[0].text) || !options[0].text) { options.shift(); }
         optionsData[el.id] = el.options[el.selectedIndex].value;
         let attributeValues = Array.from(options)?.map(e => e.getAttribute('value')).sort();
         optionsData[list] = attributeValues ?? [];
@@ -56,15 +56,17 @@ async function saveSettings(e) {
 
     laiOptions = optionsData;
     await chrome.storage.sync.set({ 'laiOptions': optionsData });
-        showMessage('Settings saved', 'success');
+    showMessage('Settings saved', 'success');
 }
 
 function loadSettings(e) {
     chrome.storage.sync.get('laiOptions', function (obj) {
         const formData = obj.laiOptions || {};
+        delete formData?.toolsEnabled; // obsolate and not needed anymore - just to remove from the storage
+
         laiOptions = formData;
 
-        const dataLists = ['modelList', 'urlList', 'toolFuncList'];
+        const dataLists = ['modelList', 'urlList', 'toolFuncList', 'generativeHelperList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             if (!formData[list]) { continue; }
@@ -109,11 +111,11 @@ function attachListeners(e) {
 
     document.querySelector('#newFuncBtn')?.addEventListener('click', async e => await createNewToolFunc(e)  );
 
-    document.getElementById('toolsEnabled')?.addEventListener('change', e => {
+/*     document.getElementById('toolsEnabled')?.addEventListener('change', e => {
         const label = document.querySelector('label[for="toolsEnabled"]');
         label.textContent = `${e.target.checked ? 'Enable' : 'Disable'} tools`;
         document.querySelector('[type="submit"]').click();
-    });
+    }); */
 }
 
 function onshowEmbeddedButtonClicked(e) {
@@ -257,7 +259,8 @@ function importFromFile(e) {
 
 async function loadModels(e) {
     showSpinner();
-    const aiUrl = e?.target || document.querySelector('#aiUrl');
+    // const elTarget = e?.target;
+    const aiUrl = document.querySelector('#aiUrl');
     if (!aiUrl) {
         showMessage(`No API endpoint found - ${aiUrl?.value}!`, 'error');
         hideSpinner();
@@ -288,7 +291,11 @@ async function loadModels(e) {
       });
 
       models = await response.json();
-        if (models.models && Array.isArray(models.models)) { fillModelList(models.models); }
+        if (models.models && Array.isArray(models.models)) {
+            models.models.sort((a, b) => a.name.localeCompare(b.name));
+            fillModelList(models.models, '#aiModel');
+            fillModelList(models.models, '#generativeHelper');
+        }
     } catch (e) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - response`, response);
@@ -298,14 +305,21 @@ async function loadModels(e) {
     }
 }
 
-function fillModelList(models = []) {
+function fillModelList(models = [], selector = '') {
     if (models.length < 1) { return; }
-    let modelDataList = document.querySelector('#aiModel');
+    if(!selector){
+        showMessage("Missing selector!", "success");
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Missing selector! ${selector || 'empty string'}`, models);
+        return;
+    }
+
+    let modelDataList = document.querySelector(selector);
     if (!modelDataList) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Cannot find modelList element!`);
         return;
     }
 
+    let activeModelName = laiOptions?.[selector.replace(/^#/, '')];
     let op = modelDataList.options[0];
     modelDataList.replaceChildren();
     modelDataList.appendChild(op);
@@ -314,7 +328,8 @@ function fillModelList(models = []) {
     for (let i = 0; i < models.length; i++) {
         op = document.createElement('option');
         op.value = op.text = models[i].name;
-        if (models[i].name === laiOptions?.aiModel) { op.setAttribute('selected', 'selected'); }
+        if (models[i].name === activeModelName) { op.setAttribute('selected', 'selected'); }
+        // if (models[i].name === laiOptions?.aiModel) { op.setAttribute('selected', 'selected'); }
         modelDataList.appendChild(op);
     }
 }
@@ -500,7 +515,7 @@ function shrinkList(e) {
 
 async function attachDataListListeners(e) {
 
-    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons'];
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons', 'generativeHelperButtons'];
     for (let x = 0; x < containers.length; x++) {
         const container = document.querySelector(`#${containers[x]}`);
         if (!container) { continue; }
@@ -526,7 +541,7 @@ async function attachDataListListeners(e) {
                     b.addEventListener('click', e => sortDatalist(e));
                     break;
                 case 'reload':
-                    b.addEventListener('click', async e => await loadModels());
+                    b.addEventListener('click', async e => await loadModels(e));
                     break;
                 case 'test-connection':
                     b.addEventListener('click', async e => await testConnection(e));

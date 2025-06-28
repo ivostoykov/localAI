@@ -129,6 +129,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // sendResponse(tabs[0]?.id === sender.tab?.id);
             });
             break;
+        case "checkAndSetSessionName":
+            generateAndUpdateSessionTitle(request?.text ?? '', sender.tab)
+            .catch(async e => {
+                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+            });
+            break;
         default:
             console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
             sendResponse();
@@ -438,7 +445,7 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
             }
 
             await updateUIStatusBar(`${call.function.name} response received.`);
-            console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+            // console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
             await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
 
         } catch (err) {
@@ -472,7 +479,9 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
 
 async function fetchDataAction(request, sender) {
     const laiOptions = await getLaiOptions();
-    const promptTools = await getPromptTools();
+    const toolsEnabled = request?.tools || false;
+    // const isThinkDisabled = request?.think || false;
+    const promptTools = toolsEnabled ? await getPromptTools() : [];
     const remainingTools = new Set(promptTools.map(t => t.function.name));
 
     let url = request?.url ?? await getAiUrl();
@@ -491,12 +500,12 @@ async function fetchDataAction(request, sender) {
     let model = await getAiModel()
     if (model) {  request.data['model'] = model;  }
 
-    if (laiOptions.toolsEnabled && promptTools.length > 0) {
+    if (promptTools.length > 0 && await modelCanUseTools(model)) {
         request.data["tools"] = promptTools;
         request.data["tool_choice"] = "auto"
     } else {
-        await dumpInFrontConsole(`[${getLineNumber()}] - tools are disabled in the settings. Skipping them.`, laiOptions, 'debug', sender?.tab?.id)
-        console.debug(`>>> [${getLineNumber()}] - tools are disabled in the settings. Skipping them.`, laiOptions)
+        await dumpInFrontConsole(`[${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions, 'debug', sender?.tab?.id)
+        console.debug(`>>> [${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions)
     }
     request.data["stream"] = false;
     request["format"] = "json";
@@ -585,7 +594,8 @@ async function fetchDataAction(request, sender) {
             const newMessages = await resolveToolCalls(body.message.tool_calls, laiOptions.toolFunc);
             request.data.messages.push(...newMessages);
             const lastRole = request.data.messages.at(-1)?.role;
-            await setActiveSession(newMessages);
+            activeSession.data.push(...newMessages);
+            await setActiveSession(activeSession);
 
             if(lastRole !== 'tool') {   // Inject updated tool list to LLM if needed
                 if (remainingTools.size > 0) {
@@ -602,7 +612,7 @@ async function fetchDataAction(request, sender) {
                 }
             }
 
-            await updateUIStatusBar(`Context updated. Waiting for response.`, sender?.tab?.id);
+            await updateUIStatusBar(`Context updated. Waiting for response.`, sender?.tab);
             response = await fetchExtResponse(url, {
               ...reqOpt,
               body: JSON.stringify(request.data),
@@ -613,14 +623,8 @@ async function fetchDataAction(request, sender) {
             await dumpInFrontConsole(`[${getLineNumber()}] - response received.`, {"responseText": responseText, "body": body}, 'log', sender?.tab?.id);
         }
 
-        await updateUIStatusBar(`Final response received...`, sender?.tab?.id);
+        await updateUIStatusBar(`Final response received...`, sender?.tab);
         activeSession.data.push(body.message); // ai reply is stored raw
-
-        if(userMsgs.length === 1){
-            titleSeed = await generateSessionTitle(userMsgs[0].content ?? '');
-            let oldTitle = activeSession.title.replace(/session/ig, '');
-            if(titleSeed) {  activeSession.title = `${titleSeed}${oldTitle}`;  }
-        }
 
         await setActiveSession(activeSession);
         await handleResponse(body, sender?.tab?.id);
@@ -756,18 +760,21 @@ async function showUIMessage(message, type = '', tab) {
     if (!/^http/i.test(tab?.url)) { return; }
     try {
         await chrome.tabs.sendMessage(tab?.id, { "action": "showMessage", message: message, messageType: type });
-        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (err) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
     }
 }
 
 async function updateUIStatusBar(message, tab) {
-    if (!tab) { tab = await getCurrentTab(); }
-    if (!/^http/i.test(tab?.url)) { return; }
+    if (!tab) {  tab = await getCurrentTab();  }
+    if (!/^http/i.test(tab?.url)) {
+        console.warn(`>>> ${manifest.name} - [${getLineNumber()}] - The action is not possible in this tab`, tab);
+        return;
+    }
     try {
         await chrome.tabs.sendMessage(tab?.id, { "action": "updateStatusbar", message: message });
-        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
     }
@@ -777,7 +784,10 @@ async function dumpInFrontConsole(message, obj, type = 'log', tabId) {
     try {
         if(!tabId){
             const tab = await getCurrentTab();
-            if (!/^http/i.test(tab?.url)) { return; }
+            if (!/^http/i.test(tab?.url)) {
+                console.warn(`>>> ${manifest.name} - [${getLineNumber()}] - The action is not possible in this tab`, tab);
+                return;
+            }
             tabId = tab?.id;
             if(!tabId){
                 console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to get tabId`, tab);
@@ -785,7 +795,7 @@ async function dumpInFrontConsole(message, obj, type = 'log', tabId) {
             }
         }
         await chrome.tabs.sendMessage(tabId, { "action": "dumpInConsole", message: message, obj: JSON.stringify(obj), type: type });
-        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
     }
@@ -912,6 +922,33 @@ async function execInternalTool(call = {}){
 
 /////////// other helpers ///////////
 
+async function modelCanUseTools(modelName){
+    if(!modelName){  return false;  }
+
+    let url = await getAiUrl();
+    url = new URL(url);
+    url = `${url.protocol}//${url.host}/api/show`;
+
+    const data = {  "model": modelName  };
+    let modelData;
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        modelData = await res.json();
+        const canUseTools = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'tools' );
+        await dumpInFrontConsole(`The model ${modelName} ${canUseTools ? '' : 'does not '}support tools.`);
+        await updateUIStatusBar(`${modelName} ${canUseTools ? '' : 'does not '}support tools.`);
+        return canUseTools;
+    } catch (err) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        return false;
+    }
+}
+
 function getLineNumber() {
     const e = new Error();
     return e.stack.split("\n")[2].trim().replace(/\s{0,}at (.+)/, "[$1]");
@@ -942,22 +979,51 @@ async function getAiModel(){
     return laiOptions?.aiModel;
 }
 
-async function generateSessionTitle(text) {
+async function getGenerativeModel(){
+    const laiOptions = await getOptions();
+    return laiOptions?.generativeHelper || laiOptions?.aiModel;
+}
+
+async function generateAndUpdateSessionTitle(text, tab){
+    const titleSeed = await generateSessionTitle(text, tab);
+    if(!titleSeed){  return;  }
+    const activeSession = await getActiveSession();
+    let oldTitle = activeSession?.title?.replace(/session/ig, '');
+    activeSession["title"] = `${titleSeed}${oldTitle}`;
+    await setActiveSession(activeSession);
+}
+
+// You are an AI assistant. Given the following text, generate the shortest meaningful title that captures its essence. Max length is 35 chars. Respond with the title only, no extra text.
+async function generateSessionTitle(text, tab) {
     if (!text || text === '') { return null; }
     let url = await getAiUrl();
-    let model = await getAiModel();
+    let model = await getGenerativeModel();
     if(!model) {  return;  }
+    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`);
+    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`, null, 'debug', tab?.id);
+
     url = new URL(url);
     url = `${url.protocol}//${url.host}/api/generate`;
     let jsonPrompt = {
        "model": model,
        "stream":false,
-       "prompt": `You are an AI assistant. Given the following text, generate the shortest meaningful title that captures its essence. Max length is 35 chars. Respond with the title only, no extra text.
+        "raw": true,
+        "options": {
+            "temperature": 0,
+            "top_p": 0,
+            "repeat_penalty": 1.2,
+            "presence_penalty": 0.0,
+            "max_tokens": 5
+        },
+        "prompt": `Describe in max 5 short words the text below. Ouput only those 5 words - **nothing else**.
 
-Text:
+Text_to_describe:
 “{{${text}}}”
 `
     };
+
+    if(await modelCanThink(model, url)){  jsonPrompt["think"] = false;  }
+
     try {
         const res = await fetch(url, {
             method: 'POST',
@@ -965,10 +1031,43 @@ Text:
             body: JSON.stringify(jsonPrompt)
         });
         const data = await res.json();
-        return data.response.split('\n').slice(-1)?.[0]?.trim() ?? null;
+        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - response`, data);
+        await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - response`, data, 'debug', tab?.id);
+        let title = data?.response?.split('\n')?.map(x => x?.trim())?.filter(Boolean)?.slice(-1)?.[0]?.trim() ?? null;
+        title = title.replace(/^\n?title:\s{1,}/i, '');
+        title = title.replace(/[^a-z0-9\s]/gi, '')
+            .trim()
+            .split(/\s+/)
+            .slice(0, 5)
+            .join(' ');
+        return title;
     } catch (err) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
         return null;
+    }
+}
+
+async function modelCanThink(modelName = '', url = ''){
+    if(!modelName){  return false;  }
+
+    url = new URL(url);
+    url = `${url.protocol}//${url.host}/api/show`;
+
+    const data = {  "model": modelName  };
+    let modelData;
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        modelData = await res.json();
+        const canThink = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'thinking' );
+        return canThink;
+    } catch (err) {
+        console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        return false;
     }
 }
 /////////// storage helpers ///////////
@@ -1008,12 +1107,12 @@ async function createNewSession(text = `Session ${new Date().toISOString().repla
 }
 
 async function getActiveSession() {
-    let model;
+    // let model;
     try {
         const sessionId = await getActiveSessionId();
         if (!sessionId) {  return await createNewSession();  }
 
-        model = await getAiModel();
+        // model = await getAiModel();
         const sessions = await getAllSessions();
 
         const session = sessions.find(sess => sess.id === sessionId);
@@ -1044,18 +1143,9 @@ async function getAllSessions() {
         let sessions = await chrome.storage.local.get([allSessionsStorageKey]);
         if(Object.keys(sessions).length < 1){  sessions = []; }
         while (sessions && typeof sessions === 'object' && allSessionsStorageKey in sessions) {
-            sessions = sessions[allSessionsStorageKey]; // unwrap if needed
+            sessions = sessions[allSessionsStorageKey];
         }
-        // migration code
-        if (sessions && Array.isArray(sessions) && sessions.length > 0) {
-            sessions?.forEach(session => {
-                if (!session.id) {
-                    session.id = crypto.randomUUID();
-                }
-            });
-            await setAllSessions(sessions);
-        }
-        // end of migration
+
         return sessions || [];
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
@@ -1065,7 +1155,10 @@ async function getAllSessions() {
 
 async function setActiveSession(session) {
     try {
-        if (!session?.id) {  throw new Error('Session object is missing a valid id!');  }
+        if (!session?.id) {
+            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - session:`, session);
+            throw new Error(`[${getLineNumber()}]: Session object is missing a valid id!`);
+        }
 
         const sessions = await getAllSessions();
         const idx = sessions.findIndex(s => s.id === session.id);

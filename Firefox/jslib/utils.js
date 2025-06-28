@@ -96,3 +96,63 @@ function checkExtensionState() {
 
     return true;
 }
+
+async function checkAndSetSessionName(){
+    const currentSession = await getActiveSession();
+    if(!currentSession || !currentSession?.title || !currentSession?.title?.toLowerCase()?.startsWith('session')){  return;  }
+    const sessionData = currentSession?.data || [];
+    if(sessionData.length < 1){  return;  }
+    const userInput = sessionData?.filter(el => el?.role === 'user');
+    if(userInput.length < 1){  return;  }
+    if(!userInput[0]?.content){  return;  }
+    await chrome.runtime.sendMessage({ action: "checkAndSetSessionName", text: userInput[0]?.content });
+}
+
+async function getAiUrl(){
+    const laiOptions = await getLaiOptions();
+    if (!laiOptions?.aiUrl) {
+        let msg = 'Missing API endpoint!';
+        await showUIMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error', sender.tab);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg}`, laiOptions);
+        return null;
+    }
+
+    let url = laiOptions?.aiUrl;
+    if (!url) {
+        let msg = `Faild to compose the request URL - ${url}`;
+        await showUIMessage(msg, 'error', sender.tab);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+        return null;
+    }
+
+    return url;
+}
+
+async function getAiModel(){
+    const laiOptions = await getOptions();
+    return laiOptions?.aiModel;
+}
+
+async function modelCanThink(modelName = '', url = ''){
+    if(!modelName){  return false;  }
+
+    url = new URL(url);
+    url = `${url.protocol}//${url.host}/api/show`;
+
+    const data = {  "model": modelName  };
+    let modelData;
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        modelData = await res.json();
+        const canThink = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'thinking' );
+        return canThink;
+    } catch (err) {
+        console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        return false;
+    }
+}

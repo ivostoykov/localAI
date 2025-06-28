@@ -82,19 +82,29 @@
                 </select>
                 <div id="modelButtons">
                     <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                        <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
-                            title="Soft List Desc">
-                        <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
-                            title="Reload models">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
                     <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                </div>
+            </div>
+            <div class="el-holder">
+                <label for="generativeHelper">Generative Helper:</label>
+                <select name="generativeHelper" id="generativeHelper" class="url" data-list="generativeHelperList">
+                    <option value="" selected="selected"></option>
+                </select>
+                <div id="generativeHelperButtons">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                    <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
                 </div>
             </div>
                 <div class="el-holder">
                     <label for="tika">Document Converter</label>
                     <input type="url" name="tika" id="tika" class="url" size="1000" />
                     <div id="tikaButtons">
-                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                            title="Test connection">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection" title="Test connection">
                     </div>
                 </div>
 
@@ -102,8 +112,7 @@
                     <label for="webHook">Tools/Functions</label>
                     <input type="url" name="toolFunc" id="toolFunc" class="url" size="1000" />
                     <div id="toolButtons">
-                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                            title="Test connection">
+                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection" title="Test connection">
                     </div>
                 </div>
 
@@ -156,10 +165,6 @@
                     <li id="exportFuncBtn">Export Function Definitions</li>
                     <li id="importFuncBtn">Import Function Definitions</li>
                     <li id="deleteFuncBtn">Delete Function Definitions</li>
-                    <li>
-                        <input type="checkbox" id="toolsEnabled">
-                        <label for="toolsEnabled">Disable tools</label>
-                    </li>
                 </ul>
             </div>
             <section id="tools" class="js-tab-body invisible tool-section">

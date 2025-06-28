@@ -77,7 +77,7 @@ The changes made here are temporary for the session, (until reload) and for the 
 * Show a list of the availabel system commands.
 * The last menu will open extension's options in a new tab.
 
-#### Chanking [Ollama](https://ollama.com/) model
+#### Changing [Ollama](https://ollama.com/) model
 
 You can switch models in two ways: through the [Menu](#menu) or by hover the mouse over the current model name at the top of the [Ribbon](#ribbon). The model you're using will have a checkmark beside it.
 
@@ -92,9 +92,11 @@ When you hover over the [Ribbon](#ribbon), you'll see the extension's version nu
 
 <img src="Chrome/img/history-icon.svg" height="30" alt="Load Session"/> - Show session list. Click to reload any.
 
-<img src="Chrome/img/recycle.svg" height="30" alt="New Session"/> - Delete sessions
+<img src="Chrome/img/recycle.svg" height="30" alt="Delete Session"/> - Delete sessions
 
-<img src="media/temperature.png" height="30" alt="New Session"/> - Adjustable sessions temperature
+<img src="Chrome/img/think.svg" height="30" alt="Think"/> - Toggle thinking. When the model [is changed](#changing-ollama-model) the thinking status is adjusted with the model capability.
+
+<img src="media/temperature.svg" height="30" alt="Modifiers"/> - Show some of the model's [modifiers](#modifiers).
 
 Sessions can be managed also from the [Options](#options) page.
 
@@ -259,6 +261,10 @@ The model list, determined by the endpoint, includes an additional reload button
 #### Models
 
 If [Ollama](https://ollama.com/) is defined as [End Point](#end-points), Model list will be automatically populated. Open the list and click the preferable model. You can temporary change it from the [Menu](#menu) in the [Ribbon](#ribbon).
+
+#### Generative Model
+
+Optional (default: undefined). If set, it will be used internally, for example to generate a session title. As models vary, experiments may help measure its effectiveness.
 
 ### Document Converter
 

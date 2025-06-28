@@ -83,13 +83,13 @@ async function deleteActiveSessionId() {
 }
 
 async function getActiveSession() {
-    let model;
+    // let model;
     try {
         const sessionId = await getActiveSessionId();
         if (!sessionId) {  return await createNewSession();  }
 
-        const laiOptions = await getOptions();
-        model = laiOptions?.aiModel || 'unknown';
+        // const laiOptions = await getOptions();
+        // model = laiOptions?.aiModel || 'unknown';
         const sessions = await getAllSessions();
 
         const session = sessions.find(sess => sess.id === sessionId);
@@ -102,12 +102,12 @@ async function getActiveSession() {
 }
 
 async function getActiveSessionById(sessionId) {
-    let model;
+    // let model;
     try {
         if(!sessionId){  throw new Error("Invalid or missing session id!"); }
 
-        const laiOptions = await getOptions();
-        model = laiOptions?.aiModel || 'unknown';
+        // const laiOptions = await getOptions();
+        // model = laiOptions?.aiModel || 'unknown';
         const sessions = await getAllSessions();
 
         const session = sessions.find(sess => sess.id === sessionId);
@@ -124,18 +124,9 @@ async function getAllSessions() {
         let sessions = await chrome.storage.local.get([allSessionsStorageKey]);
         if(Object.keys(sessions).length < 1){  sessions = []; }
         while (sessions && typeof sessions === 'object' && allSessionsStorageKey in sessions) {
-            sessions = sessions[allSessionsStorageKey]; // unwrap if needed
+            sessions = sessions[allSessionsStorageKey];
         }
-        // migration code
-        if (sessions && Array.isArray(sessions) && sessions.length > 0) {
-            sessions?.forEach(session => {
-                if (!session.id) {
-                    session.id = crypto.randomUUID();
-                }
-            });
-            await setAllSessions(sessions);
-        }
-        // end of migration
+
         return sessions || [];
     } catch (error) {
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
@@ -183,7 +174,7 @@ async function setActiveSessionId(sessionId) {
 
 async function setActiveSession(session) {
     try {
-        if (!session?.id) {  throw new Error('Session object is missing a valid id!');  }
+        if (!session?.id) {  throw new Error(`[${getLineNumber()}]: Session object is missing a valid id!`);  }
 
         const sessions = await getAllSessions();
         const idx = sessions.findIndex(s => s.id === session.id);

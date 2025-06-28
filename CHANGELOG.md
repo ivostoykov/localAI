@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.27.85] 2025-06-26 - latest
+## [1.27.90] 2025-06-28 - latest
+- Added the ability to switch thinking on or off (available in Ollama).
+- Added session name generating calls
+- Tool availability is now tied to the session.
+- Extension options updated
+- Instead of storing status, the model is checked on the fly for tool support. If it supports tools, they’re included; if not, they’re left out.
+
+## [1.27.85] 2025-06-26
 - Message exchange bug fixed
 - Dynamic setting Model options bug fixed
 - Added Help in the main menu

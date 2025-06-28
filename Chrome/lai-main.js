@@ -401,16 +401,15 @@ async function onPromptTextAreaKeyDown(e) {
         try {
             dumpInConsole(`${[getLineNumber()]} - messages collected are ${messages.length}`, messages);
             const idx = await getActiveSessionId();
-            if (!idx) {
-                await createNewSession(elTarget.value);
-            }
+            if (!idx) {  await createNewSession(elTarget.value);  }
+
             shadowRoot.getElementById('laiAbort')?.classList.remove('invisible');
             shadowRoot.querySelector('#attachContainer')?.classList.remove('active');
             elTarget.classList.add('invisible');
             elTarget.value = '';
             await queryAI();
         } catch (e) {
-            showMessage(`ERROR: ${e.message}`, error);
+            showMessage(`ERROR: ${e.message}`, e);
         } finally {
             clearAttachments();
         }
@@ -915,10 +914,10 @@ async function queryAI() {
     const data = {  "messages": messages,  };
     let options = getModelModifiers();
     if(options){  data["options"] = options;  }
-    // const data = {
-    //     "messages": messages,
-    //     "options": {  "temperature": parseFloat(temp || "0.5" )  }
-    // }
+
+    if(shadowRoot?.querySelector('#modelThinking')?.classList?.contains('disabled') || false){
+        data["think"] = false;
+    }
 
     if (laiOptions.aiUrl.indexOf('api') > -1) {
         if (laiOptions.aiModel.trim() === '') {
@@ -929,12 +928,14 @@ async function queryAI() {
         }
     }
 
+    const toolFunctions = !shadowRoot?.querySelector('#toolFunctions')?.classList?.contains('disabled') || false;
     const sysInstruct = getCurrentSystemInstructions();
     const requestData = {
         action: "fetchData",
         systemInstructions: sysInstruct || '',
         url: laiOptions.aiUrl,
         data: data,
+        tools: toolFunctions
     };
 
     try {
@@ -1057,7 +1058,6 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
         console.log(`>>> ${manifest.name} - [${getLineNumber()}] - restarting: ${restartCounter}`, error, response);
     }
 
-
     switch (response.action) {
         case "streamData":
 
@@ -1145,7 +1145,8 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
             dumpInConsole(response.message, response.obj, response.type);
             break;
         case "userPrompt":
-            storeLastGeneratedPrompt(response.data)
+            storeLastGeneratedPrompt(response.data);
+            await checkAndSetSessionName();
             break;
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
