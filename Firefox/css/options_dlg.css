@@ -45,6 +45,7 @@ dialog menu {
 dialog input[type="text"]{
     padding: 0 10px;
     margin-top: 10px;
+    min-height: 30px;
 }
 
 dialog h2{

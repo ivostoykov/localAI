@@ -1,234 +1,255 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title></title>
-    <link rel="stylesheet" href="css/options.css">
-    <link rel="stylesheet" href="css/options_dlg.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title></title>
+  <link rel="stylesheet" href="css/options.css" />
+  <link rel="stylesheet" href="css/options_dlg.css" />
 </head>
 <body>
-    <h1 id="pageTitle">Test</h1>
-    <div class="form-container">
-        <section id="tabs" class="navbar-ribbon">
-            <ul id="tabMenu" class="navbar">
-                <li class="navbar-item active-navebar-item" data-tabBody="general">General Settings</li>
-                <li class="navbar-item" data-tabBody="prompts">User Commands</li>
-                <li class="navbar-item" data-tabBody="tools">Functions</li>
-            </ul>
-        </section>
-        <form id="laiOptionsForm">
-<!-- main settings -->
-            <section id="general" class="js-tab-body">
-            <div class="el-holder">
-                <input type="checkbox" name="showEmbeddedButton" id="showEmbeddedButton" />
-                <label for="showEmbeddedButton">Show embedded button</label>
-                    <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon"
-                        title="Embedded button icon">
+  <h1 id="pageTitle">Extension Options</h1>
+  <div class="options-layout">
+    <!-- Left panel -->
+    <aside class="sidebar">
+      <ul class="menu">
+        <li class="menu-item" data-section="general">General Settings</li>
+        <li class="menu-item" data-section="prompts">User Commands</li>
+        <li class="menu-item" data-section="tools">Functions</li>
+      </ul>
+    </aside>
+
+    <!-- Right panel -->
+    <main class="content-area">
+
+      <!-- Panels -->
+      <section id="general" class="content-section">
+        <div id="generalRibbon" class="ribbon">
+          <button type="submit" id="btnSaveForm">Save</button>
+          <button type="button" id="cancelButton">Close</button>
+          <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#general-settings" target="_blank" >
+            <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+          </a>
+        </div>
+
+        <form id="laiOptionsForm" class="container">
+
+          <div class="group checkboxes-sliders">
+            <div>
+              <input type="checkbox" id="showEmbeddedButton" />
+              <label for="showEmbeddedButton">Show embedded button</label>
+              <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon" title="Embedded button icon">
             </div>
-                <div class="row-split">
-            <div class="el-holder">
-                <input type="checkbox" name="openPanelOnLoad" id="openPanelOnLoad" />
-                <label for="openPanelOnLoad">Open panel on load</label>
+            <div>
+              <input type="checkbox" id="openPanelOnLoad" />
+              <label for="openPanelOnLoad">Open panel on load</label>
             </div>
-            <div class="el-holder">
-                        <input type="range" id="tempRange" name="tempRange" min="0" max="1" value="0.5" step="0.1">
-                        <input type="number" id="tempInput" name="tempInput" min="0" max="1" value="0.5" step="0.1">
-                        <output for="tempRange" id="tempOutput">Neutral</output>
-                    </div>
-                </div>
-                <div class="el-holder">
-                <input type="checkbox" name="closeOnClickOut" id="closeOnClickOut" />
-                <label for="closeOnClickOut">Close Sidebar when click outside</label>
+            <div>
+              <input type="checkbox" id="closeOnClickOut" />
+              <label for="closeOnClickOut">Close Sidebar when clicking outside</label>
             </div>
-            <div class="el-holder">
-                <input type="checkbox" name="closeOnSendTo" id="closeOnSendTo" />
-                <label for="closeOnSendTo">Close adter Send To</label>
+            <div>
+              <input type="checkbox" id="closeOnSendTo" />
+              <label for="closeOnSendTo">Close after Send To</label>
             </div>
-            <div class="el-holder">
-                <input type="checkbox" name="closeOnCopy" id="closeOnCopy" />
-                <label for="closeOnCopy">Close Sidebar after copy</label>
+            <div>
+              <input type="checkbox" id="closeOnCopy" />
+              <label for="closeOnCopy">Close Sidebar after copy</label>
             </div>
-            <div class="el-holder">
-                <input type="checkbox" name="loadHistoryOnStart" id="loadHistoryOnStart" />
-                <label for="loadHistoryOnStart">Load last history session on start</label>
+            <div>
+              <input type="checkbox" id="loadHistoryOnStart" />
+              <label for="loadHistoryOnStart">Load history on start</label>
             </div>
-            <div class="el-holder">
-                <label for="aiUrl">End point:</label>
-                <select name="aiUrl" id="aiUrl" class="url" data-list="urlList">
-                    <option value="" selected="selected">Select End Point</option>
-                </select>
-                <div id="urlButtons">
-                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                            title="Test connection">
-                        <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
-                            title="Edit selected">
-                        <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list"
-                            title="Add to list">
-                        <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
-                            title="Remove from list">
-                        <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
-                            title="Remove the list">
-                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                        <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
-                            title="Soft List Desc">
-                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                </div>
+            <div>
+              <label for="tempRange">Temperature</label>
+              <input type="range" id="tempRange" min="0" max="1" value="0.5" step="0.1" />
+              <input type="number" id="tempInput" min="0" max="1" value="0.5" step="0.1" />
+              <output id="tempOutput">Neutral</output>
             </div>
+          </div>
+<!--  -->
+<hr class="separator">
+<!--  -->
+          <div class="group selects-inputs">
             <div class="el-holder">
-                <label for="aiModel">Model:</label>
-                <select name="aiModel" id="aiModel" class="url" data-list="modelList">
-                    <option value="" selected="selected">Select Model</option>
-                </select>
-                <div id="modelButtons">
-                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
-                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                </div>
+              <label for="aiModel">Model:</label>
+              <select id="aiModel" data-list="modelList">
+                <option value="" selected="selected">Select Model</option>
+              </select>
+              <div id="modelButtons">
+                <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
+                  title="Reload models">
+                <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+              </div>
             </div>
-            <div class="el-holder">
-                <label for="generativeHelper">Generative Helper:</label>
-                <select name="generativeHelper" id="generativeHelper" class="url" data-list="generativeHelperList">
-                    <option value="" selected="selected"></option>
-                </select>
-                <div id="generativeHelperButtons">
-                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
-                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                    <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-                </div>
-            </div>
-                <div class="el-holder">
-                    <label for="tika">Document Converter</label>
-                    <input type="url" name="tika" id="tika" class="url" size="1000" />
-                    <div id="tikaButtons">
-                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection" title="Test connection">
-                    </div>
-                </div>
 
             <div class="el-holder">
-                    <label for="webHook">Tools/Functions</label>
-                    <input type="url" name="toolFunc" id="toolFunc" class="url" size="1000" />
-                    <div id="toolButtons">
-                        <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection" title="Test connection">
-                    </div>
-                </div>
+              <label for="generativeHelper">Generative Helper:</label>
+              <select id="generativeHelper" data-list="generativeHelperList">
+                <option value="" selected="selected"></option>
+              </select>
+              <div id="generativeHelperButtons">
+                <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
+                <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#generative-model" target="_blank" >
+                  <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+                </a>
+              </div>
+            </div>
 
             <div class="el-holder">
-                <label for="localPort">System Instructions:</label>
-                <div class="tooltip">
-                    <span class="info-circle">&#9432;</span>
-                    <span class="tooltip-text">Enter any specific instructions for the session.</span>
-                </div>
-                <textarea id="systemInstructions" name="systemInstructions" rows="8"></textarea>
+              <label for="tika">Document Converter:</label>
+              <input type="url" id="tika" />
+              <div id="tikaButtons">
+                <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                  title="Test connection">
+              </div>
+                <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#document-converter" target="_blank" >
+                  <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+                </a>
             </div>
+
             <div class="el-holder">
-                <label for="personalInfo">Personal Information:</label>
-                <div class="tooltip">
-                    <span class="info-circle">&#9432;</span>
-                    <span class="tooltip-text">
-                        Enter key/value pairs separated by semicolumn (";") or new line. Example: <br>
-                        name=John Dow<br>
-                        name: Jane Dow
-                    </span>
-                </div>
-                <textarea id="personalInfo" name="personalInfo" rows="8"></textarea>
+              <label for="toolFunc">Tools/Functions:</label>
+              <input type="url" id="toolFunc" />
+              <div id="toolButtons">
+                <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                  title="Test connection">
+              </div>
             </div>
 
-            <div class="ext-container">
-                <button id="deleteAllSessions" type="button">Delete all previous sessions</button>
-                <button id="exportSessions" type="button">Export sessions</button>
+            <div class="el-holder">
+              <label for="aiUrl">Endpoint:</label>
+              <select id="aiUrl" data-list="urlList">
+                <option value="" selected="selected">Select End Point</option>
+              </select>
+              <div id="urlButtons">
+                <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                  title="Test connection">
+                <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
+                <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
+                <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
+                  title="Remove from list">
+                <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
+                  title="Remove the list">
+                <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#end-points" target="_blank" >
+                  <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+                </a>
+              </div>
             </div>
-
-            <button type="submit">Save</button>
-            <button type="button" id="cancelButton">Cancel</button>
-            </section>
-
-<!-- prompt settings -->
-            <div id="promptRibbon" class="invisible">
-                <ul>
-                    <li id="newPromptBtn">New User Commands</li>
-                    <li id="exportPromptBtn">Export User Commands</li>
-                    <li id="importPromptBtn">Import User Commands</li>
-                    <li id="deletePromptBtn">Delete All User Commands</li>
-                </ul>
+          </div>
+<!--  -->
+          <hr class="separator">
+<!--  -->
+          <div class="group text-areas">
+            <div>
+              <label for="systemInstructions">System Instructions:</label>
+              <textarea id="systemInstructions" rows="15"></textarea>
             </div>
-            <section id="prompts" class="js-tab-body invisible prompt-section">
-            </section>
-
-<!-- tools functions -->
-            <div id="toolFunctionsRibbon" class="invisible">
-                <ul>
-                    <li id="newFuncBtn">New Function</li>
-                    <li id="exportFuncBtn">Export Function Definitions</li>
-                    <li id="importFuncBtn">Import Function Definitions</li>
-                    <li id="deleteFuncBtn">Delete Function Definitions</li>
-                </ul>
+            <div>
+              <label for="personalInfo">Personal Information:</label>
+              <textarea id="personalInfo" rows="5"></textarea>
             </div>
-            <section id="tools" class="js-tab-body invisible tool-section">
-            </section>
+          </div>
         </form>
-        <div id="message" class="message-box invisible"></div>
+      </section>
+
+
+      <section id="prompts" class="content-section invisible">
+        <div id="promptRibbon" class="ribbon">
+          <button id="newPromptBtn">New</button>
+          <button id="exportPromptBtn">Export</button>
+          <button id="importPromptBtn">Import</button>
+          <button id="deletePromptBtn">Delete All</button>
+          <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#user-commands" target="_blank" >
+            <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+          </a>
+        </div>
+
+        <div id="promptsContainer" class="container"> <h1>Prompts</h1></div>
+      </section>
+
+      <section id="tools" class="content-section invisible">
+        <div id="toolsRibbon" class="ribbon">
+          <button id="newFuncBtn">New</button>
+          <button id="exportFuncBtn">Export</button>
+          <button id="importFuncBtn">Import</button>
+          <button id="deleteFuncBtn">Delete All</button>
+          <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#functions-tools" target="_blank" >
+            <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+          </a>
+        </div>
+
+        <div id="toolsContainer" class="container"> <h1>Tools</h1></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="laiDialog">
+    <div class="dialog-container">
+      <div class="dialog-title">
+        <h2 id="dlgTitle">Enter Your Text</h2>
+      </div>
+      <div class="dialog-body">
+        <div class="input-group">
+          <label for="dlgValue">Your Text</label>
+          <input id="dlgValue" type="text" />
+        </div>
+        <div class="checkbox-group">
+          <label for="dlgIsSelected">Active</label>
+          <input id="dlgIsSelected" type="checkbox" />
+        </div>
+      </div>
+      <div class="dialog-buttons">
+        <menu>
+          <button id="dlgBtnOK">OK</button>
+          <button id="dlgBtnCancel">Cancel</button>
+        </menu>
+      </div>
     </div>
+  </dialog>
 
-    <dialog id="laiDialog">
-        <div class="dialog-container">
-            <div class="dialog-title">
-                <h2 id="dlgTitle">Enter Your Text</h2>
-            </div>
-            <div class="dialog-body">
-                <div class="input-group">
-                    <label for="dlgValue" id="dlgValueLabel">Your Text</label>
-                    <input id="dlgValue" name="dlgValue" type="text" class="url" />
-                </div>
-                <div class="checkbox-group">
-                    <label for="dlgIsSelected" id="dlgActiveLabel">Active</label>
-                    <input id="dlgIsSelected" type="checkbox" />
-                </div>
-            </div>
-            <div class="dialog-buttons">
-                <menu>
-                    <button id="dlgBtnOK">OK</button>
-                    <button id="dlgBtnCancel">Cancel</button>
-                </menu>
-            </div>
-        </div>
-    </dialog>
-    <div id="laiCopyHint" class="lai-copy-hint invisible">Copied!</div>
-    <input id="fileInput" type="file" class="invisible">
-    <img src="img/reload.svg" id="spinner" class="loading invisible"/>
+  <div id="laiCopyHint" class="lai-copy-hint invisible">Copied!</div>
+  <div id="message" class="message-box invisible"></div>
+  <img id="spinner" src="img/reload.svg" class="loading invisible" />
+  <input type="file" id="fileInput" class="invisible" />
 
-    <template id="promptTemplate">
-        <div class="prompt-item">
-            <div class="prompt-buttons">
-                <img src="img/undo.svg" data-action="undo" class="invisible">
-                <img src="img/copy.svg" data-action="copy">
-                <img src="img/edit2.svg" data-action="edit">
-                <img src="img/tick.svg" data-action="save" class="invisible">
-                <img src="img/remove-all.svg" data-action="delete">
-            </div>
-            <div class="prompt-title js-ptompt-card-item" contenteditable="false">Editable Title</div>
-            <div class="prompt-command js-ptompt-card-item" contenteditable="false">Non-editable Command</div>
-            <div class="prompt-description js-ptompt-card-item" contenteditable="false">Editable Title</div>
-            <div class="prompt-body js-ptompt-card-item" contenteditable="false">Editable Body</div>
-        </div>
-    </template>
+  <template id="promptTemplate">
+      <div class="prompt-item">
+          <div class="prompt-buttons">
+              <img src="img/undo.svg" data-action="undo" class="invisible">
+              <img src="img/copy.svg" data-action="copy">
+              <img src="img/edit2.svg" data-action="edit">
+              <img src="img/tick.svg" data-action="save" class="invisible">
+              <img src="img/remove-all.svg" data-action="delete">
+          </div>
+          <div class="prompt-title js-ptompt-card-item" contenteditable="false">Editable Title</div>
+          <div class="prompt-command js-ptompt-card-item" contenteditable="false">Non-editable Command</div>
+          <div class="prompt-description js-ptompt-card-item" contenteditable="false">Editable Title</div>
+          <div class="prompt-body js-ptompt-card-item" contenteditable="false">Editable Body</div>
+      </div>
+  </template>
 
-    <template id="functionTemplate">
-        <div class="prompt-item">
-            <div class="prompt-buttons">
-                <img src="img/undo.svg" data-action="undo" class="invisible">
-                <img src="img/copy.svg" data-action="copy">
-                <img src="img/edit2.svg" data-action="edit">
-                <img src="img/tick.svg" data-action="save" class="invisible">
-                <img src="img/remove-all.svg" data-action="delete">
-            </div>
-            <pre class="prompt-body js-ptompt-card-item" contenteditable="false">{}</pre>
-        </div>
-    </template>
+  <template id="functionTemplate">
+      <div class="prompt-item">
+          <div class="prompt-buttons">
+              <img src="img/undo.svg" data-action="undo" class="invisible">
+              <img src="img/copy.svg" data-action="copy">
+              <img src="img/edit2.svg" data-action="edit">
+              <img src="img/tick.svg" data-action="save" class="invisible">
+              <img src="img/remove-all.svg" data-action="delete">
+          </div>
+          <pre class="prompt-body js-ptompt-card-item" contenteditable="false">{}</pre>
+      </div>
+  </template>
 
-    <script src="options.js"></script>
+  <script src="options.js"></script>
 </body>
 </html>

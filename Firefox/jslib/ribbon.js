@@ -126,6 +126,7 @@ async function initRibbon(){
         setTimeout(() => {  resetStatusbar();  }, 1000);
     });
     await adjustThinkingStatus(ribbon?.querySelector('#modelThinking'));
+    await adjustToolsStatus(ribbon?.querySelector('#toolFunctions'));
 
     shadowRoot?.getElementById('recycleCurrentSessionBtn').addEventListener('click', async e => await recycleActiveSession(e, shadowRoot), false);
     shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
@@ -548,6 +549,7 @@ async function swapActiveModel(e, modelName){
     laiOptions.aiModel = modelName;
     await setOptions(laiOptions);
     await adjustThinkingStatus();
+    await adjustToolsStatus();
 
     setModelNameLabel({ "model": modelName });
     Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
@@ -563,20 +565,14 @@ async function swapActiveModel(e, modelName){
 
 async function onToolFunctionsBtnClick(e){
     const el = e.target;
-    const options = await getOptions();
     el.classList.toggle('disabled');
     if (el.classList.contains('disabled')) {
-        el.alt = el.alt.replace(/Disable/g , 'Enable');
-        el.title = el.alt;
-        options["toolsEnabled"] = false;
+        el.title = el.alt = el.alt.replace(/Disable/g , 'Enable');
     } else {
-        el.alt = el.alt.replace(/Enable/g , 'Disable');
-        el.title = el.alt;
-        options["toolsEnabled"] = true;
+        el.title = el.alt = el.alt.replace(/Enable/g , 'Disable');
     }
     updateStatusBar(`Tools are ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`)
     setTimeout(() => resetStatusbar(), 3000);
-    // await setOptions(options); // no persisten storage anymore - only for the current session
 }
 
 function setModelNameLabel(data) {
@@ -717,5 +713,22 @@ async function adjustThinkingStatus(thinkingIconEl){
         thinkingIconEl.classList.add('disabled');
     }
     updateStatusBar(`Thinking ${thinkingIconEl.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
+    setTimeout(() => {  resetStatusbar();  }, 1000);
+}
+
+async function adjustToolsStatus(el) {
+    if(!el){
+        let shadowRoot = getShadowRoot();
+        el = shadowRoot?.querySelector('#toolFunctions');
+        if(!el) {  return;  }
+    }
+
+    const model = await getAiModel();
+    if(await modelCanUseTools(model)){
+        el.classList.remove('disabled');
+    } else {
+        el.classList.add('disabled');
+    }
+    updateStatusBar(`Tools ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
     setTimeout(() => {  resetStatusbar();  }, 1000);
 }

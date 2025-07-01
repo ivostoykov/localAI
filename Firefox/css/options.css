@@ -1,118 +1,232 @@
 body {
-    font-family: Arial, sans-serif;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: center;
-    height: 100vh;
-    margin: 25px 0 0 0;
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
-.form-container {
-    padding: 20px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    background-color: #f9f9f9;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    min-width: 400px;
-    width: 60%;
+h1#pageTitle {
+  margin: 0;
+  padding: 1rem;
+  background-color: #f0f0f0;
+  text-align: center;
+  font-size: 1.5rem;
 }
 
-.advance-settings-title{
+.options-layout {
+  display: flex;
+  flex: 1;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+.sidebar {
+  flex: 1;
+  max-width: 250px;
+  background-color: #f3f3f3;
+  border-right: 1px solid #ccc;
+}
+
+.sidebar .menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sidebar .menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  cursor: pointer;
+  border-bottom: 1px solid #ddd;
+}
+
+.sidebar .menu-item:hover {
+  background-color: #ddd;
+}
+
+.sidebar .menu-item.active {
+  background-color: #ccc;
+  font-weight: bold;
+}
+
+.sidebar .menu-item.active::after {
+  content: "►";
+  font-weight: bold;
+  margin-left: 5px;
+}
+
+.content-area {
+  flex: 3;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ribbon {
+    background-color: #e9e9e9;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid #ccc;
     display: flex;
+    position: relative;
     flex-direction: row;
-    gap: 5px;
     align-items: center;
+    gap: .5rem;
 }
 
-.advance-settings-container{
-    display: block;
+.content-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.row-split {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+.content-section .container {
+  margin: 1rem;
+  overflow-y: auto;
+}
+
+.separator {
+  margin: 5rem 0;
+  border: none;
+  border-top: 2px solid #eee;
+}
+
+.group {
+  margin-bottom: 3rem;
+}
+
+.group.checkboxes-sliders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.group.checkboxes-sliders > div {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.group.checkboxes-sliders > div input[type="checkbox"] {
+  order: 2;
+}
+
+.group.checkboxes-sliders > div label {
+  order: 1;
+  white-space: nowrap;
+}
+
+.group.checkboxes-sliders > div:last-child {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  gap: 1rem;
+}
+
+.group.checkboxes-sliders > div:last-child label {
+  order: 1;
+  min-width: 100px;
+}
+
+.group.checkboxes-sliders > div:last-child input[type="range"] {
+  order: 2;
+  flex: 1;
+  max-width: 150px;
+}
+
+.group.checkboxes-sliders > div:last-child input[type="number"] {
+  order: 3;
+  width: 80px;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+.group.checkboxes-sliders > div:last-child output {
+  order: 4;
+  min-width: 80px;
+  text-align: left;
+  font-style: italic;
+}
+
+.group input[type="checkbox"] {
+  margin-right: 0.5rem;
+}
+
+.group.selects-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 10rem;
+  justify-content: flex-start;
 }
 
 .el-holder {
-    display: grid;
-    grid-template-columns: auto auto 1fr;
-    gap: 0.5rem;
-    align-items: center;
-    margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 45%;
+  min-width: 300px;
+  max-width: 600px;
+  flex-wrap: nowrap;
 }
 
-.el-holder textarea {
-    grid-column: 1 / -1;
+.el-holder label {
+  flex: 0 0 20%;
+  text-align: right;
+  white-space: nowrap;
 }
 
-.el-holder label + textarea {
-    order: 0;
+.el-holder select,
+.el-holder input[type="url"] {
+  flex: 1 1 60%;
+  height: 30px;
+  max-width: 300px;
+  min-width: 300px;
+  padding: 0 0.5rem;
+  box-sizing: border-box;
 }
 
-label {
-    margin: 0;
-    min-width: 120px
+.el-holder div {
+  display: flex;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
 }
 
-.model-icon-button{
-    width: 24px;
-    height: auto;
-    cursor: pointer;
+.group.text-areas {
+  gap: 2rem;
+  display: flex;
+  flex-direction: column;
 }
 
-.model-icon-button:hover{
-    background-color: #ddd;
-    border: 1px solid #aaa;
+.group.text-areas label {
+  margin-bottom: 0.5rem;
 }
 
-.fold-icon-button{
-    width: 16px !important;
+.group textarea {
+  width: 100%;
+  padding: 0.5rem;
+  box-sizing: border-box;
 }
 
-.icon-button{
-    width: 32px;
-    height: auto;
-}
-
-input[type="text"].url {
-    height: 24px !important;
-    width: 492px !important;
-}
-
-.url {
-    width: 500px;
-    height: 30px;
-}
-
-input[type="checkbox"] {
-    width: auto;
-}
-
-/* extension */
-.ext-container{
-    position: relative;
-    display: flex;
-    /* background-color: #e8e8e8; */
-    border: 1px solid #ccc;
-    border-radius: 7px;
-    margin: 25px 0;
-    padding: 5px;
-    justify-content: flex-start;
-    flex-direction: row;
-}
-
-.ext-container button{
-    background-color: #ddd;
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
 }
 
 button {
-    padding: 10px 20px;
-    margin-right: 10px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
+  padding: 0.5rem 1rem;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 100px;
+  width: 150px;
 }
 
 button:hover{
@@ -120,171 +234,105 @@ button:hover{
 }
 
 button[type="submit"] {
-    background-color: #4CAF50;
-    color: white;
+  background-color: #4CAF50;
+  color: #fff;
+}
+
+button[type="submit"]:hover {
+  background-color: lime;
+  color: #000;
+  box-shadow: 0px 0px 10px green;
 }
 
 #cancelButton {
-    background-color: #f44336;
-    color: white;
+  background-color: #f57b73;
+  color: #000;
 }
 
-.message-box{
-    position: absolute;
-    top: 50px;
-    width: 80%;
-    display: block;
-    height: auto;
-    padding: 1rem 0.5rem;
-    margin: auto;
-    left: 50%;
-    transform: translateX(-50%);
-    /* padding: 1rem 0.5rem;
-    margin: 1rem 0 0 0; */
+#cancelButton:hover {
+  background-color: #f00;
+  color: #fff;
+  box-shadow: 0px 0px 10px #b33333;
 }
 
-.success {
-    background-color: #73ff27;
+.message-box {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  min-width: 50%;
+  transform: translateX(-50%);
+  background-color: #d9d6d6;
+  padding: 1rem;
+  border-radius: 5px;
+  z-index: 1000;
+  text-align: center;
+  border: 1px solid #0000ff;
 }
 
-.error {
-    background-color: #fb6666;
+.message-box.success {
+  background-color: #73ff27;
 }
 
-.info {
-    background-color: #d9d6d6;
+.message-box.error {
+  background-color: #fb6666;
 }
 
-.warning {
-    background-color: #ffa66e;
+.message-box.info {
+  background-color: #ddedfa;
 }
 
-.invisible {
-    display: none;
-}
-
-/* tooltips */
-.tooltip {
-    position: relative;
-    display: inline-block;
-  }
-
-  .tooltip .tooltip-text {
-    visibility: hidden;
-    width: auto;
-    background-color: black;
-    color: #fff;
-    text-align: center;
-    border-radius: 6px;
-    padding: 10px;
-    position: absolute;
-    z-index: 1;
-    bottom: 100%;
-    left: 1%;
-    margin-left: -60px;
-    display: inline-block;
-    width: 250px;
-    text-align: left;
-  }
-
-  .tooltip:hover .tooltip-text {
-    visibility: visible;
-  }
-
-  .info-circle {
-    background-color: #e8e8e8;
-    border-radius: 50%;
-    padding: 5px;
-    margin-left: 5px;
-    font-size: 16px;
-  }
-
-.loading{
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 1000;
-    animation: spin 1.75s linear infinite;
-    width: 100px;
+.loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 50px;
+  animation: spin 1.5s linear infinite;
+  z-index: 1000;
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
-.lai-copy-hint {
-    position: fixed;
-    background-color: #333;
-    color: #fff;
-    padding: 5px 10px;
-    border-radius: 5px;
-    font-size: 12px;
-    opacity: 0;
-    transition: opacity 0.5s linear;
-    pointer-events: none;
+.invisible {
+  display: none;
 }
 
-.navbar-ribbon{
-    margin-bottom: 15px;
+@media (max-width: 768px) {
+  .options-layout {
+    flex-direction: column;
+  }
+  .sidebar {
+    max-width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #ccc;
+  }
+  .content-area {
+    flex: unset;
+  }
 }
 
-ul.navbar {
-    list-style-type: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    background-color: #f3f3f3;
+/* General settings helper buttons */
+.model-icon-button {
+  width: 24px;
+  height: auto;
+  cursor: pointer;
 }
 
-li.navbar-item {
-    padding: 14px 20px;
-    cursor: pointer;
-    text-align: center;
+.model-icon-button:hover {
+  background-color: #ddd;
+  border: 1px solid #aaa;
 }
 
-li.navbar-item:hover {
-    background-color: #ddd;
-}
 
-.active-navebar-item{
-    border-bottom: 2px solid #777;
-}
-
-#promptRibbon ul, #toolFunctionsRibbon ul {
-    list-style-type: none;
-    margin: 0;
-    padding: 0 0 10px 0;
-    display: flex;
-    position: relative;
-    align-items: center;
-}
-
-#promptRibbon li, #toolFunctionsRibbon li {
-    margin-right: 20px;
-    cursor: pointer;
-    padding: 8px;
-}
-
-#promptRibbon li:hover, #toolFunctionsRibbon li:hover {
-    background-color: #ccc;
-}
-
-#promptRibbon li:last-child, #toolFunctionsRibbon li:last-child {
-    margin-right: 0;
-}
-
-.prompt-ribbon-button{
+.icon-button{
     width: 32px;
     height: auto;
-    padding: 0 1rem;
-    margin: 0 0 10px 0;
 }
 
-.prompt-section, .tool-section{
-    overflow: auto;
-}
+/* prompt section */
 
 .prompt-item{
     border: 1px solid #555;
@@ -313,10 +361,12 @@ li.navbar-item:hover {
     font-style: italic;
     font-size: 1rem;
 }
+
 .prompt-body{
     font-family: monospace;
     font-size: 0.9rem;
     margin: 10px 0;
+    max-width: 93%;
 }
 
 .prompt-buttons {

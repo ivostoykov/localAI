@@ -1,6 +1,19 @@
 # Local AI - Changelog
 
-## [1.27.90] 2025-06-28 - latest
+## [1.28.0] 2025-07-01 - latest
+- New extension settings page
+- Changes in the General Settings section are detected and the window won't be closed if there are changes not saved yet.
+- Added links to the help documentation
+- Bug fixes
+- Improved model capability detection (if server provides information)
+- Documentation updated
+
+## [1.27.93] 2025-06-29
+- Model tool usage detection is now available.
+- Detection of model thinking capabilities was added.
+- Bug fixes
+
+## [1.27.90] 2025-06-28
 - Added the ability to switch thinking on or off (available in Ollama).
 - Added session name generating calls
 - Tool availability is now tied to the session.

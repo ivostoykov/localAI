@@ -246,7 +246,7 @@ This will send the content of the page from current active tab to the AI with a 
 
 ## General Settings
 
-![Options](media/options.png)
+<img src="media/options.png" width="1200" alt="Options"/>
 
 <img src="media/default_temp.png" width="250" alt="Temperature" title="Temperature"/> Use temperature slider to set default temperature, adjustable anytime from the [Ribbon](#ribbon). The short description is: the lower the value, the stricter the response; conversely, a higher value allows for a more relaxed and creative outcome. If you're interested in learning more about temperature, here is a [helpful article](https://www.hopsworks.ai/dictionary/llm-temperature), or you can simply Google it.
 

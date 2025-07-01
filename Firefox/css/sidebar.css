@@ -154,9 +154,10 @@ html, body, local-ai, local-ai *, #localAI, #localAI * {
     transform: translate(-50%, -50%);
     pointer-events: none;
     opacity: 0.25;
-    font-size: 1.75rem;
+    font-size: 2em;
     color: #999;
     font-weight: bold;
+    text-align: center;
 }
 
 .lai-chat-history {

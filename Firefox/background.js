@@ -110,6 +110,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             chrome.tabs.create({url: chrome.runtime.getURL('options.html')});
             sendResponse();
             break;
+        case "modelCanThink":
+            modelCanThink(request?.model, request?.url)
+                .then(result => sendResponse({canThink: result}))
+                .catch(async e => {
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                    sendResponse({ status: 'error', message: e.toString() });
+                });
+            break;
+        case "modelCanUseTools":
+            modelCanUseTools(request?.model)
+                .then(result => sendResponse({canUseTools: result}))
+                .catch(async e => {
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                    sendResponse({ status: 'error', message: e.toString() });
+                });
+            break;
         case "prepareModels":
             prepareModels(request.modelName, request.unload, sender.tab)
                 .then(response => sendResponse({status: response.status, text: response.statusText}))

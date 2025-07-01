@@ -112,7 +112,7 @@ async function getAiUrl(){
     const laiOptions = await getLaiOptions();
     if (!laiOptions?.aiUrl) {
         let msg = 'Missing API endpoint!';
-        await showUIMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error', sender.tab);
+        showMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg}`, laiOptions);
         return null;
     }
@@ -120,7 +120,7 @@ async function getAiUrl(){
     let url = laiOptions?.aiUrl;
     if (!url) {
         let msg = `Faild to compose the request URL - ${url}`;
-        await showUIMessage(msg, 'error', sender.tab);
+        showMessage(msg, 'error');
         console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
         return null;
     }
@@ -133,24 +133,37 @@ async function getAiModel(){
     return laiOptions?.aiModel;
 }
 
-async function modelCanThink(modelName = '', url = ''){
+async function modelCanThink(modelName = '', url = '') {
     if(!modelName){  return false;  }
 
     url = new URL(url);
     url = `${url.protocol}//${url.host}/api/show`;
 
-    const data = {  "model": modelName  };
-    let modelData;
+    try {
+        const response = await chrome.runtime.sendMessage({ action: 'modelCanThink', model: modelName, url });
+        if (response?.error) {
+            console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - response error`, response?.error);
+            return false;
+        }
+
+        return response?.canThink ?? false;
+    } catch (err) {
+        console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        return false;
+    }
+}
+
+async function modelCanUseTools(modelName = ''){
+    if(!modelName){  return false;  }
 
     try {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        modelData = await res.json();
-        const canThink = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'thinking' );
-        return canThink;
+        const response = await chrome.runtime.sendMessage({ action: 'modelCanUseTools', model: modelName,});
+        if (response?.error) {
+            console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - response error`, response?.error);
+            return false;
+        }
+
+        return response?.canUseTools ?? false;
     } catch (err) {
         console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
