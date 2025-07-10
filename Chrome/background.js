@@ -47,13 +47,14 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 
-chrome.runtime.onConnect.addListener(function (port) {
-    port.onDisconnect.addListener(function () {
-      tryReloadExtension();
-    });
-});
+// chrome.runtime.onConnect.addListener(function (port) {
+//     port.onDisconnect.addListener(function () {
+//       tryReloadExtension();
+//     });
+// });
 
-chrome.runtime.onUpdateAvailable.addListener(function (details) { tryReloadExtension(); });
+chrome.runtime.onUpdateAvailable.addListener(tryReloadExtension);
+chrome.runtime.onInstalled.addListener(reinjectContentScripts);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     let response;
@@ -114,6 +115,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             modelCanThink(request?.model, request?.url)
                 .then(result => sendResponse({canThink: result}))
                 .catch(async e => {
+                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
                     await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
@@ -122,6 +124,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             modelCanUseTools(request?.model)
                 .then(result => sendResponse({canUseTools: result}))
                 .catch(async e => {
+                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                    sendResponse({ status: 'error', message: e.toString() });
+                });
+            break;
+        case "modelInfo":
+            getModelInfo(request?.model)
+                .then(modelData => sendResponse(modelData))
+                .catch(async e => {
+                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
                     await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
@@ -130,6 +142,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             prepareModels(request.modelName, request.unload, sender.tab)
                 .then(response => sendResponse({status: response.status, text: response.statusText}))
                 .catch(async e => {
+                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
                     await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
@@ -868,6 +881,40 @@ function tryReloadExtension() {
     }
 }
 
+function reinjectContentScripts() {
+    const contentScripts = manifest?.content_scripts?.js || ["lai-main.js", "jslib/files.js", "jslib/sessions.js", "jslib/solomd2html.js", "jslib/utils.js", "jslib/ribbon.js", "jslib/stt.js", "content.js"];
+    chrome.tabs.query({}, (tabs) => {
+        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tabs`, tabs);
+        if (!tabs) { return; }
+        tabs.forEach((tab) => {
+            console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - will qury the tab ${tab?.id}`, tab);
+            if (!tab?.id || !/^http/.test(tab.url)) { return; }
+            chrome.scripting.executeScript(
+                {
+                    target: { tabId: tab.id },
+                    func: () => {
+                        return {
+                            title: document.title,
+                            localAI: document.getElementById('localAI')?.id,
+                        };
+                    },
+                },
+                (results) => {
+                    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.scripting.executeScript for this tab completed. results`, results);
+                    if (results && results[0].result?.localAI) {
+                        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - localAI foud`);
+                        chrome.scripting.executeScript({
+                            target: { tabId: tab.id },
+                            files: contentScripts
+                        });
+                    } else { console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - localAI NOT foud`);  }
+                }
+            );
+            console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - script execution on tab ${tab?.id} completed.`);
+        });
+    });
+}
+
 async function getImageAsBase64(url) {
     if (!url) { return null; }
     try {
@@ -938,29 +985,52 @@ async function execInternalTool(call = {}){
 
 /////////// other helpers ///////////
 
-async function modelCanUseTools(modelName){
-    if(!modelName){  return false;  }
-
+async function getModelInfo(modelName){
+    if(!modelName){  modelName = await getAiModel();  }
     let url = await getAiUrl();
     url = new URL(url);
     url = `${url.protocol}//${url.host}/api/show`;
 
     const data = {  "model": modelName  };
-    let modelData;
-
+    let res;
     try {
-        const res = await fetch(url, {
+        res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        modelData = await res.json();
+        return await res.json();
+    } catch (err) {
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err, res);
+        return {  model: modelName, error: err.message  };
+    }
+}
+
+async function modelCanUseTools(modelName){
+    if(!modelName){  return false;  }
+
+    // let url = await getAiUrl();
+    // url = new URL(url);
+    // url = `${url.protocol}//${url.host}/api/show`;
+
+    // const data = {  "model": modelName  };
+    let modelData;
+
+    try {
+        // const res = await fetch(url, {
+        //     method: 'POST',
+        //     headers: { 'Content-Type': 'application/json' },
+        //     body: JSON.stringify(data)
+        // });
+        // modelData = await res.json();
+        modelData = getModelInfo(modelName);
+        if(modelData?.error){  throw new Error(`${manifest.name} - [${getLineNumber()}] - ${ModelData?.error ?? "Error!"}`);  }
         const canUseTools = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'tools' );
         await dumpInFrontConsole(`The model ${modelName} ${canUseTools ? '' : 'does not '}support tools.`);
         await updateUIStatusBar(`${modelName} ${canUseTools ? '' : 'does not '}support tools.`);
         return canUseTools;
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err, modelData);
         return false;
     }
 }

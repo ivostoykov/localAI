@@ -10,7 +10,7 @@ async function addAttachment(attachment) {
             activeSession = await createNewSession("Attachment Session");
         }
         if (!activeSession.attachments) { activeSession.attachments = []; }
-        activeSession.attachments.push(attachment);
+        activeSession.attachments.push(...[].concat(attachment));
         await setActiveSession(activeSession);
     } catch (err) {
         showMessage(err.message, 'error');
@@ -30,10 +30,10 @@ async function getAttachments() {
 
 async function deleteAttachment(id) {
     try {
-        if (!id) {  return;  }
+        if (!id) { return; }
 
         const activeSession = await getActiveSession();
-        if (!activeSession?.attachments) {  return;  }
+        if (!activeSession?.attachments) { return; }
 
         const updated = activeSession.attachments.filter(att => att.id !== id);
         activeSession.attachments = updated;
@@ -150,10 +150,10 @@ async function handlePlainTextFile(file) {
 function readFileContent(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = function(event) {
+        reader.onload = function (event) {
             resolve(event.target.result);
         };
-        reader.onerror = function(error) {
+        reader.onerror = function (error) {
             reject(error); // Reject with the error
         };
         reader.readAsArrayBuffer(file);

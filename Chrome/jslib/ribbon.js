@@ -155,15 +155,12 @@ async function closeAllDropDownRibbonMenus(e) {
     }
 
     const openMenus = Array.from(shadowRoot.querySelectorAll('.js-menu-is-open'));
-    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - openMenus:`, openMenus);
     if(openMenus.length < 1){  return;  }
 
     const compPath = e.composedPath(); // check for sidebar - if not in there, head button is clicked
-    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - compPath`, compPath);
     if(compPath.findIndex(e => e.id === 'laiMainButton') > -1){  return;  } // ext main buttono was clicked
 
     const originator = compPath?.[0]; // e?.target;
-    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - originator:`, originator);
 
     openMenus.forEach(el => {
         console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - compPath inside forEach`, compPath);

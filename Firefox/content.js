@@ -14,8 +14,6 @@ const commandPlaceholders = {
   "@{{time}}": "Include current time without the date"
 };
 
-var aiRawResponse = [];
-var aiSessions = [];
 var aiUserCommands = [];
 var userCmdItemBtns = { 'edit': null, 'execute': null, 'paste': null, 'delete': null };
 var images = [];
@@ -29,6 +27,8 @@ var userPredefinedCmd = [
   { "commandName": "add", "commandDescription": "Create a new predefined prompt" },
   { "commandName": "edit(command_name)", "commandDescription": "Edit the command corresponding to name, provided in the brackets" },
   { "commandName": "error", "commandDescription": "Show last error" },
+  { "commandName": "model", "commandDescription": "Show model info" },
+  { "commandName": "lastMessage", "commandDescription": "Show last message" },
   { "commandName": "list", "commandDescription": "Show all defined commands" }
 ];
 
@@ -37,6 +37,10 @@ function getShadowRoot() { return getRootElement()?.shadowRoot; }
 function getSideBar() { return getShadowRoot()?.getElementById('laiSidebar'); }
 function getMainButton() { return getShadowRoot()?.getElementById('laiMainButton'); }
 function getRibbon() { return getShadowRoot()?.querySelector('div.lai-ribbon'); }
+function getActiveModel(){
+  const ribbon = getRibbon()
+  return ribbon.querySelector('#laiModelName')?.textContent;
+}
 
 document.addEventListener('DOMContentLoaded', async (e) => await start());
 
@@ -434,7 +438,7 @@ function laiSetImg(el) {
   }
 }
 
-function showMessage(messagesToShow, type) {
+function showMessage(messagesToShow, type, timeout) {
   if (!messagesToShow) { return; }
   if (!Array.isArray(messagesToShow)) { messagesToShow = [messagesToShow]; }
   messagesToShow = [...new Set(messagesToShow)];
@@ -460,6 +464,8 @@ function showMessage(messagesToShow, type) {
     }, 0);
   }
   let msg = shadowRoot.querySelector('#feedbackMessage');
+  let msgHistory = JSON.parse(msg?.dataset?.history ?? "[]");
+  if(msgHistory && !Array.isArray(msgHistory)){  msgHistory = [msgHistory];  }
   let oldTimerId = msg.getAttribute('data-timerId');
   if (oldTimerId) {
     clearTimeout(parseInt(oldTimerId, 10));
@@ -471,8 +477,12 @@ function showMessage(messagesToShow, type) {
   for (let i = 0; i < messagesToShow.length; i++) {
     const msgText = document.createElement('p');
     msgText.textContent = messagesToShow[i];
+    msgHistory.push(`${type}: ${messagesToShow[i]}`);
     msg.appendChild(msgText);
   }
+
+  msgHistory = [...new Set(msgHistory)];
+  msg.dataset.history = JSON.stringify(msgHistory);
 
   msg.classList.remove('success', 'error', 'info', 'warning');
   msg.classList.add('feedback-message-active', type || 'info');
@@ -483,7 +493,7 @@ function showMessage(messagesToShow, type) {
     handleErrorButton();
     msg.replaceChildren(); // clear the space
     msg.classList.remove('feedback-message-active');
-  }, type === 'error' ? 7500 : 3000);
+  }, timeout ?? type === 'error' ? 7500 : 3000);
   if (timerId) {
     msg.setAttribute('data-timerId', timerId);
   }

@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.28.0] 2025-07-01 - latest
+## [1.28.05] 2025-07-10 - latest
+
+- Added a new command to pull active model information
+- Added a new command to show last message
+- Added links to documentation for some of the elements
+- Added a help menu
+
+## [1.28.0] 2025-07-01
 - New extension settings page
 - Changes in the General Settings section are detected and the window won't be closed if there are changes not saved yet.
 - Added links to the help documentation
