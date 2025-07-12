@@ -1,13 +1,13 @@
 const manifest = chrome.runtime.getManifest();
-document.title = manifest.name || '';
-document.getElementById('pageTitle').textContent = `${manifest.name} - ${manifest.version}`;
+document.title = manifest?.name || 'Unknown' || '';
+document.getElementById('pageTitle').textContent = `${manifest?.name || 'Unknown'} - ${manifest.version}`;
 
 document.addEventListener('DOMContentLoaded', async () => {
-  document.querySelector('.menu-item')?.click();
-  loadSettings();
-  await attachDataListListeners();
-  await getAiUserCommands();
-  attachListeners();
+    document.querySelector('.menu-item')?.click();
+    loadSettings();
+    await attachDataListListeners();
+    await getAiUserCommands();
+    attachListeners();
 });
 
 document.addEventListener('pendingChanges', () => {
@@ -23,44 +23,44 @@ document.addEventListener('changesSaved', () => {
 
 document.getElementById('laiOptionsForm').addEventListener('submit', async e => await saveSettings(e));
 setTimeout(() => {
-  document.getElementById('laiOptionsForm').addEventListener('input', () => {
-    document.dispatchEvent(new CustomEvent('pendingChanges'));
-  });
+    document.getElementById('laiOptionsForm').addEventListener('input', () => {
+        document.dispatchEvent(new CustomEvent('pendingChanges'));
+    });
 }, 500)
-document.getElementById('btnSaveForm').addEventListener('click', () =>  document.getElementById('laiOptionsForm').requestSubmit());
+document.getElementById('btnSaveForm').addEventListener('click', () => document.getElementById('laiOptionsForm').requestSubmit());
 document.getElementById('cancelButton').addEventListener('click', e => {
-  if(e.target.textContent === 'Close') {  window.close();  }
+    if (e.target.textContent === 'Close') { window.close(); }
 });
 document.getElementById('tempRange').addEventListener('input', updateTempValue);
 document.getElementById('tempInput').addEventListener('input', updateTempValue);
 
 document.querySelectorAll('.menu-item').forEach(item => {
-  item.addEventListener('click', async e => {
-    const sectionClicked = e.target?.dataset?.section || '';
-    if(!sectionClicked){
-      console.error(`Section [${sectionClicked}] is empty or missing!`);
-      return;
-    }
-    await mainMenuSwitched(sectionClicked);
+    item.addEventListener('click', async e => {
+        const sectionClicked = e.target?.dataset?.section || '';
+        if (!sectionClicked) {
+            console.error(`Section [${sectionClicked}] is empty or missing!`);
+            return;
+        }
+        await mainMenuSwitched(sectionClicked);
 
-    document.querySelectorAll('.menu-item')?.forEach(menu => {
-      if(menu?.dataset?.section === sectionClicked){  menu.classList.add('active');  }
-      else {  menu.classList.remove('active');  }
-    })
+        document.querySelectorAll('.menu-item')?.forEach(menu => {
+            if (menu?.dataset?.section === sectionClicked) { menu.classList.add('active'); }
+            else { menu.classList.remove('active'); }
+        })
 
-    document.querySelectorAll('.content-section').forEach(section => {
-      if (section?.id === sectionClicked) { section.classList.remove('invisible'); }
-      else { section.classList.add('invisible'); }
+        document.querySelectorAll('.content-section').forEach(section => {
+            if (section?.id === sectionClicked) { section.classList.remove('invisible'); }
+            else { section.classList.add('invisible'); }
+        });
     });
-  });
 });
 
 function updateTempValue(e) {
-  const val = parseFloat(e.target.value);
-  document.getElementById('tempRange').value = val;
-  document.getElementById('tempInput').value = val;
-  document.getElementById('tempOutput').textContent =
-    val < 0.5 ? 'Stricter' : val > 0.5 ? 'More Creative' : 'Neutral';
+    const val = parseFloat(e.target.value);
+    document.getElementById('tempRange').value = val;
+    document.getElementById('tempInput').value = val;
+    document.getElementById('tempOutput').textContent =
+        val < 0.5 ? 'Stricter' : val > 0.5 ? 'More Creative' : 'Neutral';
 }
 
 function loadSettings(e) {
@@ -104,7 +104,7 @@ async function saveSettings(e) {
 
     const optionsData = {};
     const elements = e.target.elements;
-    if(!elements){
+    if (!elements) {
         showMessage(`Failed to save changes!`, 'error');
         console.error(`Form element not found or empty: ${e.target?.id}`, e.target);
         return;
@@ -139,45 +139,45 @@ function cancelOptions() {
     window.close(); // Closes the options page
 }
 
-async function mainMenuSwitched(section){
-  if(!section){
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Expected section is null or missing - ${section}`);
-    return;
-  }
+async function mainMenuSwitched(section) {
+    if (!section) {
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Expected section is null or missing - ${section}`);
+        return;
+    }
 
-  switch (section) {
-      case 'prompts':
-          await showPromptSection();
-          break;
-      case 'tools':
-          await showToolSection();
-          break;
-      case 'general':
-          break;
-      default:
-          console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: Wrong section Id - ${section}!`);
-          break;
-  }
+    switch (section) {
+        case 'prompts':
+            await showPromptSection();
+            break;
+        case 'tools':
+            await showToolSection();
+            break;
+        case 'general':
+            break;
+        default:
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: Wrong section Id - ${section}!`);
+            break;
+    }
 }
 
 function attachListeners(e) {
-  document.getElementById('showEmbeddedButton').addEventListener('click', onshowEmbeddedButtonClicked);
-  document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
+    document.getElementById('showEmbeddedButton').addEventListener('click', onshowEmbeddedButtonClicked);
+    document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
 
-  // document.querySelectorAll('.navbar-item')?.forEach(item => {  item.addEventListener('click', async (e) => {  await switchSection(e);  });  });
-  document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
-  document.querySelector('#newPromptBtn')?.addEventListener('click', async e => {  await createNewPrompt(e);  });
-  document.querySelectorAll('#exportPromptBtn, #exportFuncBtn')?.forEach(btn => {
-      btn.addEventListener('click', async e => {  await exportAsFile(e);  });
-  });
-  document.querySelectorAll('#importPromptBtn, #importFuncBtn')?.forEach(btn => btn.addEventListener('click', importUserCommand));
-  document.querySelectorAll('#deletePromptBtn, #deleteFuncBtn')?.forEach(btn => btn.addEventListener('click', async e => await deleteStorageCollection(e)));
+    // document.querySelectorAll('.navbar-item')?.forEach(item => {  item.addEventListener('click', async (e) => {  await switchSection(e);  });  });
+    document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
+    document.querySelector('#newPromptBtn')?.addEventListener('click', async e => { await createNewPrompt(e); });
+    document.querySelectorAll('#exportPromptBtn, #exportFuncBtn')?.forEach(btn => {
+        btn.addEventListener('click', async e => { await exportAsFile(e); });
+    });
+    document.querySelectorAll('#importPromptBtn, #importFuncBtn')?.forEach(btn => btn.addEventListener('click', importUserCommand));
+    document.querySelectorAll('#deletePromptBtn, #deleteFuncBtn')?.forEach(btn => btn.addEventListener('click', async e => await deleteStorageCollection(e)));
 
-  document.querySelector('#newFuncBtn')?.addEventListener('click', async e => await createNewToolFunc(e)  );
-  document.getElementById("dlgBtnOK").addEventListener('click', closeDialog);
-  document.getElementById("dlgBtnCancel").addEventListener('click', closeDialog);
+    document.querySelector('#newFuncBtn')?.addEventListener('click', async e => await createNewToolFunc(e));
+    document.getElementById("dlgBtnOK").addEventListener('click', closeDialog);
+    document.getElementById("dlgBtnCancel").addEventListener('click', closeDialog);
 
-  document.getElementById('fileInput').addEventListener('change', importFromFile);
+    document.getElementById('fileInput').addEventListener('change', importFromFile);
 }
 
 function addSelectOptions(selectEl, objData) {
@@ -190,7 +190,7 @@ function addSelectOptions(selectEl, objData) {
         if (objData?.isSelected) { op.setAttribute('selected', 'selected'); }
         selectEl.appendChild(op);
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
     }
 }
 
@@ -213,39 +213,39 @@ async function showPromptSection() {
     try {
         await getAiUserCommands();
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${error.message}`, error);
     } finally { hideSpinner(); }
 }
 
-async function getAiUserCommands(){
+async function getAiUserCommands() {
     const commands = await chrome.storage.local.get(['aiUserCommands']);
     const generalSection = document.getElementById('general');
     const height = generalSection?.offsetHeight || -1;
     const aiUserCommands = commands.aiUserCommands || [];
     const promptContainer = document.querySelector('#promptsContainer');
-    if(!promptContainer){
+    if (!promptContainer) {
         console.error(`${promptContainer} not found!`, promptContainer)
         return;
     }
     promptContainer.replaceChildren();
-    if(aiUserCommands.length < 1){  return;  }
+    if (aiUserCommands.length < 1) { return; }
 
     const promptTemplate = document.getElementById('promptTemplate')?.content;
-    if(!promptTemplate){
+    if (!promptTemplate) {
         console.error(`promptTemplate [${promptTemplate}] not found!`);
         return;
     }
-    if(height > 0){  promptContainer.style.height = `${height}px`;  }
+    if (height > 0) { promptContainer.style.height = `${height}px`; }
 
-    for (let x=0, l=aiUserCommands.length; x<l; x++) {
+    for (let x = 0, l = aiUserCommands.length; x < l; x++) {
         const cmd = aiUserCommands[x];
-            const clone = document.importNode(promptTemplate, true);
-            clone.querySelector('.prompt-title').textContent = cmd.commandName;
-            clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
-            clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
-            clone.querySelector('.prompt-body').textContent = cmd.commandBody;
+        const clone = document.importNode(promptTemplate, true);
+        clone.querySelector('.prompt-title').textContent = cmd.commandName;
+        clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
+        clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
+        clone.querySelector('.prompt-body').textContent = cmd.commandBody;
         clone.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
-            promptContainer.appendChild(clone);
+        promptContainer.appendChild(clone);
     }
 }
 
@@ -302,14 +302,14 @@ function onshowEmbeddedButtonClicked(e) {
 // command and tools card related
 //prompts (command)
 
-async function createNewPrompt(e){
+async function createNewPrompt(e) {
     const promptSection = document.querySelector('#promptsContainer');
-    if(!promptSection){  return;  }
+    if (!promptSection) { return; }
 
     const promptTemplate = document.getElementById('promptTemplate').content;
     const clone = document.importNode(promptTemplate, true);
     const promptItem1 = promptSection.querySelector('.prompt-item');
-    if(promptItem1){
+    if (promptItem1) {
         promptSection.insertBefore(clone, promptItem1);
     } else {
         promptSection.appendChild(clone);
@@ -319,12 +319,12 @@ async function createNewPrompt(e){
     newPromptItem.querySelectorAll('.prompt-buttons img')
         ?.forEach(btn => {
             btn.classList.remove('invisible');
-            if(["edit", "copy"].includes(btn.dataset.action)){  btn.classList.add('invisible');  }
+            if (["edit", "copy"].includes(btn.dataset.action)) { btn.classList.add('invisible'); }
             btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); });
-    });
+        });
 }
 
-async function applyPromptCardAction(e){
+async function applyPromptCardAction(e) {
     const parent = e.target.closest('.prompt-item');
     const action = e.target.getAttribute('data-action');
     const copyBtn = parent.querySelector('img[src="img/copy.svg"][data-action="copy"]');
@@ -334,17 +334,17 @@ async function applyPromptCardAction(e){
     const saveBtn = parent.querySelector('img[src="img/tick.svg"][data-action="save"]');
     const isDeleteActive = e.target.dataset?.action === 'delete' && e.target.classList.contains('delete-active');
     delBtn?.classList?.remove('delete-active');
-    if(!parent || !action){  return;  }
+    if (!parent || !action) { return; }
 
     const closestSection = e?.target?.closest('section');
 
-    switch(action) {
+    switch (action) {
         case 'copy':
             let data = parent.querySelector('.prompt-body');
             const getParentEvent = () => e;
             navigator.clipboard.writeText(data?.textContent || '')
                 .then(() => { showHint(getParentEvent()); })
-                .catch(err => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
+                .catch(err => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
             break;
         case 'undo':
             copyBtn.classList.remove('invisible');
@@ -375,59 +375,59 @@ async function applyPromptCardAction(e){
 
         case 'delete':
             if (isDeleteActive) {
-              parent.classList.remove('prompt-item-edit');
-              e.target.classList.remove('delete-active');
-              parent.remove();
-              await savePrompts(closestSection);
+                parent.classList.remove('prompt-item-edit');
+                e.target.classList.remove('delete-active');
+                parent.remove();
+                await savePrompts(closestSection);
             } else {
-              e.target.classList.add('delete-active');
-              setTimeout(() => { e.target.classList.remove('delete-active'); }, 30000);
-              showMessage('Click the same button again to delete it or wait to dismiss the action.');
+                e.target.classList.add('delete-active');
+                setTimeout(() => { e.target.classList.remove('delete-active'); }, 30000);
+                showMessage('Click the same button again to delete it or wait to dismiss the action.');
             }
             break;
     }
 }
 
-async function savePrompts(section){
-  if(!section){
-    showMessage('No section provided! Save is not possible!', "error");
-    return;
-  }
-  // const section = e.target.closest('section');
-  const storageData = [];
-  let storageKey = '';
-  switch (section?.id) {
-      case 'tools':
-          storageKey = 'aiTools';
-          section.querySelectorAll('.prompt-item')?.forEach((item, idx) => {
-              const jsonString = item.querySelector('.prompt-body').textContent;
-              try {
-                  const jsonObject = JSON.parse(jsonString);
-                  storageData.push(jsonObject);
-              } catch (error) {
-                  showMessage(`Invalid JSON in card ${idx+1}!`);
-                  console.error('Invalid JSON: jsonString', error);
-              }
-          });
-          break;
-      case 'prompts':
-          storageKey = 'aiUserCommands';
-          section.querySelectorAll('.prompt-item')?.forEach(item => {
-      const cmd = {};
-      cmd['commandName'] = item.querySelector('.prompt-title').textContent.toLowerCase().replace(/\s+/g, '-');
-      cmd['commandDescription'] = item.querySelector('.prompt-description').textContent;
-      cmd['commandBody'] = item.querySelector('.prompt-body').textContent;
-              storageData.push(cmd);
-  });
-          break;
-      default:
-        console.err("Missing section id!", section);
-        showMessage('Missing section id!', "error");
+async function savePrompts(section) {
+    if (!section) {
+        showMessage('No section provided! Save is not possible!', "error");
         return;
-  }
+    }
+    // const section = e.target.closest('section');
+    const storageData = [];
+    let storageKey = '';
+    switch (section?.id) {
+        case 'tools':
+            storageKey = 'aiTools';
+            section.querySelectorAll('.prompt-item')?.forEach((item, idx) => {
+                const jsonString = item.querySelector('.prompt-body').textContent;
+                try {
+                    const jsonObject = JSON.parse(jsonString);
+                    storageData.push(jsonObject);
+                } catch (error) {
+                    showMessage(`Invalid JSON in card ${idx + 1}!`);
+                    console.error('Invalid JSON: jsonString', error);
+                }
+            });
+            break;
+        case 'prompts':
+            storageKey = 'aiUserCommands';
+            section.querySelectorAll('.prompt-item')?.forEach(item => {
+                const cmd = {};
+                cmd['commandName'] = item.querySelector('.prompt-title').textContent.toLowerCase().replace(/\s+/g, '-');
+                cmd['commandDescription'] = item.querySelector('.prompt-description').textContent;
+                cmd['commandBody'] = item.querySelector('.prompt-body').textContent;
+                storageData.push(cmd);
+            });
+            break;
+        default:
+            console.err("Missing section id!", section);
+            showMessage('Missing section id!', "error");
+            return;
+    }
 
-  await chrome.storage.local.set({[storageKey]: storageData});
-  showMessage('Data updated successfully.', 'success');
+    await chrome.storage.local.set({ [storageKey]: storageData });
+    showMessage('Data updated successfully.', 'success');
 }
 
 // tools
@@ -436,31 +436,31 @@ async function showToolSection() {
     try {
         await getTools();
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${error.message}`, error);
     } finally { hideSpinner(); }
 }
 
-async function getTools(){
+async function getTools() {
     const commands = await chrome.storage.local.get(['aiTools']);
     const generalSection = document.getElementById('general');
     const height = generalSection?.offsetHeight || -1;
     const aiTools = commands.aiTools || [];
     const toolsContainer = document.querySelector('#toolsContainer');
-    if(!toolsContainer){
+    if (!toolsContainer) {
         console.error(`[${getLineNumber()}] - toolsContainer not found!`, toolsContainer);
         return;
     }
     toolsContainer.replaceChildren();
-    if(aiTools.length < 1){  return;  }
+    if (aiTools.length < 1) { return; }
 
     const funcTemplate = document.getElementById('functionTemplate').content;
-    if(!funcTemplate){
+    if (!funcTemplate) {
         console.error(`[${getLineNumber()}] - funcTemplate not found!`, funcTemplate);
         return;
     }
-    if(height > 0){  toolsContainer.style.height = `${height}px`;  }
+    if (height > 0) { toolsContainer.style.height = `${height}px`; }
 
-    for (let x=0, l=aiTools.length; x<l; x++) {
+    for (let x = 0, l = aiTools.length; x < l; x++) {
         const clone = document.importNode(funcTemplate, true);
         clone.querySelector('.prompt-body').textContent = JSON.stringify(aiTools[x], null, 4);
         clone.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
@@ -468,13 +468,13 @@ async function getTools(){
     }
 }
 
-async function createNewToolFunc(e){
+async function createNewToolFunc(e) {
     const promptSection = document.querySelector('#toolsContainer');
-    if(!promptSection){  return;  }
+    if (!promptSection) { return; }
     const promptTemplate = document.getElementById('functionTemplate').content;
     const clone = document.importNode(promptTemplate, true);
     const promptItem1 = promptSection.querySelector('.prompt-item');
-    if(promptItem1){
+    if (promptItem1) {
         promptSection.insertBefore(clone, promptItem1);
     } else {
         promptSection.appendChild(clone);
@@ -484,9 +484,9 @@ async function createNewToolFunc(e){
     newPromptItem.querySelectorAll('.prompt-buttons img')
         ?.forEach(btn => {
             btn.classList.remove('invisible');
-            if(["edit", "copy"].includes(btn.dataset.action)){  btn.classList.add('invisible');  }
+            if (["edit", "copy"].includes(btn.dataset.action)) { btn.classList.add('invisible'); }
             btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); });
-    });
+        });
     newPromptItem.querySelector('.prompt-body').setAttribute('contenteditable', true);
 }
 
@@ -542,13 +542,13 @@ function refreshTarget(gldValues) {
     if (!target || !gldValues?.newValue) { return; }
     if (gldValues?.selectedIndex) {
         target.options[gldValues.selectedIndex].value = gldValues.newValue;
-        if(gldValues.dlgIsSelected || false) {
+        if (gldValues.dlgIsSelected || false) {
             target.options[gldValues.selectedIndex].setAttribute('selected', 'selected');
         }
     } else {
         const op = document.createElement('option');
         op.text = op.value = gldValues.newValue;
-        if(gldValues.dlgIsSelected || false) {
+        if (gldValues.dlgIsSelected || false) {
             op.setAttribute('selected', 'selected');
         }
         target.appendChild(op);
@@ -560,15 +560,15 @@ function refreshTarget(gldValues) {
 
 function fillModelList(models = [], selector = '') {
     if (models.length < 1) { return; }
-    if(!selector){
+    if (!selector) {
         showMessage("Missing selector!", "success");
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Missing selector! ${selector || 'empty string'}`, models);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Missing selector! ${selector || 'empty string'}`, models);
         return;
     }
 
     let modelDataList = document.querySelector(selector);
     if (!modelDataList) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Cannot find modelList element!`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Cannot find modelList element!`);
         return;
     }
 
@@ -626,13 +626,13 @@ function showMessage(message, type) {
     setTimeout(() => msg.classList.add('invisible'), 5000);
 }
 
-async function testConnection(e){
+async function testConnection(e) {
     showSpinner();
     let response;
     let url;
     try {
         const container = e.target.closest('.el-holder')
-        if(!container){ throw new Error(`Failed to find main element!`); }
+        if (!container) { throw new Error(`Failed to find main element!`); }
         const el = container.querySelector('input[type="url"]') || container.querySelector('select');
         if (!el) { throw new Error(`No API endpoint value found - ${el?.value}!`); }
 
@@ -641,23 +641,23 @@ async function testConnection(e){
         url = (new URL(url)).origin;
 
         response = await fetch(url);
-        if(isNaN(response.status)){   throw new Error(`Server returned status code ${response.status}`);  }
+        if (isNaN(response.status)) { throw new Error(`Server returned status code ${response.status}`); }
         showMessage(`Connection to ${url} successfull.`, "success");
     } catch (e) {
         showMessage(`Connection to ${url} failed! - ${e.message}`, "error");
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - response`, response);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response`, response);
     } finally {
         hideSpinner();
     }
 }
 
 async function deleteStorageCollection(e) {
-    const storageKeys = {"deletePromptBtn": "aiUserCommands", "deleteFuncBtn": "aiTools"};
+    const storageKeys = { "deletePromptBtn": "aiUserCommands", "deleteFuncBtn": "aiTools" };
     const storageKey = storageKeys[e.target?.id];
     const label = `${e.target?.id === 'deletePromptBtn' ? "User Prompts" : "Tool Functions"}`;
     const container = `${e.target?.id === 'deletePromptBtn' ? "promptsContainer" : "toolsContainer"}`;
-    if(!storageKey) {
+    if (!storageKey) {
         showMessage(`${label} not found!`, "error");
         return;
     }
@@ -666,7 +666,7 @@ async function deleteStorageCollection(e) {
         document.querySelector(`#${container}`)?.replaceChildren();
         showMessage(`All ${label} have been deleted.`, 'success');
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err)
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err)
     }
 }
 
@@ -711,14 +711,14 @@ function importUserCommand(e) {
 function importFromFile(e) {
     let storageKey = e.target.dataset.key || 'unknown';
     let callback;
-    if (storageKey === 'unknown'){
+    if (storageKey === 'unknown') {
         showMessage("Failed to locate data storage!", "error");
         console.error(`${getLineNumber()} - Wrong storage key!`, e.target);
         return;
     }
 
     const file = e.target.files[0];
-    if(!file){
+    if (!file) {
         showMessage("No file was selected!", "error");
         return;
     }
@@ -751,9 +751,9 @@ function importFromFile(e) {
             await chrome.storage.local.set({ [storageKey]: json });
 
             showMessage(`${file.name} imported successfully.`, 'success');
-            if (typeof callback === 'function') {  await callback();  }
+            if (typeof callback === 'function') { await callback(); }
         } catch (err) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         } finally {
             hideSpinner();
         }
@@ -816,7 +816,7 @@ function copyValue(e) {
     const getParentEvent = () => e;
     navigator.clipboard.writeText(datalist.options[datalist.selectedIndex].value || '')
         .then(() => { showHint(getParentEvent()); })
-        .catch(err => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
+        .catch(err => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
 }
 
 async function loadModels(e) {
@@ -846,21 +846,21 @@ async function loadModels(e) {
     let response;
     let models;
     try {
-      response = await fetch(urlVal, {
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-        },
-      });
+        response = await fetch(urlVal, {
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+            },
+        });
 
-      models = await response.json();
+        models = await response.json();
         if (models.models && Array.isArray(models.models)) {
             models.models.sort((a, b) => a.name.localeCompare(b.name));
             fillModelList(models.models, '#aiModel');
             fillModelList(models.models, '#generativeHelper');
         }
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - response`, response);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response`, response);
     } finally {
         hideSpinner();
         showMessage("Model list successfully updated.", "success");
@@ -875,5 +875,6 @@ function getLineNumber() {
     return stackLines[index + 1]
         ?.replace(/\s{0,}at\s+/, '')
         ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
+        ?.split('/')?.pop().replace(/\)$/, '')
         || "Unknown";
 }

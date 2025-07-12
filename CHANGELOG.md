@@ -1,6 +1,18 @@
 # Local AI - Changelog
 
-## [1.28.05] 2025-07-10 - latest
+## [1.28.15] 2025-07-12 - latest
+
+- Added hot reload after extension update.
+- Removed redundant snippets
+
+## [1.28.10] 2025-07-11
+
+- Added more information in the background messages logged in the front space
+- Simplified the log entry by shortening the location.
+- Refactored messaging communication to mitigate "The message port closed before a response was received." messages.
+- Removed redundant snippets.
+
+## [1.28.05] 2025-07-10
 
 - Added a new command to pull active model information
 - Added a new command to show last message

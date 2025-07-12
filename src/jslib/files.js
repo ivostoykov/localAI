@@ -1,7 +1,7 @@
 async function addAttachment(attachment) {
     try {
         if (!attachment) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Missing or empty attachment parameter!`, attachment);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Missing or empty attachment parameter!`, attachment);
             return;
         }
         let activeSession = await getActiveSession();
@@ -14,7 +14,7 @@ async function addAttachment(attachment) {
         await setActiveSession(activeSession);
     } catch (err) {
         showMessage(err.message, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error occured while adding attachment: ${err.message}`, err, attachment);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error occured while adding attachment: ${err.message}`, err, attachment);
     }
 }
 
@@ -23,7 +23,7 @@ async function getAttachments() {
         const activeSession = await getActiveSession();
         return Array.isArray(activeSession?.attachments) ? activeSession.attachments : [];
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error occured while getting attachments: ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error occured while getting attachments: ${err.message}`, err);
         return [];
     }
 }
@@ -39,7 +39,7 @@ async function deleteAttachment(id) {
         activeSession.attachments = updated;
         await setActiveSession(activeSession);
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error occured while deleting attachment id ${id}: ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error occured while deleting attachment id ${id}: ${err.message}`, err);
         showMessage(err.message, 'error');
     }
 }
@@ -71,7 +71,7 @@ async function handleImageFile(file) {
         reader.readAsDataURL(file);
     } catch (err) {
         showMessage(`Failed to read image ${file.name}: ${err.message}`, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Image read failed: ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Image read failed: ${err.message}`, err);
     }
 }
 
@@ -91,10 +91,10 @@ async function handleGenericFile(file) {
                 fileContent: btoa(String.fromCharCode(...new Uint8Array(fileContent)))
             });
             if (chrome.runtime.lastError) {
-                throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
+                throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
             }
         } catch (err) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
             return;
         }
 
@@ -117,7 +117,7 @@ async function handleGenericFile(file) {
         showAttachment(file.name);
     } catch (err) {
         showMessage(`Failed to process file ${file.name}: ${err.message}`, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${err.message}`, err);
     }
 }
 
@@ -143,7 +143,7 @@ async function handlePlainTextFile(file) {
         showAttachment(file.name);
     } catch (err) {
         showMessage(`Failed to read plain text file ${file.name}: ${err.message}`, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${err.message}`, err);
     }
 }
 
@@ -172,11 +172,11 @@ async function onUserInputFileDropped(e) {
         dropzone.classList.remove('hover');
         setTimeout(() => dropzone.classList.add('invisible'), 750);
 
-        console.log(`>>> ${manifest.name} - [${getLineNumber()}] - event files:`, e?.dataTransfer?.files);
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - event files:`, e?.dataTransfer?.files);
 
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
             const file = e.dataTransfer.files[i];
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - File ${i}: Name: ${file.name}; Type: ${file.type}; Size: ${file.size}`);
+            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - File ${i}: Name: ${file.name}; Type: ${file.type}; Size: ${file.size}`);
 
             if (file.type.startsWith('image/')) {
                 await handleImageFile(file);
@@ -188,6 +188,6 @@ async function onUserInputFileDropped(e) {
         }
     } catch (err) {
         showMessage(err.message, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${err.message}`, err);
     }
 }

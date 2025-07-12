@@ -1,5 +1,5 @@
 const manifest = chrome.runtime.getManifest();
-const DONE = 'DONE';
+const EXT_NAME = manifest?.name ?? 'Unknown';
 const storageOptionKey = 'laiOptions';
 const storageUserCommandsKey = 'aiUserCommands';
 const activeSessionKey = 'activeSession';
@@ -17,7 +17,6 @@ const commandPlaceholders = {
 var aiUserCommands = [];
 var userCmdItemBtns = { 'edit': null, 'execute': null, 'paste': null, 'delete': null };
 var images = [];
-// var attachments = [];
 var userScrolled = false;
 var isElementSelectionActive = false;
 var lastRegisteredErrorMessage = [];
@@ -37,10 +36,47 @@ function getShadowRoot() { return getRootElement()?.shadowRoot; }
 function getSideBar() { return getShadowRoot()?.getElementById('laiSidebar'); }
 function getMainButton() { return getShadowRoot()?.getElementById('laiMainButton'); }
 function getRibbon() { return getShadowRoot()?.querySelector('div.lai-ribbon'); }
-function getActiveModel(){
+function getActiveModel() {
   const ribbon = getRibbon()
   return ribbon.querySelector('#laiModelName')?.textContent;
 }
+
+chrome.runtime.onMessage.addListener(onRuntimeMessage);
+
+window.addEventListener('message', async (event) => {
+  if (event.source !== window) { return; }
+  if (event.data?.type === 'reconnect' && event.data.name === EXT_NAME) {
+    Array.from(document.getElementsByTagName('local-ai'))?.forEach(el => el?.remove());
+
+    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Message received will try to reconnect...`);
+
+    const ready = await waitForStorageReady();
+    if (!ready) { return; }
+
+    allDOMContentLoaded(event);
+
+    showMessage('Extension reloaded', 'success');
+    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension reloaded.`);
+  }
+});
+
+async function waitForStorageReady(timeout = 2000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    try {
+      await chrome.storage.local.get(null);
+      console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - storage ready.`);
+      return true;
+    } catch {
+      console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - storage NOT ready.`);
+      await new Promise(res => setTimeout(res, 100));
+    }
+  }
+  console.warn('Storage not ready after timeout');
+  return false;
+}
+
+//------------------------
 
 document.addEventListener('DOMContentLoaded', async (e) => await start());
 
@@ -53,6 +89,8 @@ async function start() {
 }
 
 async function allDOMContentLoaded(e) {
+  Array.from(document.getElementsByTagName('local-ai'))?.forEach(el => el?.remove());
+
   await updateTabPageContentStorage();
   attachElementSelectionListenersToFrames();
 
@@ -73,7 +111,7 @@ async function allDOMContentLoaded(e) {
     }
 
     const options = await getLaiOptions()
-    if(options.closeOnClickOut && !isPinned()) { await laiSwapSidebarWithButton(event); }
+    if (options.closeOnClickOut && !isPinned()) { await laiSwapSidebarWithButton(event); }
   }, true);
 
   document.addEventListener('keydown', async function (e) {
@@ -115,10 +153,10 @@ async function allDOMContentLoaded(e) {
   try {
     await removeLocalStorageObject('activeSessionIndex'); // TODO: for sync - to be removed
     await removeLocalStorageObject(activeSessionIdStorageKey);
-    await setActiveSessionPageData({"url": document.location.href, "pageContent": getPageTextContent() });
+    await setActiveSessionPageData({ "url": document.location.href, "pageContent": getPageTextContent() });
     await getAiUserCommands(); //TODO: remove it as global
   } catch (err) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
     return;
   }
 
@@ -126,7 +164,7 @@ async function allDOMContentLoaded(e) {
   try {
     await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css']));
   } catch (error) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }
 }
 
@@ -189,19 +227,23 @@ async function updateTabPageContentStorage() {
 }
 
 function triggerUpdate() {
-  console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - window url before active check: ${location.href}`);
+  console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - window url before active check: ${location.href}`);
 
   checkActiveTab();
 }
 
 function checkActiveTab() {
-  chrome.runtime.sendMessage({ action: "CHECK_ACTIVE_TAB" }, async (isActive) => {
-    if (isActive) {
-      await setActiveSessionPageData({ url: location.href, pageContent: getPageTextContent() });
-    } else {
-      console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tab is not active, skipping: ${location.href}`);
-    }
-  });
+  try {
+    chrome.runtime.sendMessage({ action: "CHECK_ACTIVE_TAB" }, async (isActive) => {
+      if (isActive) {
+        await setActiveSessionPageData({ url: location.href, pageContent: getPageTextContent() });
+      } else {
+        console.debug(`>>> ${manifest?.name || 'unknown'} - [${getLineNumber()}] - tab is not active, skipping: ${location.href}`);
+      }
+    });
+  } catch (err) {
+    console.warn(`>>> ${manifest?.name || 'unknown'} - [${getLineNumber()}] - checkActiveTab failed:`, err);
+  }
 }
 
 async function init() {
@@ -237,7 +279,7 @@ async function init() {
     await initSidebar();
     await laiUpdateMainButtonStyles();
   } catch (err) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);
   }
 }
 
@@ -257,19 +299,19 @@ function getPageTextContent() {
   const walker = document.createTreeWalker(bodyClone, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
   while (walker.nextNode()) {
     const node = walker.currentNode;
-    if (!node?.nodeValue || !(/[^\n\r\t ]/.test(node.nodeValue))) {  continue;  }
+    if (!node?.nodeValue || !(/[^\n\r\t ]/.test(node.nodeValue))) { continue; }
 
     const parentTag = node.parentElement?.tagName || '';
     const text = node.nodeValue.trim();
 
     if (headings.includes(parentTag)) {
-      if (currentSection.content.length) {  structure.push(currentSection);  }
+      if (currentSection.content.length) { structure.push(currentSection); }
       currentSection = { title: text, content: [] };
     } else {
       currentSection.content.push(text);
     }
   }
-  if (currentSection.content.length) {  structure.push(currentSection);  }
+  if (currentSection.content.length) { structure.push(currentSection); }
 
   const finalText = structure.map(section => {
     const title = section.title ? `\n\n## ${section.title}\n` : '';
@@ -293,10 +335,10 @@ async function laiGetClickedSelectedElement(event) {
   let isImg = el.tagName === 'IMG';
   let theAttachment;
   if (isImg) {
-// TODO: add image to the attachments with type image
+    // TODO: add image to the attachments with type image
     try {
       const response = await chrome.runtime.sendMessage({ action: 'getImageBase64', url: el.src });
-      if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+      if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
       if (!response.base64) { throw new Error(`Failed to get the image from ${el.src}`); }
 
       images.push(response?.base64);
@@ -324,7 +366,7 @@ async function buildMainButton() {
   var theMainButton = await createMainButtonElement();
   // Guard against createMainButtonElement returning nothing
   if (!theMainButton) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to create main button element.`);
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to create main button element.`);
     return;
   }
   const shadowRoot = getShadowRoot();
@@ -347,9 +389,9 @@ async function buildMainButton() {
 
 async function createMainButtonElement() {
   const laiOptions = await getLaiOptions();
-  if (!chrome.runtime.id && chrome.runtime.reload) { chrome.runtime.reload(); }
-  if (!chrome.runtime.id) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
+  reloadRuntime();
+  if (!chrome?.runtime?.id) {
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
     return;
   }
   var theMainButton = Object.assign(document.createElement('div'), {
@@ -387,13 +429,13 @@ async function laiMainButtonClicked(e) {
 }
 
 async function laiFetchAndBuildSidebarContent() {
-  if (!chrome.runtime.id && chrome.runtime.reload) {  chrome.runtime.reload();  }
+  reloadRuntime();
 
   try {
-    if (!chrome.runtime.id) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`); }
+    if (!chrome.runtime.id) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`); }
 
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to find the shadow root!`); }
+    if (!shadowRoot) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to find the shadow root!`); }
 
     const response = await fetch(chrome.runtime.getURL('sidebar.html'));
     const data = await response.text();
@@ -406,7 +448,7 @@ async function laiFetchAndBuildSidebarContent() {
 
     shadowRoot.appendChild(theSideBar);
   } catch (error) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error);
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error);
   }
 }
 
@@ -448,7 +490,7 @@ function showMessage(messagesToShow, type, timeout) {
   const sideBar = getSideBar();
   // Ensure sidebar element exists before using it
   if (!sideBar) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - showMessage: sidebar element not found.`);
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - showMessage: sidebar element not found.`);
     return;
   }
   if (!sideBar.classList.contains('active')) {
@@ -457,7 +499,7 @@ function showMessage(messagesToShow, type, timeout) {
       laiSwapSidebarWithButton()
         .catch(error => {
           console.error(
-            `>>> ${manifest.name} - [${getLineNumber()}] - Error opening sidebar for message: ${error.message}`,
+            `>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error opening sidebar for message: ${error.message}`,
             error
           );
         });
@@ -465,7 +507,7 @@ function showMessage(messagesToShow, type, timeout) {
   }
   let msg = shadowRoot.querySelector('#feedbackMessage');
   let msgHistory = JSON.parse(msg?.dataset?.history ?? "[]");
-  if(msgHistory && !Array.isArray(msgHistory)){  msgHistory = [msgHistory];  }
+  if (msgHistory && !Array.isArray(msgHistory)) { msgHistory = [msgHistory]; }
   let oldTimerId = msg.getAttribute('data-timerId');
   if (oldTimerId) {
     clearTimeout(parseInt(oldTimerId, 10));
@@ -542,7 +584,7 @@ async function getLaiOptions() {
     const laiOptions = Object.assign({}, defaults, obj ?? {});
     return laiOptions;
   } catch (e) {
-    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
     // Inform the user and fall back to defaults
     try {
       showMessage(`Error loading options: ${e.message}. Using default settings.`, 'error');
@@ -565,9 +607,4 @@ function handleErrorButton() {
   }
 
   lastRegisteredErrorMessage.lastLength = lastRegisteredErrorMessage.length;
-}
-
-function getLineNumber() {
-  const e = new Error();
-  return e.stack.split("\n")[2].trim().replace(/\s{0,}at (.+)/, "[$1]");
 }

@@ -13,23 +13,13 @@ const manifest = chrome.runtime.getManifest();
 
 chrome.runtime.onInstalled.addListener(() => {
     init();
+    reinjectContentScripts()
 });
 
-/* chrome.tabs.onCreated.addListener(tab => { init(); });
-
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-
-    if (tab?.url && !tab?.url?.startsWith('http')) { return; }
-
-    if (changeInfo.status === 'complete' && tab?.url) {
-        init();
-    }
-}); */
-
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
-    if (areaName !== 'sync') {  return; }
+    if (areaName !== 'sync') { return; }
     for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
-        if(key === storageOptionKey){
+        if (key === storageOptionKey) {
         }
     }
 });
@@ -38,23 +28,15 @@ chrome.action.onClicked.addListener(async (tab) => {
     if (tab?.url?.startsWith('http')) {
         try {
             const res = await chrome.tabs.sendMessage(tab?.id, { action: "toggleSidebar" });
-            if (chrome.runtime.lastError) {  throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);  }
+            if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e) {
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
-                await showUIMessage(e.message, 'error', tab);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+            await showUIMessage(e.message, 'error', tab);
         }
     }
 });
 
-
-// chrome.runtime.onConnect.addListener(function (port) {
-//     port.onDisconnect.addListener(function () {
-//       tryReloadExtension();
-//     });
-// });
-
 chrome.runtime.onUpdateAvailable.addListener(tryReloadExtension);
-chrome.runtime.onInstalled.addListener(reinjectContentScripts);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     let response;
@@ -66,19 +48,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.action) {
         case 'getModels':
             getModels()
-            .then(response => sendResponse(response) )
-            .catch(async error => {
-                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender?.tab?.id);
-                sendResponse({ status: 'error', message: error.toString() });
-            });
+                .then(response => sendResponse(response))
+                .catch(async error => {
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender?.tab?.id);
+                    sendResponse({ status: 'error', message: error.toString() });
+                });
             break;
         case 'fetchData':
             fetchDataAction(request, sender)
-            .then(response => { sendResponse(response);  })
-            .catch(async error => {
-                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender?.tab?.id);
-                sendResponse({ status: 'error', message: error.toString() });
-            });
+                .then(response => { sendResponse(response); })
+                .catch(async error => {
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender?.tab?.id);
+                    sendResponse({ status: 'error', message: error.toString() });
+                });
             break;
         case 'abortFetch':
             // Abort the in-flight fetchDataAction for this tab
@@ -95,7 +77,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             convertFileToText(request.fileContent)
                 .then(response => sendResponse(response))
                 .catch(async e => {
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
             break;
@@ -108,24 +90,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse();
             break;
         case "openOptionsPage":
-            chrome.tabs.create({url: chrome.runtime.getURL('options.html')});
+            chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
             sendResponse();
             break;
         case "modelCanThink":
             modelCanThink(request?.model, request?.url)
-                .then(result => sendResponse({canThink: result}))
+                .then(result => sendResponse({ canThink: result }))
                 .catch(async e => {
-                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
             break;
         case "modelCanUseTools":
             modelCanUseTools(request?.model)
-                .then(result => sendResponse({canUseTools: result}))
+                .then(result => sendResponse({ canUseTools: result }))
                 .catch(async e => {
-                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
             break;
@@ -133,20 +115,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             getModelInfo(request?.model)
                 .then(modelData => sendResponse(modelData))
                 .catch(async e => {
-                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
             break;
         case "prepareModels":
             prepareModels(request.modelName, request.unload, sender.tab)
-                .then(response => sendResponse({status: response.status, text: response.statusText}))
+                .then(response => sendResponse({ status: response.status, text: response.statusText }))
                 .catch(async e => {
-                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                     sendResponse({ status: 'error', message: e.toString() });
                 });
-        break;
+            break;
         case "getImageBase64":
             getImageAsBase64(request.url)
                 .then(base64 => sendResponse({ base64 }))
@@ -154,19 +136,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             break;
         case "CHECK_ACTIVE_TAB":
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                sendResponse(!!sender.tab?.id && tabs[0]?.id === sender?.tab?.id );
+                sendResponse(!!sender.tab?.id && tabs[0]?.id === sender?.tab?.id);
                 // sendResponse(tabs[0]?.id === sender.tab?.id);
             });
             break;
         case "checkAndSetSessionName":
             generateAndUpdateSessionTitle(request?.text ?? '', sender.tab)
-            .catch(async e => {
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e);
-                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
-            });
+                .catch(async e => {
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e);
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
+                });
             break;
         default:
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
             sendResponse();
     }
     return true;
@@ -174,9 +156,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     try {
-    switch (info.menuItemId) {
-        case "sendSelectedText":
-            if (!info.selectionText.length) { return; }
+        switch (info.menuItemId) {
+            case "sendSelectedText":
+                if (!info.selectionText.length) { return; }
                 if (!tab?.id) { return; }
                 // await addAttachment({
                 //     id: crypto.randomUUID(),
@@ -186,37 +168,37 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
                 // });
                 await chrome.tabs.sendMessage(tab?.id, { action: "activePageSelection", selection: info.selectionText });
                 // await chrome.tabs.sendMessage(tab?.id, { action: "activePageSelection", selection: info.selectionText });
-                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-            break;
-        case "inserSelectedInPrompt":
-            if (!info.selectionText.length) { return; }
+                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                break;
+            case "inserSelectedInPrompt":
+                if (!info.selectionText.length) { return; }
                 if (!tab?.id) { return; }
                 await chrome.tabs.sendMessage(tab?.id, { action: "inserSelectedInPrompt", selection: info.selectionText });
-                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-            break;
-        case "askAiExplanation":
-            await askAIExplanation(info, tab);
-            break;
-        case "sendPageContent":
-            await chrome.tabs.sendMessage(tab?.id, { action: "activePageContent" });
-                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-            break;
-        case "selectAndSendElement":
-            if (!tab?.id) {
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Expected tab?.id; received ${tab?.id}`, tab);
-                return;
-            }
+                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                break;
+            case "askAiExplanation":
+                await askAIExplanation(info, tab);
+                break;
+            case "sendPageContent":
+                await chrome.tabs.sendMessage(tab?.id, { action: "activePageContent" });
+                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                break;
+            case "selectAndSendElement":
+                if (!tab?.id) {
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Expected tab?.id; received ${tab?.id}`, tab);
+                    return;
+                }
                 await chrome.tabs.sendMessage(tab?.id, { action: "toggleSelectElement", selection: true });
-                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-            break;
-        case "openOptions":
+                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                break;
+            case "openOptions":
                 chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
-            break;
-        default:
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Unknown menu id: ${info?.menuItemId}`);
+                break;
+            default:
+                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Unknown menu id: ${info?.menuItemId}`);
         }
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
     }
 });
 
@@ -309,16 +291,16 @@ async function handleResponse(responseData = '', senderTabId) {
     try {
         if (!responseData) {
             await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" });
-            if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-    }
+            if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        }
 
-        console.log(`>>> ${manifest.name} - [${getLineNumber()}] - response (type: ${typeof (responseData)})`, responseData);
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response (type: ${typeof (responseData)})`, responseData);
         await chrome.tabs.sendMessage(senderTabId, { action: "streamData", response: JSON.stringify(responseData) });
-        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" });
-        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
         await showUIMessage(error.message, 'error');
     }
 
@@ -330,10 +312,10 @@ async function handleResponse(responseData = '', senderTabId) {
 async function askAIExplanation(info, tab) {
     try {
         await chrome.tabs.sendMessage(tab?.id, { action: "explainSelection", selection: info.selectionText });
-        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (e) {
         await showUIMessage(e.message, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
     }
 }
 
@@ -353,16 +335,16 @@ function getLastConsecutiveUserRecords(messages) {
 }
 
 async function validateToolCall(call = {}, availableTools) {
-    if (!availableTools) {  availableTools = await getPromptTools(); }
+    if (!availableTools) { availableTools = await getPromptTools(); }
 
     if (!call?.function?.name || Object.keys(call.function).length < 1) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - call request is null or empty!`, call);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - call request is null or empty!`, call);
         return { isValid: false, reason: "Missing or empty call object!" };
     }
 
     const func = availableTools.find(f => f?.function?.name === call.function.name);
     if (!func) {
-        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - Fake function call - ${call.function.name}. Instructions to restrict provided.`);
+        console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Fake function call - ${call.function.name}. Instructions to restrict provided.`);
         return {
             isValid: false,
             reason: `Invalid function call.\nThere is no function named ${call.function.name} in the provided list.\nYou must only call functions from the available list.\nDo not guess, do not invent function names.\nRetry using exactly one valid function from the list.\nContinue this process until a correct call is made or no function applies.`
@@ -409,8 +391,8 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
 
     for (const call of toolCalls) {
         const validation = await validateToolCall(call, availableTools);
-        if(!validation.isValid){
-            console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - Validation call vailed for ${call.function.name}!`, validation);
+        if (!validation.isValid) {
+            console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Validation call vailed for ${call.function.name}!`, validation);
             messages.push(
                 { role: "assistant", content: "", tool_calls: [call] },
                 { role: "tool", content: validation.reason || 'No reason provided' }
@@ -421,8 +403,8 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
         const funcType = availableTools.find(f => f.function.name === call.function.name)?.type || null;
         const funcUrl = `${toolBaseUrl}/${call.function.name}`;
         await updateUIStatusBar(`Calling ${call.function.name}...`);
-        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} call request`, call);
-        await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} call request`, call, 'debug');
+        console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} call request`, call);
+        await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} call request`, call, 'debug');
         let data;
         let res;
 
@@ -430,9 +412,9 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
             switch (funcType?.toLowerCase()) {
                 case 'tool':
                     res = await execInternalTool(call);
-                    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
-                    if(res?.result !== "success"){
+                    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
+                    if (res?.result !== "success") {
                         data = `"${call?.function?.name}" call returned error: ${res?.content}\nSelect the next best candidate function from the list.\n Continue until a valid response is received or no options remain.`;
                         messages.push(
                             { role: "assistant", content: "", tool_calls: [call] },
@@ -444,13 +426,13 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
                     break;
                 case 'function':
                     res = await fetchExtResponse(funcUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(call.function.arguments),
-            });
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(call.function.arguments),
+                    });
                     data = await res?.json();
-                    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
-                    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
+                    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+                    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
                     if (res?.status !== 200 || data?.status === 'error') {
                         data = `"${call?.function?.name}" call returned error: ${data.message}\nSelect and call another function from the list.\n Continue until a valid response is received or no options remain.`;
                         messages.push(
@@ -465,27 +447,27 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
             }
 
             switch (typeof res) {
-              case 'undefined':
-                data = `Function "${call.function.name}" returned no response.\nThe function name, its parameters, or the server may be invalid or unavailable.\nSelect and call another function from the list.\nContinue until a valid response is received or no options remain.`;
-                break;
-            case 'object':
-                data = JSON.stringify(data);
-                break;
+                case 'undefined':
+                    data = `Function "${call.function.name}" returned no response.\nThe function name, its parameters, or the server may be invalid or unavailable.\nSelect and call another function from the list.\nContinue until a valid response is received or no options remain.`;
+                    break;
+                case 'object':
+                    data = JSON.stringify(data);
+                    break;
             }
 
             await updateUIStatusBar(`${call.function.name} response received.`);
-            // console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
-            await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
+            // console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+            await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
 
         } catch (err) {
 
             await updateUIStatusBar(`Error occured while calling ${call.function.name}...`);
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error calling ${call.function.name}`, err, call, res);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error calling ${call.function.name}`, err, call, res);
             if (err.name === 'TypeError' && err.message.includes('fetch')) {
                 showUIMessage(`External tools endpoint (${funcUrl}) seems missing to be down!`, "error");
                 data = "Tool execution failed — endpoint unavailable.";
-                console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
-                await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
+                console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
+                await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
                 messages.push(
                     { role: "assistant", content: "", tool_calls: [call] },
                     { role: "user", content: data }
@@ -502,7 +484,7 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
     }
 
     if (messages.length < 1) { messages.push({ role: "tool", content: `None of these - ${toolCalls.map(t => t.function?.name).join(", ")} - are existing tool functions. Please rely on your internal knowledge instead.` }); }
-    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - merged tool call responses`, messages);
+    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - merged tool call responses`, messages);
     return messages;
 }
 
@@ -517,23 +499,23 @@ async function fetchDataAction(request, sender) {
     if (!url) {
         let msg = `Faild to compose the request URL - ${url}`;
         await showUIMessage(msg, 'error', sender.tab);
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
         return { "status": "error", "message": msg };
     }
 
     // Initialize a new AbortController for this tab's request
     const tabId = sender.tab?.id;
     const controller = new AbortController();
-    if (tabId != null) {  controllers.set(tabId, controller);  }
+    if (tabId != null) { controllers.set(tabId, controller); }
 
     let model = await getAiModel()
-    if (model) {  request.data['model'] = model;  }
+    if (model) { request.data['model'] = model; }
 
     if (promptTools.length > 0 && await modelCanUseTools(model)) {
         request.data["tools"] = promptTools;
         request.data["tool_choice"] = "auto"
     } else {
-        await dumpInFrontConsole(`[${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions, 'debug', sender?.tab?.id)
+        await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions, 'debug', sender?.tab?.id)
         console.debug(`>>> [${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions)
     }
     request.data["stream"] = false;
@@ -541,7 +523,7 @@ async function fetchDataAction(request, sender) {
 
     // Extract incoming user prompt messages
     const currentPrompt = request?.data?.messages || [];
-    if (currentPrompt.length < 1) {  throw new Error("No prompt received!");  }
+    if (currentPrompt.length < 1) { throw new Error("No prompt received!"); }
     const userInput = `\n\n${currentPrompt.map(el => el.content).join('')}`;
 
     let titleSeed;
@@ -549,7 +531,7 @@ async function fetchDataAction(request, sender) {
 
     let activeSession = await getActiveSession();
     if (!activeSession || !Array.isArray(activeSession.data)) {
-        if(!titleSeed) {  titleSeed = currentPrompt.map(m => m.content).join(' ').substring(0, 80);  }
+        if (!titleSeed) { titleSeed = currentPrompt.map(m => m.content).join(' ').substring(0, 80); }
         activeSession = await createNewSession(titleSeed);
     }
 
@@ -557,7 +539,7 @@ async function fetchDataAction(request, sender) {
     let context = activeSession.data.length > 0
         ? activeSession.data.filter(obj => obj.role && obj.content).map(obj => `${obj.role}: ${obj.content}.\n\n`).join('')
         : '';
-    if(context) {
+    if (context) {
         context = `\n\n# Context\n\n'''${context}'''\n\n# Instructions\n\nUse the context above to answer the question below. If you don't know, say "I don't know".\n\n`;
     }
 
@@ -596,7 +578,7 @@ async function fetchDataAction(request, sender) {
 
     request.data.messages = [...sysInstruct, ...userMessage];
 
-    await dumpInFrontConsole(`[${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender?.tab?.id);
+    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender?.tab?.id);
     console.debug(`>>> [${getLineNumber()}] - request.data`, request.data);
 
     let response;
@@ -612,7 +594,7 @@ async function fetchDataAction(request, sender) {
         response = await fetchExtResponse(url, reqOpt);
         responseText = await response.clone().text();
         body = await response.json();
-        await dumpInFrontConsole(`[${getLineNumber()}] - response received.`, {"responseText": responseText, "body": body}, 'log', sender?.tab?.id);
+        await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response received.`, { "responseText": responseText, "body": body }, 'log', sender?.tab?.id);
         if (response.status > 299) { throw new Error(`${response.status}: ${response.statusText} - ${body?.error || 'No response error provided...'}`); }
 
 
@@ -626,7 +608,7 @@ async function fetchDataAction(request, sender) {
             activeSession.data.push(...newMessages);
             await setActiveSession(activeSession);
 
-            if(lastRole !== 'tool') {   // Inject updated tool list to LLM if needed
+            if (lastRole !== 'tool') {   // Inject updated tool list to LLM if needed
                 if (remainingTools.size > 0) {
                     request.data.messages.push({
                         role: "user",
@@ -643,13 +625,13 @@ async function fetchDataAction(request, sender) {
 
             await updateUIStatusBar(`Context updated. Waiting for response.`, sender?.tab);
             response = await fetchExtResponse(url, {
-              ...reqOpt,
-              body: JSON.stringify(request.data),
+                ...reqOpt,
+                body: JSON.stringify(request.data),
             });
 
             responseText = await response.clone().text();
             body = await response.json();
-            await dumpInFrontConsole(`[${getLineNumber()}] - response received.`, {"responseText": responseText, "body": body}, 'log', sender?.tab?.id);
+            await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response received.`, { "responseText": responseText, "body": body }, 'log', sender?.tab?.id);
         }
 
         await updateUIStatusBar(`Final response received...`, sender?.tab);
@@ -659,22 +641,22 @@ async function fetchDataAction(request, sender) {
         await handleResponse(body, sender?.tab?.id);
     }
     catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
         if (e.name === 'AbortError') {
             try {
                 await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamAbort" });
-                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
             } catch (e1) {
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e1.message}`, e1);
+                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e1.message}`, e1);
             }
         } else {
             try {
                 await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamError", error: e.toString() });
-                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-                await dumpInFrontConsole(`[${getLineNumber()}] Error: ${e.message}`, e, 'error', sender?.tab?.id);
+                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e, 'error', sender?.tab?.id);
 
             } catch (e2) {
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e2.message}`, e2);
+                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e2.message}`, e2);
             }
 
             return { "status": "error", "message": e.message };
@@ -683,9 +665,9 @@ async function fetchDataAction(request, sender) {
     finally {
         try {
             await chrome.tabs.sendMessage(sender?.tab?.id, { action: "userPrompt", data: JSON.stringify(request.data) });
-            if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+            if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e3) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e3.message}`, e3);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e3.message}`, e3);
         }
     }
 
@@ -714,7 +696,7 @@ async function fetchExtResponse(url, options, resentWithoutTools = true) {
 
         return response;
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - External call to ${url} failed!`, error, options);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - External call to ${url} failed!`, error, options);
         throw error;
     }
 }
@@ -723,7 +705,7 @@ async function convertFileToText(fileAsB64) {
     const laiOptions = await getLaiOptions();
 
     if (!fileAsB64) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Invalid file provided`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Invalid file provided`);
         return '';
     }
 
@@ -749,13 +731,13 @@ async function convertFileToText(fileAsB64) {
     try {
         const response = await fetch(url, options);
         if (!response.ok) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error: Network response was not ok (${response.status}: ${response.statusText})`);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: Network response was not ok (${response.status}: ${response.statusText})`);
             return '';
         }
         const res = typeof response === 'string' ? response : (typeof response.text === 'function' ? await response.text() : '');
         return res;
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error fetching text from file: ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error fetching text from file: ${e.message}`, e);
         console.log(`Failed request to ${url} with file:`, fileAsB64);
         return '';
     }
@@ -780,7 +762,7 @@ async function getLaiOptions() {
         const laiOptions = Object.assign({}, defaults, obj ?? {});
         return laiOptions;
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
     }
 }
 
@@ -791,42 +773,42 @@ async function showUIMessage(message, type = '', tab) {
         await chrome.tabs.sendMessage(tab?.id, { "action": "showMessage", message: message, messageType: type });
         if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
     }
 }
 
 async function updateUIStatusBar(message, tab) {
-    if (!tab) {  tab = await getCurrentTab();  }
+    if (!tab) { tab = await getCurrentTab(); }
     if (!/^http/i.test(tab?.url)) {
-        console.warn(`>>> ${manifest.name} - [${getLineNumber()}] - The action is not possible in this tab`, tab);
+        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - The action is not possible in this tab`, tab);
         return;
     }
     try {
         await chrome.tabs.sendMessage(tab?.id, { "action": "updateStatusbar", message: message });
         if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
     }
 }
 
 async function dumpInFrontConsole(message, obj, type = 'log', tabId) {
     try {
-        if(!tabId){
+        if (!tabId) {
             const tab = await getCurrentTab();
             if (!/^http/i.test(tab?.url)) {
-                console.warn(`>>> ${manifest.name} - [${getLineNumber()}] - The action is not possible in this tab`, tab);
+                console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - The action is not possible in this tab`, tab);
                 return;
             }
             tabId = tab?.id;
-            if(!tabId){
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to get tabId`, tab);
+            if (!tabId) {
+                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to get tabId`, tab);
                 return;
             }
         }
-        await chrome.tabs.sendMessage(tabId, { "action": "dumpInConsole", message: message, obj: JSON.stringify(obj), type: type });
+        await chrome.tabs.sendMessage(tabId, { "action": "dumpInConsole", message: message, obj: JSON.stringify(obj ?? {}), type: type });
         if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
     }
 }
 
@@ -857,76 +839,98 @@ async function getModels() {
     let models;
     try {
         urlVal = new URL('/api/tags', (new URL(urlVal)).origin).href;
-      response = await fetch(urlVal, {
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-        },
-      });
+        response = await fetch(urlVal, {
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+            },
+        });
 
-      models = await response.json();
+        models = await response.json();
         if (models.models && Array.isArray(models.models)) { return { "status": "success", "models": models.models }; }
     } catch (e) {
-      console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
         return { "status": "error", "message": e.message };
     }
 }
 
 function tryReloadExtension() {
     try {
-        console.log(`>>> ${manifest.name} - [${getLineNumber()}] - trying to reload`);
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - trying to reload`);
         chrome.runtime.reload();
     } catch (err) {
-        if (chrome.runtime.lastError) { console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error:`, chrome.runtime.lastError); }
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        if (chrome.runtime.lastError) { console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error:`, chrome.runtime.lastError); }
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
     }
 }
 
 function reinjectContentScripts() {
-    const contentScripts = manifest?.content_scripts?.js || ["lai-main.js", "jslib/files.js", "jslib/sessions.js", "jslib/solomd2html.js", "jslib/utils.js", "jslib/ribbon.js", "jslib/stt.js", "content.js"];
+
+    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - starting reinjection`);
+
     chrome.tabs.query({}, (tabs) => {
-        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - tabs`, tabs);
-        if (!tabs) { return; }
+        if (!tabs?.length) {
+            console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - no tabs found`);
+            return;
+        }
+
         tabs.forEach((tab) => {
-            console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - will qury the tab ${tab?.id}`, tab);
-            if (!tab?.id || !/^http/.test(tab.url)) { return; }
-            chrome.scripting.executeScript(
-                {
-                    target: { tabId: tab.id },
-                    func: () => {
-                        return {
-                            title: document.title,
-                            localAI: document.getElementById('localAI')?.id,
-                        };
-                    },
-                },
-                (results) => {
-                    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - chrome.scripting.executeScript for this tab completed. results`, results);
-                    if (results && results[0].result?.localAI) {
-                        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - localAI foud`);
-                        chrome.scripting.executeScript({
-                            target: { tabId: tab.id },
-                            files: contentScripts
-                        });
-                    } else { console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - localAI NOT foud`);  }
+            if (!tab?.id || !/^http/.test(tab.url)) {
+                console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - skipping tab`, tab);
+                return;
+            }
+
+            console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - injecting into tab ${tab.id}`);
+
+            chrome.tabs.sendMessage(tab.id, { action: "ping" }, (res) => {
+                console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ping response:`, res);
+                if (chrome.runtime.lastError || !res?.pong) {
+                    injectScriptsToReconnect(tab);
                 }
-            );
-            console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - script execution on tab ${tab?.id} completed.`);
+            });
         });
     });
+}
+
+function injectScriptsToReconnect(tab) {
+    const contentScripts = manifest?.content_scripts?.js || [
+        "lai-main.js",
+        "jslib/files.js",
+        "jslib/sessions.js",
+        "jslib/solomd2html.js",
+        "jslib/utils.js",
+        "jslib/ribbon.js",
+        "jslib/stt.js",
+        "content.js"
+    ];
+    chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        files: contentScripts
+    }, () => {
+        console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - scripts injected into tab ${tab.id}`);
+
+        chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (name) => window.postMessage({ name, type: 'reconnect' }, '*'),
+            args: [manifest?.name || 'Unknown']
+        });
+
+        console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - postMessage sent to tab ${tab.id}`);
+    });
+
 }
 
 async function getImageAsBase64(url) {
     if (!url) { return null; }
     try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      return await new Promise(resolve => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result.split(',').pop());
-        reader.readAsDataURL(blob);
-      });
+        const res = await fetch(url);
+        const blob = await res.blob();
+        return await new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',').pop());
+            reader.readAsDataURL(blob);
+        });
     } catch {
-      return null;
+        return null;
     }
 }
 
@@ -939,44 +943,44 @@ async function prepareModels(modelName, remove = false, tab) {
     };
     if (remove) { data["keep_alive"] = 0; }
     try {
-       response = await fetch(laiOptions?.aiUrl, {
+        response = await fetch(laiOptions?.aiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
     } catch (err) {
-        await dumpInFrontConsole(err.message, err, "error", tab?.id);
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err, "error", tab?.id);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
     }
 
-    await dumpInFrontConsole(`${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab?.id);
-    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - response`, response);
+    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab?.id);
+    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response`, response);
     return response;
 }
 
 /////////// internal function defined in the prompt tools section ///////////
 
-async function execInternalTool(call = {}){
+async function execInternalTool(call = {}) {
     let res;
     const data = await getActiveSessionPageData();
     switch (call?.function?.name.toLowerCase()) {
         case "get_current_tab_url":
-            res = {"result": "success", "content": `${call?.function?.name} response is: ${data.url}`};
+            res = { "result": "success", "content": `${call?.function?.name} response is: ${data.url}` };
             break;
         case "get_current_date":
         case "get_current_time":
         case "get_date_time":
         case "get_date":
         case "get_time":
-            res = {"result": "success", "content": `${call?.function?.name} response is: ${new Date().toISOString()}`};
+            res = { "result": "success", "content": `${call?.function?.name} response is: ${new Date().toISOString()}` };
             break;
         case "get_tab_info":
         case "get_current_tab_info":
         case "get_current_tab_page_content":
-            res = {"result": "success", "content": `${call?.function?.name} response is: ${data.pageContent}`};
+            res = { "result": "success", "content": `${call?.function?.name} response is: ${data.pageContent}` };
             break;
         default:
-            res = {"result": "error", "content": `No tool named ${call?.function?.name} was found!`};
+            res = { "result": "error", "content": `No tool named ${call?.function?.name} was found!` };
             break;
     }
 
@@ -985,13 +989,13 @@ async function execInternalTool(call = {}){
 
 /////////// other helpers ///////////
 
-async function getModelInfo(modelName){
-    if(!modelName){  modelName = await getAiModel();  }
+async function getModelInfo(modelName) {
+    if (!modelName) { modelName = await getAiModel(); }
     let url = await getAiUrl();
     url = new URL(url);
     url = `${url.protocol}//${url.host}/api/show`;
 
-    const data = {  "model": modelName  };
+    const data = { "model": modelName };
     let res;
     try {
         res = await fetch(url, {
@@ -1001,51 +1005,46 @@ async function getModelInfo(modelName){
         });
         return await res.json();
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err, res);
-        return {  model: modelName, error: err.message  };
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err, res);
+        return { model: modelName, error: err.message };
     }
 }
 
-async function modelCanUseTools(modelName){
-    if(!modelName){  return false;  }
-
-    // let url = await getAiUrl();
-    // url = new URL(url);
-    // url = `${url.protocol}//${url.host}/api/show`;
-
-    // const data = {  "model": modelName  };
+async function modelCanUseTools(modelName) {
+    if (!modelName) { return false; }
     let modelData;
 
     try {
-        // const res = await fetch(url, {
-        //     method: 'POST',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify(data)
-        // });
-        // modelData = await res.json();
-        modelData = getModelInfo(modelName);
-        if(modelData?.error){  throw new Error(`${manifest.name} - [${getLineNumber()}] - ${ModelData?.error ?? "Error!"}`);  }
-        const canUseTools = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'tools' );
-        await dumpInFrontConsole(`The model ${modelName} ${canUseTools ? '' : 'does not '}support tools.`);
+        modelData = await getModelInfo(modelName);
+        if (modelData?.error) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${ModelData?.error ?? "Error!"}`); }
+        const canUseTools = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'tools');
+        await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - The model ${modelName} ${canUseTools ? '' : 'does not '}support tools.`);
         await updateUIStatusBar(`${modelName} ${canUseTools ? '' : 'does not '}support tools.`);
         return canUseTools;
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err, modelData);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err, modelData);
         return false;
     }
 }
 
 function getLineNumber() {
     const e = new Error();
-    return e.stack.split("\n")[2].trim().replace(/\s{0,}at (.+)/, "[$1]");
+    const stackLines = e.stack.split("\n").map(line => line.trim());
+    let index = stackLines.findIndex(line => line.includes(getLineNumber.name));
+
+    return stackLines[index + 1]
+        ?.replace(/\s{0,}at\s+/, '')
+        ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
+        ?.split('/')?.pop().replace(/\)$/, '')
+        || "Unknown";
 }
 
-async function getAiUrl(){
+async function getAiUrl() {
     const laiOptions = await getLaiOptions();
     if (!laiOptions?.aiUrl) {
         let msg = 'Missing API endpoint!';
         await showUIMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error', sender.tab);
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg}`, laiOptions);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${msg}`, laiOptions);
         return null;
     }
 
@@ -1053,26 +1052,26 @@ async function getAiUrl(){
     if (!url) {
         let msg = `Faild to compose the request URL - ${url}`;
         await showUIMessage(msg, 'error', sender.tab);
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
         return null;
     }
 
     return url;
 }
 
-async function getAiModel(){
+async function getAiModel() {
     const laiOptions = await getOptions();
     return laiOptions?.aiModel;
 }
 
-async function getGenerativeModel(){
+async function getGenerativeModel() {
     const laiOptions = await getOptions();
     return laiOptions?.generativeHelper || laiOptions?.aiModel;
 }
 
-async function generateAndUpdateSessionTitle(text, tab){
+async function generateAndUpdateSessionTitle(text, tab) {
     const titleSeed = await generateSessionTitle(text, tab);
-    if(!titleSeed){  return;  }
+    if (!titleSeed) { return; }
     const activeSession = await getActiveSession();
     let oldTitle = activeSession?.title?.replace(/session/ig, '');
     activeSession["title"] = `${titleSeed}${oldTitle}`;
@@ -1084,15 +1083,15 @@ async function generateSessionTitle(text, tab) {
     if (!text || text === '') { return null; }
     let url = await getAiUrl();
     let model = await getGenerativeModel();
-    if(!model) {  return;  }
-    console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`);
-    await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`, null, 'debug', tab?.id);
+    if (!model) { return; }
+    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`);
+    await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`, null, 'debug', tab?.id);
 
     url = new URL(url);
     url = `${url.protocol}//${url.host}/api/generate`;
     let jsonPrompt = {
-       "model": model,
-       "stream":false,
+        "model": model,
+        "stream": false,
         "raw": true,
         "options": {
             "temperature": 0,
@@ -1108,7 +1107,7 @@ Text_to_describe:
 `
     };
 
-    if(await modelCanThink(model, url)){  jsonPrompt["think"] = false;  }
+    if (await modelCanThink(model, url)) { jsonPrompt["think"] = false; }
 
     try {
         const res = await fetch(url, {
@@ -1117,8 +1116,8 @@ Text_to_describe:
             body: JSON.stringify(jsonPrompt)
         });
         const data = await res.json();
-        console.debug(`>>> ${manifest.name} - [${getLineNumber()}] - response`, data);
-        await dumpInFrontConsole(`>>> ${manifest.name} - [${getLineNumber()}] - response`, data, 'debug', tab?.id);
+        console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response`, data);
+        await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response`, data, 'debug', tab?.id);
         let title = data?.response?.split('\n')?.map(x => x?.trim())?.filter(Boolean)?.slice(-1)?.[0]?.trim() ?? null;
         title = title.replace(/^\n?title:\s{1,}/i, '');
         title = title.replace(/[^a-z0-9\s]/gi, '')
@@ -1128,18 +1127,18 @@ Text_to_describe:
             .join(' ');
         return title;
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         return null;
     }
 }
 
-async function modelCanThink(modelName = '', url = ''){
-    if(!modelName){  return false;  }
+async function modelCanThink(modelName = '', url = '') {
+    if (!modelName) { return false; }
 
     url = new URL(url);
     url = `${url.protocol}//${url.host}/api/show`;
 
-    const data = {  "model": modelName  };
+    const data = { "model": modelName };
     let modelData;
 
     try {
@@ -1149,10 +1148,10 @@ async function modelCanThink(modelName = '', url = ''){
             body: JSON.stringify(data)
         });
         modelData = await res.json();
-        const canThink = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'thinking' );
+        const canThink = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'thinking');
         return canThink;
     } catch (err) {
-        console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
     }
 }
@@ -1176,7 +1175,7 @@ async function createNewSession(text = `Session ${new Date().toISOString().repla
             attachments: []
         };
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
         newSession = {
             id: sessionId,
             title: text?.toString().split(/\s+/).slice(0, 6).join(' ') || '',
@@ -1196,17 +1195,17 @@ async function getActiveSession() {
     // let model;
     try {
         const sessionId = await getActiveSessionId();
-        if (!sessionId) {  return await createNewSession();  }
+        if (!sessionId) { return await createNewSession(); }
 
         // model = await getAiModel();
         const sessions = await getAllSessions();
 
         const session = sessions.find(sess => sess.id === sessionId);
-        if (!session) {  return await createNewSession();  }
+        if (!session) { return await createNewSession(); }
 
         return session;
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
     }
 }
 
@@ -1219,22 +1218,17 @@ async function getActiveSessionId() {
         }
         return sessionId;
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - getActiveSessionId error: ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - getActiveSessionId error: ${error.message}`, error);
         return null;
     }
 }
 
 async function getAllSessions() {
     try {
-        let sessions = await chrome.storage.local.get([allSessionsStorageKey]);
-        if(Object.keys(sessions).length < 1){  sessions = []; }
-        while (sessions && typeof sessions === 'object' && allSessionsStorageKey in sessions) {
-            sessions = sessions[allSessionsStorageKey];
-        }
-
-        return sessions || [];
+        const result = await chrome.storage.local.get([allSessionsStorageKey]);
+        return result[allSessionsStorageKey] ?? [];
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
         return [];
     }
 }
@@ -1242,56 +1236,56 @@ async function getAllSessions() {
 async function setActiveSession(session) {
     try {
         if (!session?.id) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - session:`, session);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - session:`, session);
             throw new Error(`[${getLineNumber()}]: Session object is missing a valid id!`);
         }
 
         const sessions = await getAllSessions();
         const idx = sessions.findIndex(s => s.id === session.id);
 
-        if (idx < 0) {  throw new Error(`Session with id ${session.id} not found!`);  }
+        if (idx < 0) { throw new Error(`Session with id ${session.id} not found!`); }
 
         sessions[idx] = session;
         await setAllSessions(sessions);
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
     }
 }
 
 async function setAllSessions(obj = []) {
     try {
-        while(obj && typeof obj === 'object' && allSessionsStorageKey in obj){
+        while (obj && typeof obj === 'object' && allSessionsStorageKey in obj) {
             obj = obj[allSessionsStorageKey];
         }
 
         await chrome.storage.local.set({ [allSessionsStorageKey]: obj });
     } catch (e) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
     }
     return true;
 }
 
-async function getOptions(){
+async function getOptions() {
     let opt;
     let aiOptions;
     try {
         opt = await chrome.storage.sync.get(storageOptionKey);
         aiOptions = opt[storageOptionKey] || {};
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error, opt);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error, opt);
     }
     return aiOptions;
 }
 
-async function setOptions(options){
+async function setOptions(options) {
     try {
         await chrome.storage.sync.set({ [storageOptionKey]: options });
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error, options);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error, options);
     }
 }
 
-async function getPromptTools(){
+async function getPromptTools() {
     const commands = await chrome.storage.local.get([storageToolsKey]);
     return commands[storageToolsKey] || [];
 }

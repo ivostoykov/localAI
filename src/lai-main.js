@@ -15,7 +15,7 @@ async function initSidebar() {
     if (!shadowRoot) {
         if (restartCounter < RESTART_LIMIT) {
             restartCounter++;
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - restarting: ${restartCounter}`);
+            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - restarting: ${restartCounter}`);
             start();
         }
         return;
@@ -35,13 +35,13 @@ async function initSidebar() {
     });
 
     const ribbon = getRibbon();
-    if (!ribbon) { console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Main ribbon not found!`, ribbon); }
+    if (!ribbon) { console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Main ribbon not found!`, ribbon); }
     ribbon?.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
     ribbon?.querySelector('.temp-range-wrapper')?.addEventListener('click', modifiersClicked, true);
 
 
     const userInput = shadowRoot.getElementById('laiUserInput');
-    if (!userInput) { console.log(`>>> ${manifest.name} - [${getLineNumber()}] - Main ribbon not found!`, userInput); }
+    if (!userInput) { console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Main ribbon not found!`, userInput); }
     userInput?.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e), false);
     userInput?.addEventListener('click', userInputClicked);
     userInput?.addEventListener('focus', async e => await userInputFocused(e));
@@ -60,7 +60,7 @@ async function initSidebar() {
     await initRibbon();
 
     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
-    laiChatMessageList.dataset.watermark = `${manifest.name} - ${manifest.version}`;
+    laiChatMessageList.dataset.watermark = `${manifest?.name || 'Unknown'} - ${manifest.version}`;
     laiChatMessageList.addEventListener('click', hidePopups, false);
     laiChatMessageList.addEventListener('scroll', (e) => {
         if (laiChatMessageList.dataset.scrollType === 'auto') {
@@ -127,7 +127,7 @@ async function createNewSessionClicked(e, shadowRoot) {
         userInput.value = '';
         userInput.focus();
     } else {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
     removeLocalStorageObject(activeSessionIdStorageKey);
     showMessage('New session created.', 'success');
@@ -161,7 +161,7 @@ async function recycleAllSessions(e, shadowRoot) {
         showMessage('Session history deleted.', 'success');
         await createNewSessionClicked(e, shadowRoot);
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
         showMessage(error.message, 'error');
     }
 }
@@ -204,7 +204,8 @@ function laiInsertCommandText(text) {
     const textBeforeCursor = textarea.value.substring(0, cursorPosition);
     const textAfterCursor = textarea.value.substring(cursorPosition);
 
-    const prefixEnd = textBeforeCursor.lastIndexOf('@{{');
+    let prefixEnd = textBeforeCursor.lastIndexOf('@{{');
+    if (prefixEnd < 0) { prefixEnd = 0; }
     textarea.value = textBeforeCursor.substring(0, prefixEnd) + text + textAfterCursor;
     textarea.selectionStart = textarea.selectionEnd = prefixEnd + text.length;
     textarea.focus();
@@ -276,14 +277,14 @@ function showAttachment(theAttachment) {
 async function attachmentImgClicked(e) {
     e.preventDefault();
     let el = e.target;
-    let attachemtnId = el.getAttribute('data-index');
-    if (!attachemtnId) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Attachment Id not found`);
+    let attachmentId = el.getAttribute('data-index');
+    if (!attachmentId) {
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Attachment Id not found`);
         console.error(el);
         return;
     }
 
-    await deleteAttachment(attachemtnId);
+    await deleteAttachment(attachmentId);
     await attachmentDeleted();
     el.remove();
 }
@@ -348,11 +349,11 @@ function userInputClicked(e) {
 async function userInputFocused(e) {
     try {
         let attachments = await getAttachments();
-        if (attachments.lengh < 1) { return; }
+        if (attachments.length < 1) { return; }
         clearAttachments();
         attachments.forEach(a => showAttachment(a));
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
     }
 }
 
@@ -700,7 +701,7 @@ function insertIntoDocument(e, type) {
 function click2insert(e, textEl, callback) {
     const shadowRoot = getShadowRoot();
     if (!document.hasFocus() || document.visibilityState !== 'visible') {
-        console.warn(`>>> ${manifest.name} - [${getLineNumber()}] - Page is not active.`);
+        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Page is not active.`);
         return;
     }
 
@@ -727,7 +728,7 @@ function click2insert(e, textEl, callback) {
             });
         }
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${error.message}`, error);
     } finally {
         if (typeof (callback) === 'function') {
             callback();
@@ -792,7 +793,7 @@ async function copyChatElementContent(e, type) {
         await navigator.clipboard.writeText(textContent);
         laiShowCopyHint(evt)
     } catch (err) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err);
     }
 }
 
@@ -836,7 +837,7 @@ function laiSourceTextClicked(e) {
             clickedSourceTitle.classList.toggle('copied');
             setTimeout(() => clickedSourceTitle.classList.toggle('copied'), 3000);
         })
-        .catch(err => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
+        .catch(err => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
 }
 
 async function laiSwapSidebarWithButton(forceClose = false) {
@@ -847,7 +848,7 @@ async function laiSwapSidebarWithButton(forceClose = false) {
     const sideBar = shadowRoot.getElementById('laiSidebar');
     const mainButton = shadowRoot.getElementById('laiMainButton');
     if (!sideBar || !mainButton) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Sidebar or button not found!`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Sidebar or button not found!`);
         return;
     }
 
@@ -871,7 +872,7 @@ async function laiUpdateMainButtonStyles() {
     const laiOptions = await getLaiOptions();
     const btn = shadowRoot.getElementById('laiMainButton');
     if (!btn) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Main button not found!`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Main button not found!`);
         return;
     }
 
@@ -896,9 +897,9 @@ async function laiAbortRequest(e) {
     if (checkExtensionState()) {
         try {
             await chrome.runtime.sendMessage({ action: "abortFetch" });
-            if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - error: ${e.message}`, e);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${e.message}`, e);
         }
     }
 
@@ -954,18 +955,18 @@ async function queryAI() {
     try {
         updateStatusBar('Prompt sent to the model, awaiting response...');
         const response = await chrome.runtime.sendMessage(requestData);
-        if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
 
         if (response?.status === 'error' && response?.message) {
             showMessage(response.message, 'error');
-            throw new Error(`${manifest.name} - [${getLineNumber()}] - Response error: ${response.message}`, response);
+            throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Response error: ${response.message}`, response);
         }
 
     } catch (e) {
         if (e.message.indexOf('Extension context invalidated.') > -1) {
             showMessage(`${e.message}. Please reload the page.`, 'warning');
         }
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
     }
     finally {
         resetStatusbar();
@@ -991,7 +992,7 @@ function laiExtractDataFromResponse(response) {
         response = JSON.parse(responseJson);
     } catch (err) {
         showMessage(err.message, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         return '';
     }
 
@@ -1013,7 +1014,7 @@ function scrollChatHistoryContainer(e) {
     const shadowRoot = getShadowRoot();
     const laiChatMessageList = shadowRoot?.querySelector('#laiChatMessageList');
     if (!laiChatMessageList) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
         return;
     }
     laiChatMessageList.dataset.scrollType = 'auto';
@@ -1028,7 +1029,7 @@ function renderCompleteFired(e) {
 }
 
 function getParseAndRenderOptions(rootEl) {
-    if (!rootEl) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - Target element not found!`); }
+    if (!rootEl) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Target element not found!`); }
 
     const shadowRoot = getShadowRoot();
     const controller = new AbortController();
@@ -1043,12 +1044,17 @@ function getParseAndRenderOptions(rootEl) {
     return { abortSignal: controller.signal };
 }
 
-chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
+async function onRuntimeMessage(response, sender, sendResponse) {
+    if (response && response?.action === 'ping') {
+        sendResponse({ pong: true });
+        return true;
+    }
+
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
         if (restartCounter < RESTART_LIMIT) {
             restartCounter++;
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - restarting: ${restartCounter}`);
+            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - restarting: ${restartCounter}`);
             start();
         }
         return;
@@ -1064,12 +1070,12 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
                 recipient?.setAttribute("id", "laiActiveAiInput");
             }
             if (!recipient && response.action.toLowerCase().startsWith('stream')) {
-                console.log(`>>> ${manifest.name} - [${getLineNumber()}] - no recipient`);
+                console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - no recipient`);
                 return;
             }
         }
     } catch (error) {
-        console.log(`>>> ${manifest.name} - [${getLineNumber()}] - restarting: ${restartCounter}`, error, response);
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - restarting: ${restartCounter}`, error, response);
     }
 
     switch (response.action) {
@@ -1085,11 +1091,11 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
                 // await setActiveSession(activeSession);
                 updateStatusBar('Receiving and processing data...');
                 const rootRecipient = laiGetRecipient();
-                if (!rootRecipient) { throw new Error(`>>> ${manifest.name} - [${getLineNumber()}] - Target element not found!`) }
+                if (!rootRecipient) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Target element not found!`) }
                 await parseAndRender(dataChunk, rootRecipient, getParseAndRenderOptions(rootRecipient) || {});
             } catch (err) {
                 streamDataError = err;
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err, dataChunk, response);
+                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err, dataChunk, response);
             }
             break;
         case "streamEnd":
@@ -1106,7 +1112,7 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
         case "activePageSelection":
             if (!response.selection) {
                 showMessage('Element picked up successfully.', 'info')
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
+                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
                 break;
             }
             let newActivePageSelectionAttachment = {
@@ -1123,7 +1129,7 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
         case "inserSelectedInPrompt":
             if (!response.selection) {
                 showMessage('Element picked up successfully.', 'info')
-                console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
+                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
                 break;
             }
             const isSidebarActive = getSideBar()?.classList.contains('active');
@@ -1172,8 +1178,9 @@ chrome.runtime.onMessage.addListener(async (response, sender, sendResponse) => {
         resetStatusbar();
     }
 
+    sendResponse();
     return true;
-});
+}
 
 function laiHandleStreamActions(logMessage, recipient, abortText = '') {
     const shadowRoot = getShadowRoot();
@@ -1186,7 +1193,7 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
         textAres.classList.remove('invisible');
         textAres.focus();
     } else {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - User input area not found!`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - User input area not found!`);
     }
 
     if (abortText && recipient) {
@@ -1218,7 +1225,7 @@ function laiGetRecipient() {
 async function ask2ExplainSelection(response) {
     if (!response) {
         showMessage('Nothing received to explain!', 'warning');
-        console.warn(`>>> ${manifest.name} - [${getLineNumber()}] - response: `, response);
+        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response: `, response);
         return;
     }
 
@@ -1227,7 +1234,7 @@ async function ask2ExplainSelection(response) {
 
     const sideBar = getSideBar();
     if (!sideBar) {
-        console.error(`>>> ${manifest.name} - ${[getLineNumber()]}: Sidebar not found!`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - ${[getLineNumber()]}: Sidebar not found!`);
         return;
     }
 
@@ -1354,7 +1361,7 @@ async function checkCommandHandler(e) {
                 let lastMsg = '';
                 try {
                     const hist = JSON.parse(shadowRoot?.querySelector('#feedbackMessage')?.dataset?.history ?? "[]");
-                    lastMsg = `${hist[hist.length-1] ?? 'Unknown'}`;
+                    lastMsg = `${hist[hist.length - 1] ?? 'Unknown'}`;
                 } catch (err) {
                     lastMsg = "Error getting message history!";
                     console.log(`${manifest?.name} - [${getLineNumber()}] Error getting message history!`, err)
@@ -1373,11 +1380,11 @@ async function checkCommandHandler(e) {
                     const model = getActiveModel();
                     updateStatusBar(`Awaiting information about ${model}...`);
                     const response = await chrome.runtime.sendMessage({ action: "modelInfo", model: model });
-                    if (chrome.runtime.lastError) { throw new Error(`${manifest.name} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                    if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
 
                     if (response?.status === 'error' && response?.message) {
                         showMessage(response.message, 'error');
-                        throw new Error(`${manifest.name} - [${getLineNumber()}] - Response error: ${response.message}`, response);
+                        throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Response error: ${response.message}`, response);
                     }
 
                     showMessage(`${model} capabilities: ${response?.capabilities?.join(', ') ?? 'unknown'}`, 'info', 10000);
@@ -1385,7 +1392,7 @@ async function checkCommandHandler(e) {
                     if (e.message.indexOf('Extension context invalidated.') > -1) {
                         showMessage(`${e.message}. Please reload the page.`, 'warning');
                     }
-                    console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
                 }
                 finally {
                     resetStatusbar();
@@ -1404,7 +1411,7 @@ async function checkCommandHandler(e) {
 
         if (res) {
             userInput.value = userInput?.value?.replace(matches[i][0], '');
-            if(userInput.value === '\n'){  userInput.value = '';  }
+            if (userInput.value === '\n') { userInput.value = ''; }
         }
         if (!continueLoop) { break; }
     }
@@ -1481,7 +1488,7 @@ function addToUserCommands(cmdData, idx = -1) {
             if (e.message.indexOf('Extension context invalidated.') > -1) {
                 showMessage(`${e.message}. Please reload the page.`, 'error');
             }
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
         });
 }
 
@@ -1622,7 +1629,7 @@ function micClicked(e) {
 function dumpRawContent(type = 'ai', i) {
     const sideBar = getSideBar();
     if (!sideBar) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - SideBar not found!`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - SideBar not found!`);
         return;
     }
 
@@ -1630,18 +1637,18 @@ function dumpRawContent(type = 'ai', i) {
     let content;
     if (i && i >= 0 && i < aiInputs.length) {
         content = aiInputs[i]?.rawContent.messages ? aiInputs[i]?.rawContent.messages.map(e => e.content).join('') : aiInputs[i]?.rawContent || '';
-        console.log(`>>> ${manifest.name} - [${getLineNumber()}] - raw content:}`, content);
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - raw content:}`, content);
     } else {
         aiInputs.forEach((el, idx) => {
             content = el.rawContent.messages ? el.rawContent?.messages.map(e => e.content).join('') : el.rawContent || '';
-            console.log(`>>> ${manifest.name} - [${getLineNumber()}] - raw content: ${idx}`, content);
+            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - raw content: ${idx}`, content);
         });
     }
 }
 
 function storeLastGeneratedPrompt(data) {
     if (!data) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - No prompt received!`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - No prompt received!`);
         return;
     }
 
@@ -1649,13 +1656,13 @@ function storeLastGeneratedPrompt(data) {
     try {
         promptData = typeof (data) === 'string' ? JSON.parse(data) : data;
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error parsing received prompt`, data);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error parsing received prompt`, data);
         return;
     }
 
     const sideBar = getSideBar();
     if (!sideBar) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - SideBar not found!`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - SideBar not found!`);
         return;
     }
 
@@ -1672,7 +1679,7 @@ function dumpInConsole(message = '', obj, consoleAction = 'log') {
             console[consoleAction](message, obj);
         }
     } catch (error) {
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Error parsing JSON or logging message: ${error.message}`, error);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error parsing JSON or logging message: ${error.message}`, error);
     }
 }
 

@@ -17,10 +17,10 @@ function importFromFile(e) {
             var json = JSON.parse(reader.result);
             chrome.storage.local.set({ ['aiUserCommands']: json })
                 .then(() => showMessage('User Commands imported successfully.', 'success'))
-                .catch(e => console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${e.message}`, e));
+                .catch(e => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e));
             aiUserCommands = json;
         } catch (err) {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         } finally {
             fileInput.remove();
         }
@@ -50,8 +50,8 @@ function getHighestZIndex() {
     for (let i = 0; i < elements.length; i++) {
         let zIndex = parseInt(elements[i]?.style?.zIndex, 10);
         if (isNaN(zIndex)) zIndex = parseInt(window.getComputedStyle(elements[i])?.zIndex, 10);
-        if (isNaN(zIndex)) {  continue;  }
-        if (zIndex > highestZIndex) {  highestZIndex = zIndex;  }
+        if (isNaN(zIndex)) { continue; }
+        if (zIndex > highestZIndex) { highestZIndex = zIndex; }
     }
 
     return highestZIndex + 1000;
@@ -66,6 +66,7 @@ function getLineNumber() {
     return stackLines[index + 1]
         ?.replace(/\s{0,}at\s+/, '')
         ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
+        ?.split('/')?.pop().replace(/\)$/, '')
         || "Unknown";
 }
 
@@ -84,12 +85,13 @@ function hideSpinner() {
 }
 
 function checkExtensionState() {
-    if (!chrome.runtime.id && chrome.runtime.reload) {   chrome.runtime.reload();  }
-    if (!chrome.runtime.id) {
+    reloadRuntime();
+    if (!chrome?.runtime?.id) {
         if (typeof (showMessage) === 'function') {
-            showMessage(`${manifest.name} - Extension context invalidated. Please reload the tab.`, 'error');
+            showMessage(`${manifest?.name || 'Unknown'} - Extension context invalidated. Please reload the tab.`, 'error');
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
         } else {
-            console.error(`>>> ${manifest.name} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
         }
         return false;
     }
@@ -97,23 +99,23 @@ function checkExtensionState() {
     return true;
 }
 
-async function checkAndSetSessionName(){
+async function checkAndSetSessionName() {
     const currentSession = await getActiveSession();
-    if(!currentSession || !currentSession?.title || !currentSession?.title?.toLowerCase()?.startsWith('session')){  return;  }
+    if (!currentSession || !currentSession?.title || !currentSession?.title?.toLowerCase()?.startsWith('session')) { return; }
     const sessionData = currentSession?.data || [];
-    if(sessionData.length < 1){  return;  }
+    if (sessionData.length < 1) { return; }
     const userInput = sessionData?.filter(el => el?.role === 'user');
-    if(userInput.length < 1){  return;  }
-    if(!userInput[0]?.content){  return;  }
+    if (userInput.length < 1) { return; }
+    if (!userInput[0]?.content) { return; }
     await chrome.runtime.sendMessage({ action: "checkAndSetSessionName", text: userInput[0]?.content });
 }
 
-async function getAiUrl(){
+async function getAiUrl() {
     const laiOptions = await getLaiOptions();
     if (!laiOptions?.aiUrl) {
         let msg = 'Missing API endpoint!';
         showMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg}`, laiOptions);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${msg}`, laiOptions);
         return null;
     }
 
@@ -121,20 +123,20 @@ async function getAiUrl(){
     if (!url) {
         let msg = `Faild to compose the request URL - ${url}`;
         showMessage(msg, 'error');
-        console.error(`>>> ${manifest.name} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
         return null;
     }
 
     return url;
 }
 
-async function getAiModel(){
+async function getAiModel() {
     const laiOptions = await getOptions();
     return laiOptions?.aiModel;
 }
 
 async function modelCanThink(modelName = '', url = '') {
-    if(!modelName){  return false;  }
+    if (!modelName) { return false; }
 
     url = new URL(url);
     url = `${url.protocol}//${url.host}/api/show`;
@@ -142,30 +144,40 @@ async function modelCanThink(modelName = '', url = '') {
     try {
         const response = await chrome.runtime.sendMessage({ action: 'modelCanThink', model: modelName, url });
         if (response?.error) {
-            console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - response error`, response?.error);
+            console.error(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - response error`, response?.error);
             return false;
         }
 
         return response?.canThink ?? false;
     } catch (err) {
-        console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
     }
 }
 
-async function modelCanUseTools(modelName = ''){
-    if(!modelName){  return false;  }
+async function modelCanUseTools(modelName = '') {
+    if (!modelName) { return false; }
 
     try {
-        const response = await chrome.runtime.sendMessage({ action: 'modelCanUseTools', model: modelName,});
+        const response = await chrome.runtime.sendMessage({ action: 'modelCanUseTools', model: modelName, });
         if (response?.error) {
-            console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - response error`, response?.error);
+            console.error(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - response error`, response?.error);
             return false;
         }
 
         return response?.canUseTools ?? false;
     } catch (err) {
-        console.error(`>>> ${theManifest.name} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
+    }
+}
+
+function reloadRuntime() {
+    try {
+        if (!chrome.runtime?.id && chrome.runtime?.reload) {
+            chrome.runtime.reload();
+        }
+    } catch (err) {
+        console.warn(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - Safe runtime reload failed:`, err);
     }
 }
