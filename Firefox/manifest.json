@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local AI helper",
-  "version": "1.28.15",
+  "version": "1.28.22",
   "options_page": "options.html",
   "permissions": [
     "activeTab",
@@ -29,6 +29,7 @@
         "jslib/files.js",
         "jslib/sessions.js",
         "jslib/solomd2html.js",
+        "jslib/user_input_ribbon.js",
         "jslib/utils.js",
         "jslib/ribbon.js",
         "jslib/stt.js",
@@ -50,7 +51,9 @@
         "css/button.css",
         "css/ribbon.css",
         "css/sidebar.css",
+        "jslib/user_input_ribbon.js",
         "css/aioutput.css",
+        "css/templates.css",
         "lai-main.js",
         "img/*.svg"
       ],

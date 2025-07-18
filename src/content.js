@@ -65,14 +65,11 @@ async function waitForStorageReady(timeout = 2000) {
   while (Date.now() - start < timeout) {
     try {
       await chrome.storage.local.get(null);
-      console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - storage ready.`);
       return true;
     } catch {
-      console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - storage NOT ready.`);
       await new Promise(res => setTimeout(res, 100));
     }
   }
-  console.warn('Storage not ready after timeout');
   return false;
 }
 
@@ -95,7 +92,10 @@ async function allDOMContentLoaded(e) {
   attachElementSelectionListenersToFrames();
 
   document.addEventListener('click', async function (event) {
-    if (isElementSelectionActive) { laiGetClickedSelectedElement(event); }
+    closeQuickPromptListMenu(event);
+    if (isElementSelectionActive) {
+      laiGetClickedSelectedElement(event);
+    }
 
     await closeAllDropDownRibbonMenus(event);
     const localAI = document.getElementById('localAI');
@@ -162,7 +162,10 @@ async function allDOMContentLoaded(e) {
 
   init();
   try {
-    await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css']));
+    const cssList = manifest?.web_accessible_resources?.map(el => el?.resources)?.flat()?.filter(el => el?.endsWith('css'))
+      ?? ['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css'];
+    await Promise.all(laiFetchStyles(cssList));
+    // await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css']));
   } catch (error) {
     console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }

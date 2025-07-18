@@ -1,8 +1,13 @@
-html, body, local-ai, local-ai *, #localAI, #localAI * {
+html,
+body,
+local-ai,
+local-ai *,
+#localAI,
+#localAI * {
     /* font-size: 16px !important;
     all: initial !important;
     font-family: initial !important; */
-    position:relative;
+    position: relative;
     all: initial;
     box-sizing: border-box;
     font-family: system-ui, sans-serif;
@@ -108,13 +113,13 @@ html, body, local-ai, local-ai *, #localAI, #localAI * {
     z-index: 100;
 }
 
-.hist-top-menu > .scrollable {
+.hist-top-menu>.scrollable {
     overflow-y: auto;
     max-height: 50vh;
     flex: 1;
 }
 
-.hist-top-menu > .fixed-bottom {
+.hist-top-menu>.fixed-bottom {
     border-top: 1px solid #eee;
     background: #fff;
 }
@@ -274,7 +279,8 @@ html, body, local-ai, local-ai *, #localAI, #localAI * {
     align-items: baseline;
     opacity: 0.8;
 }
-.lai-action-icons:hover{
+
+.lai-action-icons:hover {
     opacity: 1;
     background-color: #eee;
 }
@@ -300,7 +306,7 @@ html, body, local-ai, local-ai *, #localAI, #localAI * {
     flex-direction: column;
     box-sizing: border-box;
     min-height: 100px;
-    padding-bottom: 7px;
+    padding-bottom: 5px;
     bottom: 2px;
     position: relative;
     height: 175px;
@@ -312,12 +318,12 @@ html, body, local-ai, local-ai *, #localAI, #localAI * {
     height: 500px;
 }
 
-div.lai-user-area:has(textarea.invisible) .statusbar {
+/* div.lai-user-area:has(textarea.invisible) .statusbar {
     position: absolute !important;
     left: -2px;
     width: 99.5%;
     bottom: 3px;
-}
+} */
 
 .statusbar {
     background-color: #ddd;
@@ -330,29 +336,32 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
     height: 30px;
     border: 1px solid #aaa;
     padding: 0 3px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
 }
 
-.statusbar .notification{
+.statusbar .notification {
     position: relative;
     width: 80%;
     display: inline-block;
+    flex: 1;
 }
 
 .statusbar .mic-container {
-    display: inline-flex;
-    position: absolute;
-    right: 5px;
-    bottom: 0;
+    display: flex;
+    position: relative;
+    flex-direction: column;
     border-left: 1px solid #aaa;
     padding-left: 5px;
     cursor: pointer;
 }
 
-.statusbar .mic-container:hover{
+.statusbar .mic-container:hover {
     background-color: #fefcdc;
 }
 
-.statusbar .mic-container img{
+.statusbar .mic-container img {
     width: 18px;
     height: auto;
 }
@@ -362,10 +371,12 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
         transform: scale(1);
         box-shadow: 0 0 0 0 rgba(0, 0, 0, 0.7);
     }
+
     70% {
         transform: scale(1.1);
         box-shadow: 0 0 10px 10px rgba(0, 0, 0, 0);
     }
+
     100% {
         transform: scale(1);
         box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
@@ -383,6 +394,44 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
     overflow: auto;
     flex-grow: 1;
 }
+
+/* status bar user input ribbon*/
+
+.input-controls-container {
+    width: 100%;
+    position: relative;
+    height: 30px;
+    margin-top: auto;
+}
+
+.user-input-ribbon {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+    height: 100%;
+    padding: 0 15px;
+    background-color: #eee;
+    border: 1px solid #aaa;
+}
+
+.user-input-ribbon button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.user-input-ribbon img {
+    width: 20px;
+    height: auto;
+    opacity: 0.6;
+}
+
+.user-input-ribbon img:hover {
+    opacity: 1;
+}
+
 
 /* drop zone */
 .dropzone {
@@ -757,6 +806,11 @@ div.lai-user-area:has(textarea.invisible) .statusbar {
 }
 
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
 }

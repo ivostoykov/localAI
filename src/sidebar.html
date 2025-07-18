@@ -9,7 +9,7 @@
         <div id="availableModelList" class="available-model-list ribbon-label invisible"></div>
         <div class="ribbon-sections">
             <div class="rib-section left">
-                <img src="" id="cogBtn" alt="Options" title="Options" data-type="cog"/>
+                <img src="" id="cogBtn" alt="Options" title="Options" data-type="cog" />
                 <div id="cogMenu" class="rib-cog-menu-container invisible">
                     <select name="apiUrlList" id="apiUrlList" data-source='{"list": "urlList", "selected": "aiUrl"}'>
                         <option value="" selected>Select API endpoint</option>
@@ -32,13 +32,15 @@
                     <hr>
                     <div id="mainHelpMenu" class="cog-menu-item">Help</div>
                 </div>
-                <img src="" id="errorMsgBtn" class="invisible" alt="Show last error" title="Show last error" data-type="error">
+                <img src="" id="errorMsgBtn" class="invisible" alt="Show last error" title="Show last error"
+                    data-type="error">
             </div>
 
             <div id="laiSessionHistoryMenu" class="rib-section center" title="Session history">
                 <img src="" id="newSession" alt="New Session" title="New Session" data-type="plus">
                 <img src="" id="sessionHistory" alt="Session history" title="Session history" data-type="history">
-                <img src="" id="recycleCurrentSessionBtn" alt="Delete Current Session" title="Delete Current Session" data-type="recycle" />
+                <img src="" id="recycleCurrentSessionBtn" alt="Delete Current Session" title="Delete Current Session"
+                    data-type="recycle" />
                 <img src="" id="modelThinking" alt="Thinking" title="Toggle thinking" data-type="think">
                 <div id="modifiers" class="temp-range-wrapper">
                     <div class="session-menu invisible">
@@ -46,15 +48,16 @@
                             <input type="number" name="num_ctx" id="num_ctx" title="Context window size (tokens)" />
                         </label>
                         <label title="Number of last tokens to penalise repeats">repeat_last_n
-                            <input type="number" name="repeat_last_n" id="repeat_last_n" title="Number of last tokens to penalise repeats" />
+                            <input type="number" name="repeat_last_n" id="repeat_last_n"
+                                title="Number of last tokens to penalise repeats" />
                         </label>
                         <label title="Penalty factor for repeated tokens">repeat_penalty
-                            <input type="number" name="repeat_penalty" id="repeat_penalty" min="0.01" max="10" step="0.01"
-                                title="Penalty factor for repeated tokens" />
+                            <input type="number" name="repeat_penalty" id="repeat_penalty" min="0.01" max="10"
+                                step="0.01" title="Penalty factor for repeated tokens" />
                         </label>
                         <label title="Sampling temperature">temperature
-                            <input type="number" name="temperature" id="tempInput" min="0" max="1" step="0.01" class="temp-range"
-                                title="Sampling temperature" />
+                            <input type="number" name="temperature" id="tempInput" min="0" max="1" step="0.01"
+                                class="temp-range" title="Sampling temperature" />
                         </label>
                         <label title="Random seed for reproducibility">seed
                             <input type="number" name="seed" id="seed" title="Random seed for reproducibility" />
@@ -63,7 +66,8 @@
                             <input type="text" name="stop" id="stop" title="Stop sequence for generation" />
                         </label>
                         <label title="Maximum number of tokens to generate">num_predict
-                            <input type="number" name="num_predict" id="num_predict" title="Maximum number of tokens to generate" />
+                            <input type="number" name="num_predict" id="num_predict"
+                                title="Maximum number of tokens to generate" />
                         </label>
                         <label title="Top-K sampling threshold">top_k
                             <input type="number" name="top_k" id="top_k" min="0" max="1000" step="1"
@@ -85,10 +89,10 @@
             </div>
 
             <div id="laiSysIntruct" class="rib-section center">
-                <img src="" id="toolFunctions" alt="Disable System Tool Functions" title="Disable System Tool Functions" class="ai-wrench-button-img"
-                    data-type="tools">
-                <img src="" id="systemIntructions" alt="System Instructions" title="System Instructions" class="ai-wrench-button-img"
-                    data-type="wrench">
+                <img src="" id="toolFunctions" alt="Disable System Tool Functions" title="Disable System Tool Functions"
+                    class="ai-wrench-button-img" data-type="tools">
+                <img src="" id="systemIntructions" alt="System Instructions" title="System Instructions"
+                    class="ai-wrench-button-img" data-type="wrench">
             </div>
 
             <div class="rib-section right">
@@ -103,28 +107,44 @@
 </header>
 
 <div id="laiSysIntructContainer" class="lsi-sys-instruction-container">
-    <textarea id="laiSysIntructInput"  placeholder="Write up to 32768 chars assistant instructions"></textarea>
+    <textarea id="laiSysIntructInput" placeholder="Write up to 32768 chars assistant instructions"></textarea>
 </div>
 <div id="laiChatMessageList" class="lai-chat-message-list" data-watermark=""></div>
 <div class="lai-user-area">
     <div id="attachContainer" class="attachment-container"></div>
-    <textarea id="laiUserInput" placeholder="Type your message here or type...&#13;'/' to add commands;&#13;'/list' available commands;&#13;'@' to add context;&#13;/help for more.&#13;Shift+Enter or Numpad Enter for a new line&#13;&#13;Enter to send" rows="12"></textarea>
+    <textarea id="laiUserInput"
+        placeholder="Type your message here or type...&#13;'/' to add commands;&#13;'/list' available commands;&#13;'@' to add context;&#13;/help for more.&#13;Shift+Enter or Numpad Enter for a new line&#13;&#13;Enter to send"
+        rows="15"></textarea>
     <div id="laiSuggestionBox" class="invisible lai-suggestion-box"></div>
     <button id="laiAbort" class="lai-button-abort invisible">Abort</button>
-    <div class="statusbar">
-        <div class="notification">Ready.</div>
-        <div class="mic-container">
-            <img id="mic" src="" alt="Mic" title="Mic" class="mic" data-type="mic">
-            <img id="micOff" src="" alt="Mic Off" title="Mic Off" class="mic invisible" data-type="mic-off">
+    <div class="input-controls-container">
+        <div class="user-input-ribbon invisible">
+            <button id="quickPromptBtn" title="Quick Action">
+                <img src="" alt="Insert Prompt" title="Insert Prompt" data-type="insert-prompt" />
+            </button>
+            <button id="libraryBtn" title="Library">
+                <img src="" alt="Library" title="Library" data-type="library" />
+            </button>
+            <button id="eraserBtn" title="Eraser">
+                <img src="" alt="Eraser" title="Eraser" data-type="eraser" />
+            </button>
         </div>
+        <div class="statusbar">
+            <div class="notification">Ready.</div>
+            <div class="mic-container">
+                <img id="mic" src="" alt="Mic" title="Mic" class="mic" data-type="mic">
+                <img id="micOff" src="" alt="Mic Off" title="Mic Off" class="mic invisible" data-type="mic-off">
+            </div>
         </div>
+    </div>
 </div>
 <div id="feedbackMessage" class="feedback-message">&nbsp;</div>
 <div id="laiCopyHint" class="lai-copy-hint invisible">Copied!</div>
 <div class="lai-resize-handle"><img src="" alt="resize" data-type="resize"></div>
 <div id="commandListContainer" class="invisible user-command-list">
     <div class="user-command-list-ribbon">
-        <div id="cmdListNew" class="help-new-btn" title="Close"><img src="" alt="Create new command" title="Create new command" data-type="new"></div>
+        <div id="cmdListNew" class="help-new-btn" title="Close"><img src="" alt="Create new command"
+                title="Create new command" data-type="new"></div>
         <div class="help-other-btns-container">
             <div id="cmdImport" title="Import">
                 <img src="" alt="Import" title="Import predefiened prompts" data-type="import">
@@ -138,7 +158,7 @@
     <div class="user-command-block"></div>
 </div>
 
-<img id="spinner" class="loading invisible" data-type="reload"/>
+<img id="spinner" class="loading invisible" data-type="reload" />
 
 <template id="helpTemplate">
     <div id="helpPopup">
@@ -170,5 +190,17 @@
             <textarea id="commandBody" placeholder="Enter Prompt..."></textarea>
         </div>
         <button>Save</button>
+    </div>
+</template>
+
+<template id="promptMenuTemplate">
+    <div class="prompt-menu invisible">
+        <div class="prompt-top-search">
+            <span class="search-icon">🔍</span>
+            <input type="text" class="search-input" placeholder="Search..." />
+            <button class="clear-btn invisible">×</button>
+        </div>
+        <div class="dynamic-prompt-list"></div>
+        <div class="bottom-cmd">List All</div>
     </div>
 </template>

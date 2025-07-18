@@ -45,7 +45,19 @@ async function initSidebar() {
     userInput?.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e), false);
     userInput?.addEventListener('click', userInputClicked);
     userInput?.addEventListener('focus', async e => await userInputFocused(e));
-    userInput?.addEventListener('blur', e => { e.target.closest('div.lai-user-area').classList.remove('focused'); }, { capture: false });
+    userInput?.addEventListener('blur', userInputBlurred, { capture: false });
+    // userInput?.addEventListener('blur', e => {
+    //     const path = e.composedPath();
+    //     const area = path.find(el => el.classList?.contains('lai-user-area'));
+    //     area?.classList.remove('focused');
+    //     area?.querySelector('.statusbar')?.classList.remove('invisible');
+    //     area?.querySelector('.user-input-ribbon')?.classList.add('invisible');
+    // }, { capture: false });
+
+    const userAreaContainer = shadowRoot.querySelector('.lai-user-area');
+    userAreaContainer.querySelector('#libraryBtn')?.addEventListener('mousedown', libraryBtnClicked, { capture: false });
+    userAreaContainer.querySelector('#quickPromptBtn')?.addEventListener('mousedown', async e => await quickPromptClicked(e), { capture: false });
+    userAreaContainer.querySelector('#eraserBtn')?.addEventListener('mousedown', eraseUserInputArea);
 
     if (root) {
         root.addEventListener('dragenter', onUserInputDragEnter);
@@ -103,6 +115,8 @@ async function initSidebar() {
         img.closest('div.mic-container').addEventListener('click', micClicked);
         laiSetImg(img);
     });
+
+    shadowRoot.querySelectorAll('.user-input-ribbon img').forEach(img => laiSetImg(img));
 
     laiSetImg(shadowRoot.querySelector('#spinner'));
 
@@ -348,6 +362,12 @@ function userInputClicked(e) {
 
 async function userInputFocused(e) {
     try {
+        const area = e.composedPath().find(el => el.classList?.contains('lai-user-area'));
+        area?.classList.add('focused');
+        // area?.querySelector('.statusbar')?.classList.add('invisible');
+        // area?.querySelector('.user-input-ribbon')?.classList.remove('invisible');
+        showUserInputRibbon();
+
         let attachments = await getAttachments();
         if (attachments.length < 1) { return; }
         clearAttachments();
@@ -355,6 +375,26 @@ async function userInputFocused(e) {
     } catch (err) {
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
     }
+}
+
+function showUserInputRibbon() {
+    const shadowRoot = getShadowRoot();
+    shadowRoot?.querySelector('.user-input-ribbon')?.classList.remove('invisible');
+    shadowRoot?.querySelector('.statusbar')?.classList.add('invisible');
+}
+
+function userInputBlurred(e) {
+    const path = e.composedPath();
+    const area = path.find(el => el.classList?.contains('lai-user-area'));
+    area?.classList.remove('focused');
+    area?.querySelector('.statusbar')?.classList.remove('invisible');
+    area?.querySelector('.user-input-ribbon')?.classList.add('invisible');
+}
+
+function hideUserInputRibbon() {
+    const shadowRoot = getShadowRoot();
+    shadowRoot?.querySelector('.statusbar')?.classList.remove('invisible');
+    shadowRoot?.querySelector('.user-input-ribbon')?.classList.add('invisible');
 }
 
 function hidePopups(e) {
@@ -399,7 +439,7 @@ async function onPromptTextAreaKeyDown(e) {
         if (images.length > 0) { messages[0]["images"] = images; }
 
         try {
-            dumpInConsole(`${[getLineNumber()]} - messages collected are ${messages.length}`, messages);
+            dumpInConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - messages collected are ${messages.length}`, messages);
             const idx = await getActiveSessionId();
             if (!idx) { await createNewSession(elTarget.value); }
 
@@ -407,6 +447,7 @@ async function onPromptTextAreaKeyDown(e) {
             shadowRoot.querySelector('#attachContainer')?.classList.remove('active');
             elTarget.classList.add('invisible');
             elTarget.value = '';
+            hideUserInputRibbon();
             await queryAI();
         } catch (e) {
             showMessage(`ERROR: ${e.message}`, e);

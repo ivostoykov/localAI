@@ -1,6 +1,15 @@
 # Local AI - Changelog
 
-## [1.28.15] 2025-07-12 - latest
+## [1.28.22] - 2025-07-18 - latest
+
+- Added new prompt area button ribbon for quick access to features
+- Added quick prompt menu for direct prompt injection
+    - Included prompt filter for easy prompt search by name
+    - Enabled quick access to stored prompts with enhanced manipulation options
+- Added library button (reserved for future use)
+- Added erase button to clear the user input area
+
+## [1.28.15] 2025-07-12
 
 - Added hot reload after extension update.
 - Removed redundant snippets
