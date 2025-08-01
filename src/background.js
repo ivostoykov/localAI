@@ -579,7 +579,7 @@ async function fetchDataAction(request, sender) {
     request.data.messages = [...sysInstruct, ...userMessage];
 
     await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender?.tab?.id);
-    console.debug(`>>> [${getLineNumber()}] - request.data`, request.data);
+    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - request.data`, request.data);
 
     let response;
     let body;

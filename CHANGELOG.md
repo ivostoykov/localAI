@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.28.22] - 2025-07-18 - latest
+## [1.28.25] - 2025-08-01 - latest
+
+- Action ribbon is now globally available and supports injecting predefined prompts even when the input area is inactive.
+- Fixed an issue where menus could unexpectedly close.
+- The "Thinking Mode" button now checks whether the active model supports thinking mode.
+- The "Tools Mode" button now verifies if the active model can handle external tools.
+
+## [1.28.22] - 2025-07-18
 
 - Added new prompt area button ribbon for quick access to features
 - Added quick prompt menu for direct prompt injection

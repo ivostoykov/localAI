@@ -120,9 +120,17 @@ async function initRibbon() {
         el.classList.toggle('js-menu-is-open');
     }, false);
 
-    ribbon?.querySelector('#modelThinking')?.addEventListener('click', e => {
-        e.target.classList.toggle('disabled')
-        updateStatusBar(`Thinking ${e.target.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
+    ribbon?.querySelector('#modelThinking')?.addEventListener('click', async e => {
+        const el = e.target;
+        const model = await getAiModel();
+        const url = await getAiUrl()
+        const canThink = await modelCanThink(model, url);
+        if(!canThink){
+            showMessage(`The model ${model} does not support thinking mode.`);
+            return;
+        }
+        el.classList.toggle('disabled')
+        updateStatusBar(`Thinking ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
         setTimeout(() => { resetStatusbar(); }, 1000);
     });
     await adjustThinkingStatus(ribbon?.querySelector('#modelThinking'));
@@ -562,6 +570,14 @@ async function swapActiveModel(e, modelName) {
 
 async function onToolFunctionsBtnClick(e) {
     const el = e.target;
+
+    const model = await getAiModel();
+    const canUseTools = await modelCanUseTools(model);
+    if(!canUseTools){
+        showMessage(`The model ${model} does not support tools.`);
+        return;
+    }
+
     el.classList.toggle('disabled');
     if (el.classList.contains('disabled')) {
         el.title = el.alt = el.alt.replace(/Disable/g, 'Enable');

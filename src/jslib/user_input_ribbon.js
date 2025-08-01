@@ -128,5 +128,6 @@ function closeQuickPromptListMenu(e) {
     const shadowRoot = getShadowRoot();
     const menu = shadowRoot.querySelector('.prompt-menu');
     if (!menu) { return; }
+    if(e.composedPath()?.some(el => el?.classList?.contains?.('lai-user-area'))) {  return;  }
     if (!path.includes(menu)) { removeQuickPromptMenu(e); }
 }

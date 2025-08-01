@@ -46,18 +46,13 @@ async function initSidebar() {
     userInput?.addEventListener('click', userInputClicked);
     userInput?.addEventListener('focus', async e => await userInputFocused(e));
     userInput?.addEventListener('blur', userInputBlurred, { capture: false });
-    // userInput?.addEventListener('blur', e => {
-    //     const path = e.composedPath();
-    //     const area = path.find(el => el.classList?.contains('lai-user-area'));
-    //     area?.classList.remove('focused');
-    //     area?.querySelector('.statusbar')?.classList.remove('invisible');
-    //     area?.querySelector('.user-input-ribbon')?.classList.add('invisible');
-    // }, { capture: false });
 
     const userAreaContainer = shadowRoot.querySelector('.lai-user-area');
-    userAreaContainer.querySelector('#libraryBtn')?.addEventListener('mousedown', libraryBtnClicked, { capture: false });
+    userAreaContainer.querySelector('#libraryBtn')?.addEventListener('mousedown', e => libraryBtnClicked(e), { capture: false });
     userAreaContainer.querySelector('#quickPromptBtn')?.addEventListener('mousedown', async e => await quickPromptClicked(e), { capture: false });
-    userAreaContainer.querySelector('#eraserBtn')?.addEventListener('mousedown', eraseUserInputArea);
+    userAreaContainer.querySelector('#eraserBtn')?.addEventListener('mousedown', e => eraseUserInputArea(e));
+    userAreaContainer?.addEventListener('mouseenter', showUserInputRibbon);
+    userAreaContainer?.addEventListener('mouseleave', hideUserInputRibbon);
 
     if (root) {
         root.addEventListener('dragenter', onUserInputDragEnter);
@@ -364,8 +359,6 @@ async function userInputFocused(e) {
     try {
         const area = e.composedPath().find(el => el.classList?.contains('lai-user-area'));
         area?.classList.add('focused');
-        // area?.querySelector('.statusbar')?.classList.add('invisible');
-        // area?.querySelector('.user-input-ribbon')?.classList.remove('invisible');
         showUserInputRibbon();
 
         let attachments = await getAttachments();
@@ -391,7 +384,8 @@ function userInputBlurred(e) {
     area?.querySelector('.user-input-ribbon')?.classList.add('invisible');
 }
 
-function hideUserInputRibbon() {
+function hideUserInputRibbon(e) {
+    console.log(`[${getLineNumber()}] composedPath:`, e.composedPath());
     const shadowRoot = getShadowRoot();
     shadowRoot?.querySelector('.statusbar')?.classList.remove('invisible');
     shadowRoot?.querySelector('.user-input-ribbon')?.classList.add('invisible');
