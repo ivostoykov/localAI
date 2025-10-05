@@ -166,14 +166,13 @@ async function closeAllDropDownRibbonMenus(e) {
     if (openMenus.length < 1) { return; }
 
     const compPath = e.composedPath(); // check for sidebar - if not in there, head button is clicked
-    if (compPath.findIndex(e => e.id === 'laiMainButton') > -1) { return; } // ext main buttono was clicked
+    if (compPath?.findIndex(e => e.id === 'laiMainButton') > -1) { return; } // ext main buttono was clicked
 
     const originator = compPath?.[0]; // e?.target;
 
     openMenus.forEach(el => {
-        console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - compPath inside forEach`, compPath);
         if (el === originator) { return; }
-        if (compPath.findIndex(p => p === el) > 0) { return; } // clicked inside the menu
+        if (compPath?.findIndex(p => p === el) > 0) { return; } // clicked inside the menu
         el?.click();
     });
 }

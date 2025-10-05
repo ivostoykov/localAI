@@ -1,6 +1,10 @@
 # Local AI - Changelog
 
-## [1.28.25] - 2025-08-01 - latest
+## [1.28.28] - 2025-08-04 - latest
+
+- bug preventing communication with the server fixed
+
+## [1.28.25] - 2025-08-01
 
 - Action ribbon is now globally available and supports injecting predefined prompts even when the input area is inactive.
 - Fixed an issue where menus could unexpectedly close.

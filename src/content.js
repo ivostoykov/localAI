@@ -128,7 +128,7 @@ async function allDOMContentLoaded(e) {
     }
 
     if (e.key !== "Escape") { return; }
-    const laiOptions = getOptions();
+    const laiOptions = await getLaiOptions()
     if (!laiOptions.closeOnClickOut) { return; }
 
     const pluginContainer = document.getElementById('localAI')?.shadowRoot?.getElementById('laiSidebar');

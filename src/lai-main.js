@@ -385,7 +385,6 @@ function userInputBlurred(e) {
 }
 
 function hideUserInputRibbon(e) {
-    console.log(`[${getLineNumber()}] composedPath:`, e.composedPath());
     const shadowRoot = getShadowRoot();
     shadowRoot?.querySelector('.statusbar')?.classList.remove('invisible');
     shadowRoot?.querySelector('.user-input-ribbon')?.classList.add('invisible');
@@ -441,7 +440,7 @@ async function onPromptTextAreaKeyDown(e) {
             shadowRoot.querySelector('#attachContainer')?.classList.remove('active');
             elTarget.classList.add('invisible');
             elTarget.value = '';
-            hideUserInputRibbon();
+            hideUserInputRibbon(e);
             await queryAI();
         } catch (e) {
             showMessage(`ERROR: ${e.message}`, e);
@@ -876,6 +875,7 @@ function laiSourceTextClicked(e) {
 }
 
 async function laiSwapSidebarWithButton(forceClose = false) {
+    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Swap triggered by:`, new Error().stack);
     const laiOptions = await getLaiOptions();
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
@@ -1002,6 +1002,8 @@ async function queryAI() {
             showMessage(`${e.message}. Please reload the page.`, 'warning');
         }
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+        shadowRoot?.getElementById('laiAbort')?.classList.add('invisible');
+        shadowRoot?.getElementById('laiUserInput')?.classList.remove('invisible');
     }
     finally {
         resetStatusbar();
@@ -1028,10 +1030,15 @@ function laiExtractDataFromResponse(response) {
     } catch (err) {
         showMessage(err.message, 'error');
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error parsing response`, response);
         return '';
     }
 
-    setModelNameLabel(response.model || 'unknown');
+    if(!response.model || !response.message || !response.message.content){
+        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Wrong response`, response);
+    }
+
+    setModelNameLabel(response?.model ?? 'unknown');
     return response?.message?.content || "Empty content!";
 }
 
@@ -1119,11 +1126,8 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             let dataChunk;
             let streamDataError;
             try {
-                // const activeSession = await getActiveSession();
                 dataChunk = laiExtractDataFromResponse(response);
                 if (!dataChunk) { return; }
-                // activeSession.data.push(dataChunk);
-                // await setActiveSession(activeSession);
                 updateStatusBar('Receiving and processing data...');
                 const rootRecipient = laiGetRecipient();
                 if (!rootRecipient) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Target element not found!`) }
@@ -1226,7 +1230,7 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
     if (laiAbortElem) { laiAbortElem.classList.add('invisible'); }
     if (textAres) {
         textAres.classList.remove('invisible');
-        textAres.focus();
+        // textAres.focus();
     } else {
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - User input area not found!`);
     }

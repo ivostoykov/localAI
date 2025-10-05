@@ -63,7 +63,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 });
             break;
         case 'abortFetch':
-            // Abort the in-flight fetchDataAction for this tab
             if (tabId != null) {
                 const ctrl = controllers.get(tabId);
                 if (ctrl) {
@@ -286,7 +285,6 @@ function processTextChunk(textChunk) {
     return textChunk;
 }
 
-// for responses stream = false - wait the whole response to return
 async function handleResponse(responseData = '', senderTabId) {
     try {
         if (!responseData) {
@@ -306,8 +304,6 @@ async function handleResponse(responseData = '', senderTabId) {
 
     return;
 }
-
-// handleStreamingResponse is deprecated and removed
 
 async function askAIExplanation(info, tab) {
     try {
@@ -635,6 +631,7 @@ async function fetchDataAction(request, sender) {
         }
 
         await updateUIStatusBar(`Final response received...`, sender?.tab);
+        await checkResponseTextAndBody({sender, responseText, body});
         activeSession.data.push(body.message); // ai reply is stored raw
 
         await setActiveSession(activeSession);
@@ -674,6 +671,34 @@ async function fetchDataAction(request, sender) {
     return { "status": "success", "message": "Request sent. Awaiting response." };
 }
 
+async function checkResponseTextAndBody(params){
+    const {sender, responseText, body} = params;
+    if(body?.message?.tool_calls){
+        await updateUIStatusBar(`Response tool call received...`, sender?.tab);
+        await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response tool call received`);
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response tool call received`);
+        return;
+    }
+
+    if(body?.message?.content && body?.message?.content?.trim()?.length > 0){
+        await updateUIStatusBar(`Response content received...`, sender?.tab);
+        await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response content received`);
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response content received`);
+        return;
+    }
+
+    const o = {"message": `>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Empty response received. Full body:`,
+        "hasMessage": !!body?.message,
+        "hasContent": !!body?.message?.content,
+        "hasToolCalls": !!body?.message?.tool_calls,
+        "messageRole": body?.message?.role,
+        "rawBody": body,
+        "responseText": responseText
+    };
+    await dumpInFrontConsole(o.message, o);
+    console.log(o.message, o);
+    throw new Error(o.message);
+}
 
 async function fetchExtResponse(url, options, resentWithoutTools = true) {
     if (!url || !options.method) { throw new Error('Either URL or request options are empty or missing!'); }
