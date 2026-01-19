@@ -1,9 +1,17 @@
+# Files
 *.zip
 *.bak
-*.new
 *.back
+*.new
 .vscode/
 *.log
+CLAUDE.md
+.mcp.json
 .continuerules
+
+# Dirs
 Chrome.bak/
 Chrome_changes/
+.claude/
+.docs/
+

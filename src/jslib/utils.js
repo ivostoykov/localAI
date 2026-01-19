@@ -144,13 +144,13 @@ async function modelCanThink(modelName = '', url = '') {
     try {
         const response = await chrome.runtime.sendMessage({ action: 'modelCanThink', model: modelName, url });
         if (response?.error) {
-            console.error(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - response error`, response?.error);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response error`, response?.error);
             return false;
         }
 
         return response?.canThink ?? false;
     } catch (err) {
-        console.error(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
     }
 }
@@ -161,13 +161,13 @@ async function modelCanUseTools(modelName = '') {
     try {
         const response = await chrome.runtime.sendMessage({ action: 'modelCanUseTools', model: modelName, });
         if (response?.error) {
-            console.error(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - response error`, response?.error);
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response error`, response?.error);
             return false;
         }
 
         return response?.canUseTools ?? false;
     } catch (err) {
-        console.error(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
     }
 }
@@ -178,6 +178,6 @@ function reloadRuntime() {
             chrome.runtime.reload();
         }
     } catch (err) {
-        console.warn(`>>> ${themanifest?.name || 'Unknown'} - [${getLineNumber()}] - Safe runtime reload failed:`, err);
+        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Safe runtime reload failed:`, err);
     }
 }
