@@ -14,6 +14,7 @@
     <aside class="sidebar">
       <ul class="menu">
         <li class="menu-item" data-section="general">General Settings</li>
+        <li class="menu-item" data-section="filtering">Filtering</li>
         <li class="menu-item" data-section="prompts">User Commands</li>
         <li class="menu-item" data-section="tools">Functions</li>
       </ul>
@@ -161,6 +162,47 @@
         </form>
       </section>
 
+      <section id="filtering" class="content-section invisible">
+        <div id="filteringRibbon" class="ribbon">
+          <button type="submit" id="btnSaveFilterForm">Save</button>
+          <button type="button" id="cancelFilterButton">Close</button>
+        </div>
+
+        <form id="laiFilteringForm" class="container">
+
+          <div class="group checkboxes-sliders">
+            <div>
+              <input type="checkbox" id="contentFilteringEnabled" checked />
+              <label for="contentFilteringEnabled">Enable content filtering (recommended)</label>
+            </div>
+          </div>
+
+          <hr class="separator">
+
+          <div class="group text-areas">
+            <div>
+              <label for="defaultSelectors">Default selectors to remove (comma-separated):</label>
+              <textarea id="defaultSelectors" rows="6">script,style,code,nav,header,footer,aside,iframe,[role='navigation'],[role='banner'],[role='contentinfo'],.advertisement,.ad,.cookie-notice,.social-share,.comments,.related-posts</textarea>
+
+              <p class="help-text">CSS selectors to remove from all pages. Examples: nav, .advertisement, [role="banner"]</p>
+            </div>
+          </div>
+
+          <hr class="separator">
+
+          <div class="group text-areas">
+            <div>
+              <label for="siteSpecificSelectors">Site-specific selectors to remove (one per line):</label>
+              <textarea id="siteSpecificSelectors" rows="10">linkedin.com:[class*='premium'],[class*='upsell'],[class*='promoted'],.msg-overlay-bubble-header
+twitter.com:.trends,.recommendations,[data-testid='sidebarColumn']
+github.com:.footer,.signup-prompt
+stackoverflow.com:.s-topbar,.s-sidebarwidget</textarea>
+              <p class="help-text">Format: <i>"domain.name:selector1,selector2,[class*='add']"</i> (one domain per line)</p>
+            </div>
+          </div>
+
+        </form>
+      </section>
 
       <section id="prompts" class="content-section invisible">
         <div id="promptRibbon" class="ribbon">

@@ -31,6 +31,29 @@ document.getElementById('btnSaveForm').addEventListener('click', () => document.
 document.getElementById('cancelButton').addEventListener('click', e => {
     if (e.target.textContent === 'Close') { window.close(); }
 });
+
+// Filtering form listeners
+document.getElementById('laiFilteringForm').addEventListener('submit', async e => await saveSettings(e));
+setTimeout(() => {
+    document.getElementById('laiFilteringForm').addEventListener('input', () => {
+        document.dispatchEvent(new CustomEvent('pendingChanges'));
+    });
+}, 500)
+document.getElementById('btnSaveFilterForm').addEventListener('click', () => document.getElementById('laiFilteringForm').requestSubmit());
+document.getElementById('cancelFilterButton').addEventListener('click', e => {
+    if (e.target.textContent === 'Close') { window.close(); }
+});
+
+// Auto-save filtering fields on change
+['defaultSelectors', 'siteSpecificSelectors', 'contentFilteringEnabled'].forEach(fieldId => {
+    const field = document.getElementById(fieldId);
+    if (field) {
+        field.addEventListener('change', async () => await autoSaveFilteringField(fieldId));
+        if (field.type !== 'checkbox') {
+            field.addEventListener('blur', async () => await autoSaveFilteringField(fieldId));
+        }
+    }
+});
 document.getElementById('tempRange').addEventListener('input', updateTempValue);
 document.getElementById('tempInput').addEventListener('input', updateTempValue);
 
@@ -133,6 +156,32 @@ async function saveSettings(e) {
     await chrome.storage.sync.set({ 'laiOptions': optionsData });
     showMessage('Settings saved', 'success');
     document.dispatchEvent(new CustomEvent('changesSaved'));
+}
+
+async function autoSaveFilteringField(fieldId) {
+    try {
+        const field = document.getElementById(fieldId);
+        if (!field) {
+            console.error(`>>> ${manifest?.name || 'Unknown'} - Field ${fieldId} not found`);
+            return;
+        }
+
+        // Load current options
+        const stored = await chrome.storage.sync.get('laiOptions');
+        const optionsData = stored.laiOptions || {};
+
+        // Update the specific field (handle checkbox vs text fields)
+        optionsData[fieldId] = field.type === 'checkbox' ? field.checked : field.value;
+
+        // Save back to storage
+        laiOptions = optionsData;
+        await chrome.storage.sync.set({ 'laiOptions': optionsData });
+
+        showMessage('Filtering settings auto-saved', 'success');
+    } catch (error) {
+        console.error(`>>> ${manifest?.name || 'Unknown'} - Error auto-saving ${fieldId}:`, error);
+        showMessage('Failed to save filtering settings', 'error');
+    }
 }
 
 function cancelOptions() {
@@ -676,15 +725,15 @@ async function exportAsFile(e) {
     switch (e.target.id) {
         case 'exportSessions':
             storageKey = 'aiSessions';
-            fileName = `session_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
+            fileName = `localAI_session_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
             break;
         case 'exportFuncBtn':
             storageKey = 'aiTools';
-            fileName = `tool_functions_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
+            fileName = `localAI_tool_functions_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
             break;
         case 'exportPromptBtn':
             storageKey = 'aiUserCommands';
-            fileName = `user_commands_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
+            fileName = `localAI_user_commands_export_${(new Date).toISOString().split('T')[0].replace(/\D/g, '')}`;
             break;
         default:
             break;

@@ -1,3 +1,19 @@
+// Import memory management
+try {
+    importScripts('background-memory.js');
+    console.log('>>> background-memory.js loaded successfully');
+} catch (e) {
+    console.error('>>> Failed to load background-memory.js:', e);
+}
+
+// Import session management
+try {
+    importScripts('jslib/sessions.js');
+    console.log('>>> jslib/sessions.js loaded successfully');
+} catch (e) {
+    console.error('>>> Failed to load jslib/sessions.js:', e);
+}
+
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const storageOptionKey = 'laiOptions';
 const storageUserCommandsKey = 'aiUserCommands';
@@ -11,9 +27,38 @@ const modifiersHelpUrl = 'https://github.com/ivostoykov/localAI/blob/main/docume
 
 const manifest = chrome.runtime.getManifest();
 
+// Initialize on service worker startup (every time it wakes up)
+init();
+
+// Debug helper: View IndexedDB contents
+// Usage: In console, run: debugShowMemory()
+globalThis.debugShowMemory = async function() {
+    console.log('=== INDEXEDDB MEMORY DEBUG ===');
+    try {
+        const activeSession = await getActiveSession();
+        console.log('Active session ID:', activeSession?.id);
+
+        // Get all conversations for this session
+        const conversations = await backgroundMemory.query('conversations', 'sessionId', activeSession?.id);
+        console.log('📝 Conversations (' + conversations.length + ' turns):');
+        console.table(conversations);
+
+        // Get context
+        const context = await backgroundMemory.get('context', activeSession?.id);
+        console.log('📄 Context:');
+        console.log(context);
+
+        // Get all databases
+        const dbs = await indexedDB.databases();
+        console.log('💾 All databases:', dbs);
+    } catch (e) {
+        console.error('Error fetching memory:', e);
+    }
+};
+
 chrome.runtime.onInstalled.addListener(() => {
-    init();
-    reinjectContentScripts()
+    // Re-inject content scripts on install/update
+    reinjectContentScripts();
 });
 
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
@@ -146,6 +191,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error: ${e.message}`, e, "error", sender?.tab?.id);
                 });
             break;
+        case "deleteSessionMemory":
+            // Delete session from IndexedDB when session is deleted
+            backgroundMemory.deleteSession(request.sessionId)
+                .then(() => {
+                    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Deleted session ${request.sessionId} from memory`);
+                    sendResponse({ status: 'success' });
+                })
+                .catch(async e => {
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error deleting session memory:`, e);
+                    sendResponse({ status: 'error', message: e.toString() });
+                });
+            break;
+        case "clearAllMemory":
+            backgroundMemory.clearAll()
+                .then(() => {
+                    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Cleared all memory from IndexedDB`);
+                    sendResponse({ status: 'success' });
+                })
+                .catch(async e => {
+                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error clearing all memory:`, e);
+                    sendResponse({ status: 'error', message: e.toString() });
+                });
+            break;
         default:
             console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
             sendResponse();
@@ -201,8 +269,24 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     }
 });
 
-function init() {
-    composeContextMenu()
+async function init() {
+    // Initialise IndexedDB memory system
+    console.log('>>> Init function called');
+
+    if (typeof backgroundMemory === 'undefined') {
+        console.error('>>> backgroundMemory is undefined! background-memory.js not loaded properly');
+        return;
+    }
+
+    try {
+        console.log('>>> Calling backgroundMemory.init()...');
+        await backgroundMemory.init();
+        console.log(`>>> ${manifest?.name || 'Unknown'} - IndexedDB memory system initialised`);
+    } catch (e) {
+        console.error(`>>> ${manifest?.name || 'Unknown'} - Failed to initialise memory system:`, e);
+    }
+
+    composeContextMenu();
 }
 
 function composeContextMenu() {
@@ -414,7 +498,7 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
                         data = `"${call?.function?.name}" call returned error: ${res?.content}\nSelect the next best candidate function from the list.\n Continue until a valid response is received or no options remain.`;
                         messages.push(
                             { role: "assistant", content: "", tool_calls: [call] },
-                            { role: "user", content: data }
+                            { role: "tool", content: data }
                         );
                         continue;
                     }
@@ -433,7 +517,7 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
                         data = `"${call?.function?.name}" call returned error: ${data.message}\nSelect and call another function from the list.\n Continue until a valid response is received or no options remain.`;
                         messages.push(
                             { role: "assistant", content: "", tool_calls: [call] },
-                            { role: "user", content: data }
+                            { role: "tool", content: data }
                         );
                         continue;
                     }
@@ -452,7 +536,6 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
             }
 
             await updateUIStatusBar(`${call.function.name} response received.`);
-            // console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data);
             await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
 
         } catch (err) {
@@ -466,7 +549,7 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
                 await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${funcType} ${call.function.name} response`, data, 'debug');
                 messages.push(
                     { role: "assistant", content: "", tool_calls: [call] },
-                    { role: "user", content: data }
+                    { role: "tool", content: data }
                 );
                 break;
             }
@@ -482,6 +565,88 @@ async function resolveToolCalls(toolCalls, toolBaseUrl) {
     if (messages.length < 1) { messages.push({ role: "tool", content: `None of these - ${toolCalls.map(t => t.function?.name).join(", ")} - are existing tool functions. Please rely on your internal knowledge instead.` }); }
     console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - merged tool call responses`, messages);
     return messages;
+}
+
+async function processCommandPlaceholders(userInputValue, existingAttachments = []) {
+    const userCommands = [...userInputValue.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
+    const newAttachments = [];
+
+    const existingCmds = new Set((existingAttachments ?? []).map(att => att.cmd).filter(Boolean));
+
+    for (const cmd of userCommands) {
+        let cmdText = '';
+        if (Array.isArray(cmd)) { cmdText = cmd[1]?.trim(); }
+        if (!cmdText) { continue; }
+
+        if (existingCmds.has(cmdText)) { continue; }
+
+        let attachment;
+        switch (cmdText) {
+            case 'page':
+                const pageData = await getActiveSessionPageData();
+                const pageContent = pageData?.pageContent ?? "";
+                if (!pageContent) {
+                    console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Empty page content for @{{page}}`, pageData);
+                } else {
+                    attachment = {
+                        cmd: 'page',
+                        type: "snippet",
+                        content: pageContent,
+                        sourceUrl: pageData?.url || 'unknown'
+                    };
+                }
+                break;
+            case 'now':
+                attachment = {
+                    cmd: 'now',
+                    type: "snippet",
+                    content: `current date and time or timestamp is: ${(new Date()).toISOString()}`,
+                    sourceUrl: 'system'
+                };
+                break;
+            case "today":
+                attachment = {
+                    cmd: 'today',
+                    type: "snippet",
+                    content: `current date is: ${(new Date()).toISOString().split('T')[0]}`,
+                    sourceUrl: 'system'
+                };
+                break;
+            case "time":
+                attachment = {
+                    cmd: 'time',
+                    type: "snippet",
+                    content: `current time is: ${(new Date()).toISOString().split('T')[1]}`,
+                    sourceUrl: 'system'
+                };
+                break;
+        }
+
+        if (attachment) {
+            attachment.id = crypto.randomUUID();
+            newAttachments.push(attachment);
+            existingCmds.add(cmdText);
+        }
+    }
+
+    return newAttachments;
+}
+
+function replaceCommandPlaceholders(userInput) {
+    const CMD_LABELS = {
+        'page': 'page content',
+        'now': 'timestamp',
+        'today': 'current date',
+        'time': 'current time'
+    };
+
+    let cleaned = userInput;
+    Object.entries(CMD_LABELS).forEach(([cmd, label]) => {
+        const regex = new RegExp(`@\\{\\{${cmd}\\}\\}`, 'g');
+        cleaned = cleaned.replace(regex, `[see ${label} attachment]`);
+    });
+
+    return cleaned;
 }
 
 async function fetchDataAction(request, sender) {
@@ -520,59 +685,63 @@ async function fetchDataAction(request, sender) {
     // Extract incoming user prompt messages
     const currentPrompt = request?.data?.messages || [];
     if (currentPrompt.length < 1) { throw new Error("No prompt received!"); }
-    const userInput = `\n\n${currentPrompt.map(el => el.content).join('')}`;
+    const userInput = currentPrompt.map(el => el.content).join('');
 
     let titleSeed;
-    const userMsgs = currentPrompt.filter(m => m.role === 'user');
-
     let activeSession = await getActiveSession();
-    if (!activeSession || !Array.isArray(activeSession.data)) {
-        if (!titleSeed) { titleSeed = currentPrompt.map(m => m.content).join(' ').substring(0, 80); }
+    if (!activeSession || !activeSession.id) {
+        titleSeed = userInput.substring(0, 80);
         activeSession = await createNewSession(titleSeed);
     }
 
-    // Prepend existing conversation context
-    let context = activeSession.data.length > 0
-        ? activeSession.data.filter(obj => obj.role && obj.content).map(obj => `${obj.role}: ${obj.content}.\n\n`).join('')
-        : '';
-    if (context) {
-        context = `\n\n# Context\n\n'''${context}'''\n\n# Instructions\n\nUse the context above to answer the question below. If you don't know, say "I don't know".\n\n`;
+    // Get current turn number (from old system or start at 1)
+    const turnNumber = (activeSession.turnNumber || 0) + 1;
+
+    // Extract attachments for memory storage (includes both files and page content)
+    let attachments = [...(activeSession.attachments || [])];
+    let pageContent = null;
+
+    // Process @{{...}} command placeholders and add as attachments
+    const commandAttachments = await processCommandPlaceholders(userInput, attachments);
+    if (commandAttachments.length > 0) {
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Processed ${commandAttachments.length} command placeholder(s)`);
+        attachments.push(...commandAttachments);
+
+        // Extract page content if @{{page}} was processed
+        const pageAttachment = commandAttachments.find(att => att.cmd === 'page');
+        if (pageAttachment) {
+            pageContent = pageAttachment.content;
+            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Page content added: ${pageContent.length} chars`);
+        }
     }
 
-    // attachments if any
-    let attachmentsContext = (activeSession.attachments || []).map(attachment => {
-        let header = `[ATTACHMENT ${attachment.type.toUpperCase()}]`;
-        if (attachment.filename) {
-            header += ` (${attachment.filename})`;
-        } else if (attachment.sourceUrl) {
-            const urlParts = attachment.sourceUrl.split('/');
-            const shortUrl = urlParts.slice(-2).join('/') || attachment.sourceUrl;
-            header += ` (from ${shortUrl})`;
-        }
-        return {
-            role: "user",
-            content: `${header}:\n${attachment.content}`
-        };
-    });
+    // Replace command placeholders in user message with readable labels
+    const cleanedUserInput = replaceCommandPlaceholders(userInput);
 
-    attachmentsContext = attachmentsContext.length > 0
-        ? `\n\n##Attachmenta\n\n'''${attachmentsContext.map(a => a.content).join('\n\n')}'''\n\n# Instructions\n\nUse the attachments for a better answer. If unsure, say "I" don't know."\n\n`
-        : '';
+    // System instructions
+    const systemInstructions = request.systemInstructions || laiOptions.systemInstructions || '';
 
-    const userMessage = [{
-        role: "user",
-        content: `${attachmentsContext}\n\n${context}\n\n${userInput}`.replace(/\n{2,}/g, '\n\n')
-    }];
+    // Build optimised context using IndexedDB memory
+    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - About to call buildOptimisedContext, backgroundMemory is:`, typeof backgroundMemory);
 
-    // System instructions (if any)
-    let sysInstruct = request.systemInstructions || laiOptions.systemInstructions || '';
-    sysInstruct = sysInstruct ? [{ role: "system", content: sysInstruct }] : [];
+    const optimisedMessages = await backgroundMemory.buildOptimisedContext(
+        activeSession.id,
+        cleanedUserInput,
+        turnNumber,
+        systemInstructions,
+        pageContent,
+        attachments
+    );
 
-    // Append the new user messages to session
+    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Turn ${turnNumber}: Built context with ${optimisedMessages.length} messages`);
+
+    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - currentPrompt:`, currentPrompt);
     activeSession.data.push(...currentPrompt);
+    activeSession.turnNumber = turnNumber;
+    activeSession.attachments = attachments;
     await setActiveSession(activeSession);
 
-    request.data.messages = [...sysInstruct, ...userMessage];
+    request.data.messages = optimisedMessages;
 
     await dumpInFrontConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender?.tab?.id);
     console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - request.data`, request.data);
@@ -632,9 +801,24 @@ async function fetchDataAction(request, sender) {
 
         await updateUIStatusBar(`Final response received...`, sender?.tab);
         await checkResponseTextAndBody({sender, responseText, body});
-        activeSession.data.push(body.message); // ai reply is stored raw
 
+        activeSession.data.push(body.message);
         await setActiveSession(activeSession);
+
+        // Store turn in IndexedDB memory
+        const assistantResponse = body.message?.content || '';
+        try {
+            await backgroundMemory.storeTurn(
+                activeSession.id,
+                turnNumber,
+                userInput,
+                assistantResponse
+            );
+        } catch (memoryError) {
+            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to store turn in memory:`, memoryError);
+        }
+
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - About to call handleResponse`);
         await handleResponse(body, sender?.tab?.id);
     }
     catch (e) {
@@ -1182,149 +1366,14 @@ async function modelCanThink(modelName = '', url = '') {
 }
 /////////// storage helpers ///////////
 
-async function createNewSession(text = `Session ${new Date().toISOString().replace(/[TZ]/g, ' ').trim()}`) {
-    let model;
-    const sessionId = crypto.randomUUID();
-    let newSession;
-    let sessions;
-    try {
-        model = await getAiModel();
-        sessions = await getAllSessions();
-        const title = text.split(/\s+/).slice(0, 6).join(' ');
-
-        newSession = {
-            id: sessionId,
-            title: title,
-            data: [],
-            model: model,
-            attachments: []
-        };
-    } catch (e) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
-        newSession = {
-            id: sessionId,
-            title: text?.toString().split(/\s+/).slice(0, 6).join(' ') || '',
-            data: [],
-            model: model || 'unknown',
-            attachments: []
-        };
-    } finally {
-        sessions.push(newSession);
-        await setAllSessions(sessions);
-        await setActiveSessionId(newSession.id);
-    }
-    return newSession;
-}
-
-async function getActiveSession() {
-    // let model;
-    try {
-        const sessionId = await getActiveSessionId();
-        if (!sessionId) { return await createNewSession(); }
-
-        // model = await getAiModel();
-        const sessions = await getAllSessions();
-
-        const session = sessions.find(sess => sess.id === sessionId);
-        if (!session) { return await createNewSession(); }
-
-        return session;
-    } catch (e) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
-    }
-}
-
-async function getActiveSessionId() {
-    try {
-        const result = await chrome.storage.local.get(activeSessionIdStorageKey);
-        const sessionId = result[activeSessionIdStorageKey];
-        if (typeof sessionId !== 'string' || !sessionId.trim()) {
-            return null;
-        }
-        return sessionId;
-    } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - getActiveSessionId error: ${error.message}`, error);
-        return null;
-    }
-}
-
-async function getAllSessions() {
-    try {
-        const result = await chrome.storage.local.get([allSessionsStorageKey]);
-        return result[allSessionsStorageKey] ?? [];
-    } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
-        return [];
-    }
-}
-
-async function setActiveSession(session) {
-    try {
-        if (!session?.id) {
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - session:`, session);
-            throw new Error(`[${getLineNumber()}]: Session object is missing a valid id!`);
-        }
-
-        const sessions = await getAllSessions();
-        const idx = sessions.findIndex(s => s.id === session.id);
-
-        if (idx < 0) { throw new Error(`Session with id ${session.id} not found!`); }
-
-        sessions[idx] = session;
-        await setAllSessions(sessions);
-    } catch (e) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
-    }
-}
-
-async function setAllSessions(obj = []) {
-    try {
-        while (obj && typeof obj === 'object' && allSessionsStorageKey in obj) {
-            obj = obj[allSessionsStorageKey];
-        }
-
-        await chrome.storage.local.set({ [allSessionsStorageKey]: obj });
-    } catch (e) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
-    }
-    return true;
-}
-
-async function getOptions() {
-    let opt;
-    let aiOptions;
-    try {
-        opt = await chrome.storage.sync.get(storageOptionKey);
-        aiOptions = opt[storageOptionKey] || {};
-    } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error, opt);
-    }
-    return aiOptions;
-}
-
-async function setOptions(options) {
-    try {
-        await chrome.storage.sync.set({ [storageOptionKey]: options });
-    } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error, options);
-    }
-}
+// Session management functions are now imported from jslib/sessions.js
+// Removed duplicate implementations:
+// - createNewSession, getActiveSession, getActiveSessionId, getAllSessions
+// - setActiveSessionId, setActiveSession, setAllSessions
+// - getOptions, setOptions
+// - getActiveSessionPageData, setActiveSessionPageData, removeActiveSessionPageData
 
 async function getPromptTools() {
     const commands = await chrome.storage.local.get([storageToolsKey]);
     return commands[storageToolsKey] || [];
-}
-
-async function getActiveSessionPageData() {
-    const result = await chrome.storage.local.get([activePageStorageKey]);
-    return result[activePageStorageKey] || null;
-}
-
-
-async function setActiveSessionPageData(data) {
-    await chrome.storage.local.set({ [activePageStorageKey]: data });
-}
-
-async function removeActiveSessionPageData() {
-    await chrome.storage.local.remove(activePageStorageKey);
 }

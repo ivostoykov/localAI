@@ -1,8 +1,18 @@
+/**
+ * Session Management Module
+ *
+ * Shared between:
+ * - Content scripts (frontend UI - ribbon.js, lai-main.js)
+ * - Background service worker (AI request handling - background.js)
+ *
+ * Single source of truth for all session CRUD operations.
+ */
+
 async function createNewSession(text = `Session ${new Date().toISOString().replace(/[TZ]/g, ' ').trim()}`) {
     let model;
     const sessionId = crypto.randomUUID();
-    let newSession;
-    let sessions;
+    let newSession = false;
+    let sessions = [];
     try {
         const laiOptions = await getOptions();
         model = laiOptions?.aiModel || 'unknown';
@@ -20,23 +30,26 @@ async function createNewSession(text = `Session ${new Date().toISOString().repla
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
         newSession = {
             id: sessionId,
-            title: text?.toString().split(/\s+/).slice(0, 6).join(' ') || '',
+            title: text?.toString()?.split(/\s+/)?.slice(0, 6)?.join(' ') || '',
             data: [],
             model: model || 'unknown',
             attachments: []
         };
-    } finally {
-        sessions.push(newSession);
-        await setAllSessions(sessions);
-        await setActiveSessionId(newSession.id);
     }
+
+    sessions.push(newSession);
+    await setAllSessions(sessions);
+    await setActiveSessionId(newSession.id);
+
     return newSession;
 }
 
-async function deleteActiveSession() {
+async function deleteSession(sessionId = null) {
     try {
-        const sessionId = await getActiveSessionId();
-        if (!sessionId) { throw new Error('No active session ID found!'); }
+        if (!sessionId) {
+            sessionId = await getActiveSessionId();
+            if (!sessionId) { throw new Error('No active session ID found!'); }
+        }
 
         const sessions = await getAllSessions();
         if (sessions.length < 1) { return; }
@@ -46,31 +59,24 @@ async function deleteActiveSession() {
 
         sessions.splice(idx, 1);
         await setAllSessions(sessions);
-        await deleteActiveSessionId();
+
+        const activeSessionId = await getActiveSessionId();
+        if (activeSessionId === sessionId) {
+            await deleteActiveSessionId();
+        }
+
+        await deleteSessionMemory(sessionId);
     } catch (e) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Delete Active Session error: ${e.message}`, e);
+        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Delete session error: ${e.message}`, e);
     }
 }
 
+async function deleteActiveSession() {
+    return deleteSession();
+}
+
 async function deleteSessionById(sessionId) {
-    try {
-        if (!sessionId) { throw new Error('No session ID provided for deletion!'); }
-
-        const sessions = await getAllSessions();
-        if (sessions.length < 1) { return; }
-
-        const idx = sessions.findIndex(sess => sess.id === sessionId);
-        if (idx < 0) { throw new Error(`Session with id ${sessionId} not found!`); }
-
-        sessions.splice(idx, 1);
-        await setAllSessions(sessions);
-
-        // if you just deleted active session, clear activeSessionId
-        const activeSessionId = await getActiveSessionId();
-        if (activeSessionId === sessionId) { await deleteActiveSessionId(); }
-    } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - deleteSessionById error: ${error.message}`, error);
-    }
+    return deleteSession(sessionId);
 }
 
 async function deleteActiveSessionId() {
@@ -82,35 +88,38 @@ async function deleteActiveSessionId() {
     }
 }
 
-async function getActiveSession() {
+async function getSession(sessionId = null, createIfMissing = true) {
     try {
-        const sessionId = await getActiveSessionId();
-        if (!sessionId) { return await createNewSession(); }
+        if (!sessionId) {
+            sessionId = await getActiveSessionId();
+            if (!sessionId && createIfMissing) {
+                return await createNewSession();
+            }
+            if (!sessionId) {
+                return null;
+            }
+        }
 
         const sessions = await getAllSessions();
-
         const session = sessions.find(sess => sess.id === sessionId);
-        if (!session) { return await createNewSession(); }
 
-        return session;
-    } catch (e) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
-    }
-}
-
-async function getActiveSessionById(sessionId) {
-    try {
-        if (!sessionId) { throw new Error("Invalid or missing session id!"); }
-        ;
-        const sessions = await getAllSessions();
-
-        const session = sessions.find(sess => sess.id === sessionId);
+        if (!session && createIfMissing && !sessionId) {
+            return await createNewSession();
+        }
 
         return session || null;
     } catch (e) {
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
         return null;
     }
+}
+
+async function getActiveSession() {
+    return getSession();
+}
+
+async function getActiveSessionById(sessionId) {
+    return getSession(sessionId, false);
 }
 
 async function getAllSessions() {
@@ -165,13 +174,20 @@ async function setActiveSession(session) {
     try {
         if (!session?.id) { throw new Error(`[${getLineNumber()}]: Session object is missing a valid id!`); }
 
+        if (session?.data?.length === 0 && session?.attachments?.length === 0) {
+            console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Skipping save of empty session ${session.id}`);
+            return;
+        }
+
         const sessions = await getAllSessions();
         const idx = sessions.findIndex(s => s.id === session.id);
 
         if (idx < 0) { throw new Error(`Session with id ${session.id} not found!`); }
 
         sessions[idx] = session;
-        await setAllSessions(sessions);
+        const filteredSessions = sessions.filter(s => s?.data?.length > 0 || s?.attachments?.length > 0);
+        await setAllSessions(filteredSessions);
+        await setActiveSessionId(session.id);
     } catch (e) {
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - the session thrown the error`, session);
@@ -232,10 +248,33 @@ async function getActiveSessionPageData() {
 }
 
 
-async function setActiveSessionPageData(data) {
+async function setActiveSessionPageData(data = null) {
+    if(!data) {  return;  }
+    const activePageData = await getActiveSessionPageData();
+    if(activePageData?.url === data?.url && activePageData?.pageContent) {  return;  }
+    if(data?.url && !data.pageContent) {
+        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Empty page content!`, {data, activePageData});
+        return;
+    }
     await chrome.storage.local.set({ [activePageStorageKey]: data });
 }
 
 async function removeActiveSessionPageData() {
     await chrome.storage.local.remove(activePageStorageKey);
+}
+
+async function deleteSessionMemory(sessionId) {
+    try {
+        await chrome.runtime.sendMessage({ action: 'deleteSessionMemory', sessionId: sessionId });
+    } catch (e) {
+        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to delete session memory:`, e);
+    }
+}
+
+async function clearAllMemory() {
+    try {
+        await chrome.runtime.sendMessage({ action: 'clearAllMemory' });
+    } catch (e) {
+        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to clear all memory:`, e);
+    }
 }

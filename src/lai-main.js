@@ -118,7 +118,7 @@ async function initSidebar() {
     setModelNameLabel({ "model": laiOptions.aiModel });
     await buildMenuDropdowns();
 
-    await setActiveSessionPageData({ "url": document.location.href, "pageContent": getPageTextContent() });
+    await setActiveSessionPageData({ "url": document.location.href, "pageContent": await getPageTextContent() });
 };
 
 function getCurrentSystemInstructions() {
@@ -165,7 +165,8 @@ async function recycleAllSessions(e, shadowRoot) {
         await Promise.all([
             removeLocalStorageObject(activeSessionKey),
             removeLocalStorageObject(allSessionsStorageKey),
-            chrome.storage.sync.remove(activeSessionKey)
+            chrome.storage.sync.remove(activeSessionKey),
+            clearAllMemory()
         ]);
         showMessage('Session history deleted.', 'success');
         await createNewSessionClicked(e, shadowRoot);
@@ -425,10 +426,9 @@ async function onPromptTextAreaKeyDown(e) {
         await addInputCardToUIChatHistory(elTarget.value, 'user', messages.length - 1);
         await addInputCardToUIChatHistory('', 'ai');
 
-        // update data
-        await addcommandPlaceholdersValues(elTarget.value);
+        const userInput = elTarget.value;
 
-        messages = [{ "role": "user", "content": `${elTarget.value}\n${messages.map(e => e.content).join('\n')}` }];
+        messages = [{ "role": "user", "content": `${userInput}\n${messages.map(e => e.content).join('\n')}` }];
         if (images.length > 0) { messages[0]["images"] = images; }
 
         try {
@@ -450,26 +450,53 @@ async function onPromptTextAreaKeyDown(e) {
     }
 }
 
-async function addcommandPlaceholdersValues(userInputValue) {
+/* function replaceCommandPlaceholders(userInput) {
+    const CMD_LABELS = {
+        'page': 'page content',
+        'now': 'timestamp',
+        'today': 'current date',
+        'time': 'current time'
+    };
+
+    let cleaned = userInput;
+    Object.entries(CMD_LABELS).forEach(([cmd, label]) => {
+        const regex = new RegExp(`@\\{\\{${cmd}\\}\\}`, 'g');
+        cleaned = cleaned.replace(regex, `[see ${label} attachment]`);
+    });
+
+    return cleaned;
+} */
+
+/* async function addcommandPlaceholdersValues(userInputValue) {
     const userCommands = [...userInputValue.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
     const content = [];
     const attachments = await getAttachments();
-    let attachment;
-    userCommands.forEach(cmd => {
-        let cmdText = ''
+
+    const existingCmds = new Set((attachments ?? []).map(att => att.cmd).filter(Boolean));
+
+    for (const cmd of userCommands) {
+        let cmdText = '';
         if (Array.isArray(cmd)) { cmdText = cmd.pop().trim(); }
+
+        if (existingCmds.has(cmdText)) { continue; }
+
+        let attachment;
         switch (cmdText) {
             case 'page':
+                const pageData = await getActiveSessionPageData();
+                const pageContent = pageData?.pageContent ?? await getPageTextContent();
+                if(!pageContent){ console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Empty page content!`, pageData);  }
                 attachment = {
-                    id: crypto.randomUUID(),
+                    cmd: 'page',
                     type: "snippet",
-                    content: getPageTextContent(),
+                    content: pageContent,
+                    // content: await getPageTextContent(),
                     sourceUrl: location.href
                 };
                 break;
             case 'now':
                 attachment = {
-                    id: crypto.randomUUID(),
+                    cmd: 'now',
                     type: "snippet",
                     content: `current date and time or timestamp is: ${(new Date()).toISOString()}`,
                     sourceUrl: location.href
@@ -477,7 +504,7 @@ async function addcommandPlaceholdersValues(userInputValue) {
                 break;
             case "today":
                 attachment = {
-                    id: crypto.randomUUID(),
+                    cmd: 'today',
                     type: "snippet",
                     content: `current date is: ${(new Date()).toISOString().split('T')[0]}`,
                     sourceUrl: location.href
@@ -485,23 +512,26 @@ async function addcommandPlaceholdersValues(userInputValue) {
                 break;
             case "time":
                 attachment = {
-                    id: crypto.randomUUID(),
+                    cmd: 'time',
                     type: "snippet",
                     content: `current time is: ${(new Date()).toISOString().split('T')[1]}`,
                     sourceUrl: location.href
                 };
                 break;
         }
-        if (attachments && attachments.length > 0) {
-            const isIn = attachments.some(el => el?.type === attachment?.type && el?.sourceUrl === attachment?.sourceUrl && el?.content === attachment?.content);
-            if (!isIn) { content.push(attachment); }
+
+        if (attachment) {
+            attachment.id = crypto.randomUUID();
+            content.push(attachment);
+            existingCmds.add(cmdText);
         }
-    });
+    }
+
     if (content.length > 0) {
         await addAttachment(content);
         content.forEach(att => showAttachment(att));
     }
-}
+} */
 
 function transformTextInHtml(inputText) {
     const lastChatText = document.createElement('span');
@@ -875,7 +905,6 @@ function laiSourceTextClicked(e) {
 }
 
 async function laiSwapSidebarWithButton(forceClose = false) {
-    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Swap triggered by:`, new Error().stack);
     const laiOptions = await getLaiOptions();
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
@@ -1180,7 +1209,7 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             let newActivePageContentAttachment = {
                 id: crypto.randomUUID(),
                 type: "snippet",
-                content: getPageTextContent(),
+                content: await getPageTextContent(),
                 sourceUrl: location.href
             };
             await addAttachment(newActivePageContentAttachment);
@@ -1281,7 +1310,7 @@ async function ask2ExplainSelection(response) {
     if (!userInput) { return; }
 
     const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
-    attachments.push(getPageTextContent());
+    attachments.push(await getPageTextContent());
 
     const enterEvent = new KeyboardEvent('keydown', {
         bubbles: true,

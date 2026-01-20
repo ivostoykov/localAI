@@ -153,7 +153,7 @@ async function allDOMContentLoaded(e) {
   try {
     await removeLocalStorageObject('activeSessionIndex'); // TODO: for sync - to be removed
     await removeLocalStorageObject(activeSessionIdStorageKey);
-    await setActiveSessionPageData({ "url": document.location.href, "pageContent": getPageTextContent() });
+    await setActiveSessionPageData({ "url": document.location.href, "pageContent": await getPageTextContent() });
     await getAiUserCommands(); //TODO: remove it as global
   } catch (err) {
     console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
@@ -239,7 +239,7 @@ function checkActiveTab() {
   try {
     chrome.runtime.sendMessage({ action: "CHECK_ACTIVE_TAB" }, async (isActive) => {
       if (isActive) {
-        await setActiveSessionPageData({ url: location.href, pageContent: getPageTextContent() });
+        await setActiveSessionPageData({ url: location.href, pageContent: await getPageTextContent() });
       } else {
         console.debug(`>>> ${manifest?.name || 'unknown'} - [${getLineNumber()}] - tab is not active, skipping: ${location.href}`);
       }
@@ -286,42 +286,172 @@ async function init() {
   }
 }
 
-function getPageTextContent() {
+// Main orchestrator - coordinates the page content workflow
+async function getPageTextContent() {
+  const startChildCount = document.body.childNodes.length;
+  console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Starting page content extraction - DOM children: ${startChildCount}`);
+
   const bodyClone = document.body.cloneNode(true);
+  const filterConfig = await loadFilteringConfig();
+  const cleanedDOM = applyContentFiltering(bodyClone, filterConfig);
+  const structure = extractTextStructure(cleanedDOM);
+  const result = formatPageContent(structure);
 
-  const removed = document.createElement('div');
-  removed.style.display = 'none';
-  ['local-ai', 'script', 'link', 'button', 'select', 'style', 'svg', 'code', 'img', 'fieldset', 'aside', 'audio', 'video', 'embed', 'object', 'picture', 'source', 'track', 'canvas'].forEach(selector => {
-    bodyClone.querySelectorAll(selector).forEach(el => removed.appendChild(el));
+  console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Finished - output: ${result.length} chars`);
+
+  return result;
+}
+
+function applyContentFiltering(domClone, filterConfig) {
+  // 1. First remove default selectors (script, style, etc.)
+  if (filterConfig.enabled && filterConfig.selectors) {
+    removeElementsBySelectors(domClone, filterConfig.selectors);
+  }
+
+  // 2. Then remove extension-injected elements
+  removeAllExtensionInjectedElements(domClone);
+
+  return domClone;
+}
+
+function removeAllExtensionInjectedElements(domClone) {
+  const extensionUrlElements = domClone.querySelectorAll('[src^="chrome-extension://"], [href^="chrome-extension://"], [src^="moz-extension://"], [href^="moz-extension://"]');
+  extensionUrlElements.forEach(el => el.remove());
+
+  // 2. Remove custom elements (likely extension-injected)
+  const customElements = Array.from(domClone.querySelectorAll('*'))
+    .filter(el => el.tagName.includes('-'));
+  customElements.forEach(el => el.remove());
+
+  const localAiElements = domClone.querySelectorAll('local-ai');
+  localAiElements.forEach(el => el.remove());
+}
+
+function removeElementsBySelectors(domClone, selectors) {
+  selectors.forEach(selector => {
+    try {
+      const elements = domClone.querySelectorAll(selector);
+      elements.forEach(el => el.remove());
+    } catch (e) {
+      console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Invalid selector: ${selector}`, e);
+    }
   });
+}
 
+// Extract text with hierarchical structure
+function extractTextStructure(domClone) {
   const structure = [];
   const headings = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
   let currentSection = { title: '', content: [] };
 
-  const walker = document.createTreeWalker(bodyClone, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_COMMENT);
+  const walker = document.createTreeWalker(
+    domClone,
+    NodeFilter.SHOW_TEXT
+  );
+
   while (walker.nextNode()) {
     const node = walker.currentNode;
-    if (!node?.nodeValue || !(/[^\n\r\t ]/.test(node.nodeValue))) { continue; }
+    if (!hasVisibleText(node)) continue;
 
     const parentTag = node.parentElement?.tagName || '';
-    const text = node.nodeValue.trim();
+    let text = node.nodeValue.trim();
+
+    // Strip CDATA markers if present
+    text = text.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+    if (!text) continue;
 
     if (headings.includes(parentTag)) {
-      if (currentSection.content.length) { structure.push(currentSection); }
+      if (currentSection.content.length) structure.push(currentSection);
       currentSection = { title: text, content: [] };
     } else {
       currentSection.content.push(text);
     }
   }
-  if (currentSection.content.length) { structure.push(currentSection); }
 
-  const finalText = structure.map(section => {
+  if (currentSection.content.length) structure.push(currentSection);
+  return structure;
+}
+
+// Check if node has visible text and is still connected to the DOM
+function hasVisibleText(node) {
+  if (!node?.nodeValue || !/[^\n\r\t ]/.test(node.nodeValue)) {
+    return false;
+  }
+
+  // Ensure the node's parent still exists in the tree (not detached)
+  if (!node.parentElement) {
+    return false;
+  }
+
+  return true;
+}
+
+// Format the final output
+function formatPageContent(structure) {
+  const formattedSections = structure.map(section => {
     const title = section.title ? `\n\n## ${section.title}\n` : '';
     return `${title}${section.content.join('\n')}`;
   }).join('\n');
 
-  return `PAGE URL: ${document.location.href}\nPAGE CONTENT START:${finalText}\nPAGE CONTENT END`;
+  return `PAGE URL: ${document.location.href}\nPAGE CONTENT START:${formattedSections}\nPAGE CONTENT END`;
+}
+
+async function loadFilteringConfig() {
+  try {
+    const stored = await chrome.storage.sync.get('laiOptions');
+    const options = stored.laiOptions || {};
+
+    const enabled = options.contentFilteringEnabled ?? true;
+    const defaultSelectors = options.defaultSelectors || getDefaultSelectors();
+    const siteSpecificRules = options.siteSpecificSelectors || '';
+
+    // Parse default selectors (comma-separated)
+    const selectors = defaultSelectors.split(',').map(s => s.trim()).filter(s => s);
+
+    // Parse site-specific selectors
+    const hostname = window.location.hostname;
+    const siteRules = parseSiteSpecificSelectors(siteSpecificRules, hostname);
+    if (siteRules.length > 0) {
+      selectors.push(...siteRules);
+    }
+
+    return {
+      enabled,
+      selectors
+    };
+  } catch (e) {
+    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error loading filtering config:`, e);
+    return {
+      enabled: true,
+      selectors: getDefaultSelectors().split(',').map(s => s.trim()).filter(s => s)
+    };
+  }
+}
+
+function getDefaultSelectors() {
+  return "nav,header,footer,aside,iframe,[role='navigation'],[role='banner'],[role='contentinfo'],.advertisement,.ad,.cookie-notice,.social-share,.comments,.related-posts";
+}
+
+function parseSiteSpecificSelectors(siteSpecificRules, hostname) {
+  if (!siteSpecificRules || !hostname) { return []; }
+
+  const lines = siteSpecificRules.split('\n');
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) { continue; }
+
+    const colonIndex = trimmedLine.indexOf(':');
+    if (colonIndex < 0) { continue; }
+
+    const domain = trimmedLine.substring(0, colonIndex).trim();
+    const selectorsStr = trimmedLine.substring(colonIndex + 1).trim();
+
+    if (hostname.includes(domain)) {
+      return selectorsStr.split(',').map(s => s.trim()).filter(s => s);
+    }
+  }
+
+  return [];
 }
 
 function clearElementOverDecoration(e) {

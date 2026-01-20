@@ -1,6 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Local AI helper",
+    "short_name": "localAI",
     "version": "1.28.29",
     "options_page": "options.html",
     "permissions": [
@@ -22,6 +23,7 @@
                 "<all_urls>"
             ],
             "js": [
+                "jslib/memory.js",
                 "jslib/user_input_ribbon.js",
                 "jslib/files.js",
                 "jslib/sessions.js",

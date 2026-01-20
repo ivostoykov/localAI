@@ -611,7 +611,10 @@ async function restoreHistorySessionClicked(e, sessionIdx) {
     const shadowRoot = getShadowRoot();
     await closeAllDropDownRibbonMenus(e);
     const session = await getActiveSessionById(sessionIdx);
-    if (!session || !session.data) {
+    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Retrieved session:`, session);
+    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - session.data length:`, session?.data?.length);
+
+    if (!session || !session.data || session.data.length === 0) {
         showMessage(`No session data found on session ${sessionIdx}`, "warning");
         console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - No data found in current session.`, session);
         return;
@@ -619,13 +622,22 @@ async function restoreHistorySessionClicked(e, sessionIdx) {
 
     await setActiveSessionId(sessionIdx);
     clearChatHistoryUI();
-    session?.data?.forEach(async (msg, i) => {
+
+    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - About to restore ${session.data.length} messages`);
+    for (const [i, msg] of session.data.entries()) {
+        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Restoring message ${i}:`, msg);
+        if(!msg.role || (msg.role !== 'user' && msg.role !== 'assistant'))  {  continue;  }
+        if(!msg.content || msg.content.trim() === '')  {  continue;  }
+        if(msg?.tool_calls)  {  continue;  }
         const role = msg?.role?.replace(/assistant/i, 'ai');
-        if (!role) { return; }
+        if (!role) {
+            console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Skipping message ${i} - no role found`);
+            continue;
+        }
 
         const aiReplyTextElement = await addInputCardToUIChatHistory('', role, i);
         await parseAndRender(msg.content, aiReplyTextElement, { streamReply: false });
-    });
+    }
 
     const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
