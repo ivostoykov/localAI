@@ -1,13 +1,13 @@
 async function initRibbon() {
 
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - tempInput not found!`, shadowRoot); }
+    if (!shadowRoot) { console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tempInput not found!`, shadowRoot); }
 
     const ribbon = getRibbon();
-    if (!ribbon) { console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - tempInput not found!`, ribbon); }
+    if (!ribbon) { console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tempInput not found!`, ribbon); }
 
-    const laiOptions = await getLaiOptions();
-    if (!laiOptions) { console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - tempInput not found!`, laiOptions); }
+    const laiOptions = await getOptions();
+    if (!laiOptions) { console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tempInput not found!`, laiOptions); }
 
     ribbon?.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
 
@@ -17,7 +17,7 @@ async function initRibbon() {
         tempInput.value = temp;
         tempInput.title = parseFloat(temp) < 0.5 ? 'Stricter' : (temp > 0.5 ? 'More Createive' : 'Neutral');
     } else {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - tempInput not found!`, tempInput);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tempInput not found!`, tempInput);
     }
 
     ribbon?.querySelectorAll('img').forEach(el => laiSetImg(el));
@@ -56,24 +56,24 @@ async function initRibbon() {
     shadowRoot?.querySelector('#mainHelpMenu').addEventListener('click', async (e) => {
         try {
             await chrome.runtime.sendMessage({ action: "openMainHelpMenu" })
-            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e) {
             if (e.message.indexOf('Extension context invalidated.') > -1) {
                 showMessage(`${e.message}. Please reload the page.`, 'warning');
             }
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
         }
     });
 
     shadowRoot?.querySelector('#modifiersHelp').addEventListener('click', async (e) => {
         try {
             await chrome.runtime.sendMessage({ action: "openModifiersHelpMenu" })
-            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e) {
             if (e.message.indexOf('Extension context invalidated.') > -1) {
                 showMessage(`${e.message}. Please reload the page.`, 'warning');
             }
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
         }
     });
 
@@ -87,12 +87,12 @@ async function initRibbon() {
         try {
             updateStatusBar('Opening Option Page ...');
             await chrome.runtime.sendMessage({ action: "openOptionsPage" })
-            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e) {
             if (e.message.indexOf('Extension context invalidated.') > -1) {
                 showMessage(`${e.message}. Please reload the page.`, 'warning');
             }
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
         }
         finally {
             resetStatusbar();
@@ -157,12 +157,7 @@ async function initRibbon() {
 
 async function closeAllDropDownRibbonMenus(e) {
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - shadowRoot element not found!`, shadowRoot);
-        return;
-    }
-
-    const openMenus = Array.from(shadowRoot.querySelectorAll('.js-menu-is-open'));
+    const openMenus = Array.from(shadowRoot?.querySelectorAll('.js-menu-is-open') ?? []);
     if (openMenus.length < 1) { return; }
 
     const compPath = e.composedPath(); // check for sidebar - if not in there, head button is clicked
@@ -171,6 +166,7 @@ async function closeAllDropDownRibbonMenus(e) {
     const originator = compPath?.[0]; // e?.target;
 
     openMenus.forEach(el => {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - compPath inside forEach`, compPath);
         if (el === originator) { return; }
         if (compPath?.findIndex(p => p === el) > 0) { return; } // clicked inside the menu
         el?.click();
@@ -180,8 +176,7 @@ async function closeAllDropDownRibbonMenus(e) {
 
 function laiShowSystemInstructions(e) {
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-    const sysIntructContainer = shadowRoot.getElementById('laiSysIntructContainer');
+    const sysIntructContainer = shadowRoot?.getElementById('laiSysIntructContainer');
     const sysIntructInput = sysIntructContainer.querySelector('#laiSysIntructInput');
     sysIntructContainer.classList.toggle('active');
     if (sysIntructContainer.classList.contains('active')) {
@@ -196,7 +191,7 @@ async function createNewSessionClicked(e, shadowRoot) {
         userInput.value = '';
         userInput.focus();
     } else {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
     removeLocalStorageObject(activeSessionIdStorageKey);
     showMessage('New session created.', 'success');
@@ -265,7 +260,7 @@ async function openCloseSessionHistoryMenu(e) {
             if (i === l - 1) {
                 menuItem.addEventListener('click', async (e) => deleteAllHistorySessionsClicked(e), false);
             } else {
-                menuItem.addEventListener('click', async (e) => restoreHistorySessionClicked(e, userEl.id), false);
+                menuItem.addEventListener('click', async (e) => await restoreHistorySessionClicked(e, userEl.id), false);
             }
         }
 
@@ -276,10 +271,8 @@ async function openCloseSessionHistoryMenu(e) {
             menuItem.appendChild(delBtn);
             scrollable.appendChild(menuItem)
         } else {
-            // menuItem.replaceChildren();
             histBootom.appendChild(menuItem);
         }
-        // sessionHistMenu.appendChild(menuItem);
     }
 
     sessionHistMenu.appendChild(scrollable);
@@ -289,19 +282,18 @@ async function openCloseSessionHistoryMenu(e) {
 }
 
 async function modelChanged(e) {
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     const oldModelName = laiOptions.aiModel;
     const newModelName = e.target.options[e.target.selectedIndex].value;
     try {
         await chrome.runtime.sendMessage({ action: "prepareModels", modelName: oldModelName, unload: true });
         if (chrome.runtime.lastError) {
-            console.error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
-            // throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
+            console.error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
         }
         await chrome.runtime.sendMessage({ action: "prepareModels", modelName: newModelName, unload: false });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (err) {
-        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}]`, err);
+        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, err);
     }
     laiOptions.aiModel = newModelName;
     await setOptions(laiOptions);
@@ -309,28 +301,20 @@ async function modelChanged(e) {
 }
 
 async function selectMenuChanged(e) {
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     const id = e.target.id;
     switch (id) {
         case 'apiUrlList':
             laiOptions.aiUrl = e.target.options[e.target.selectedIndex].value;
             break;
         case 'hookList':
-            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${id} is not implemented yet`);
             break;
     }
 }
 
-// function hideActiveSessionMenu() { // or hideInactiveSessionMenu ???
-//     const shadowRoot = getShadowRoot();
-//     if (!shadowRoot) { return; }
-//     const headerSection = shadowRoot.querySelector('.lai-header');
-//     headerSection?.querySelector('#sessionHistMenu')?.remove();
-// }
-
-function popUserCommandList(e) {
-    if (e?.target?.value) {
-        e.target.value = e.target.value.replace('/list', '');
+function popUserCommandList(el) {
+    if (el?.value) {
+        el.value = el?.value?.replace('/list', '');
     }
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
@@ -402,7 +386,6 @@ function userCmdItemBtnClicked(e) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
-    const clicked = e.target;
     const action = e.target.getAttribute('data-action').toLowerCase();
     const index = e.target.getAttribute('data-index');
     const userInput = shadowRoot.getElementById('laiUserInput');
@@ -431,10 +414,10 @@ function userCmdItemBtnClicked(e) {
             aiUserCommands.splice(index, 1);
             setAiUserCommands()
                 .then(() => e.target.closest('#commandListContainer').querySelector('div.help-close-btn').click())
-                .catch(e => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e));
+                .catch(e => console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e));
             break;
         default:
-            console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Unknown action - ${action}`);
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Unknown action - ${action}`);
     }
 
     if (action !== 'edit') {
@@ -470,12 +453,12 @@ async function modelLabelClicked(e) {
 }
 
 async function getAndShowModels() {
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     let response;
     updateStatusBar('Loading model list...')
     try {
         response = await chrome.runtime.sendMessage({ action: "getModels" });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         if (typeof (response) === 'boolean') { return; }
         if (!response) { throw new Error(`[${getLineNumber()}] - Server does not respond!`); }
         if (response.status !== 'success') { throw new Error(response?.message || 'Unknown error!'); }
@@ -484,19 +467,18 @@ async function getAndShowModels() {
         await fillAndShowModelList(response.models?.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (e) {
         showMessage(e.message, 'error');
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ERROR: ${e.message}`, e, response);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: ${e.message}`, e, response);
     } finally { resetStatusbar(); }
 
 }
 
 async function fillAndShowModelList(models) {
     const shadowRoot = getShadowRoot();
-    const modelNameContainer = shadowRoot.querySelector('#modelNameContainer');
     const modelList = shadowRoot.querySelector('#availableModelList');
     const modelsDropDown = shadowRoot.querySelector('#modelList');
     let opt = modelsDropDown.options[0];
     if (!modelList) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ERROR: Failed to find model list!`, e, modelList);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: Failed to find model list!`, e, modelList);
         showMessage('Failed to find model list!', 'error');
         return;
     }
@@ -505,7 +487,8 @@ async function fillAndShowModelList(models) {
     modelsDropDown.replaceChildren();
     modelsDropDown.appendChild(opt);
     const laiOptions = await getOptions();
-    models.forEach(async (model, idx) => {
+    for (let idx = 0, l = models.length; idx < l; idx++) {
+        const model = models[idx];
         const m = document.createElement('div');
         m.textContent = `${model.name}${model.name === laiOptions.aiModel ? ' ✔' : ''}`;
         m.addEventListener('click', async e => {
@@ -520,7 +503,7 @@ async function fillAndShowModelList(models) {
         opt.text = opt.value = model.name;
         opt.selected = model.name === laiOptions.aiModel;
         modelsDropDown.appendChild(opt);
-    });
+    }
 
     modelList.classList.remove('invisible');
 }
@@ -537,14 +520,13 @@ async function swapActiveModel(e, modelName) {
         updateStatusBar(`Trying to remove ${oldModel} from the memory...`);
         let response = await chrome.runtime.sendMessage({ action: "prepareModels", modelName: oldModel, unload: true });
         if (chrome.runtime.lastError) {
-            console.error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
-            // throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
+            console.error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
         }
         if (response.status !== 200) { showMessage(`Problem occured when unloading the ${oldModel} model!`, 'warning'); }
 
         updateStatusBar(`Trying to load ${modelName} into the memory...`);
         response = await chrome.runtime.sendMessage({ action: "prepareModels", modelName: modelName, unload: false });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         if (response.status !== 200) {
             showMessage(`Failed to load ${modelName} model!`, 'error');
             return;
@@ -563,7 +545,7 @@ async function swapActiveModel(e, modelName) {
         sideBar.querySelector('div#modelNameContainer')?.classList.remove('open')
         showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error occured while changing the model`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error occured while changing the model`);
     } finally { hideSpinner(); }
 }
 
@@ -604,34 +586,36 @@ function isPinned() {
     return !pinImg?.classList.contains('invisible');
 }
 
-async function restoreHistorySessionClicked(e, sessionIdx) {
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    // const el = e.target;
-    const shadowRoot = getShadowRoot();
-    await closeAllDropDownRibbonMenus(e);
-    const session = await getActiveSessionById(sessionIdx);
-    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Retrieved session:`, session);
-    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - session.data length:`, session?.data?.length);
+async function restoreHistorySessionClicked(e = null, sessionIdx = null) {
+    if(e) {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+    }
 
-    if (!session || !session.data || session.data.length === 0) {
-        showMessage(`No session data found on session ${sessionIdx}`, "warning");
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - No data found in current session.`, session);
+    sessionIdx = sessionIdx ?? await getActiveSessionId();
+    if(!sessionIdx){  return;  }
+
+    const shadowRoot = getShadowRoot();
+    shadowRoot?.click();
+    const session = await getActiveSessionById(sessionIdx);
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Retrieved session:`, session);
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - session.messages length:`, session?.messages?.length);
+
+    if (!session || !session.messages || session.messages.length === 0) {
         return;
     }
 
     await setActiveSessionId(sessionIdx);
     clearChatHistoryUI();
 
-    console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - About to restore ${session.data.length} messages`);
-    for (const [i, msg] of session.data.entries()) {
-        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Restoring message ${i}:`, msg);
+    for (const [i, msg] of session.messages.entries()) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Restoring message ${i}:`, msg);
         if(!msg.role || (msg.role !== 'user' && msg.role !== 'assistant'))  {  continue;  }
         if(!msg.content || msg.content.trim() === '')  {  continue;  }
         if(msg?.tool_calls)  {  continue;  }
         const role = msg?.role?.replace(/assistant/i, 'ai');
         if (!role) {
-            console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Skipping message ${i} - no role found`);
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping message ${i} - no role found`);
             continue;
         }
 
@@ -658,7 +642,7 @@ async function deleteHistoryMenuItemClicked(e) {
         updateStatusBar(`Deleted session "${title}"`);
         setTimeout(() => resetStatusbar(), 1500);
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
         showMessage(`Failed to delete session: ${error.message}`, 'error');
     }
 }
@@ -670,7 +654,7 @@ async function deleteAllHistorySessionsClicked(e) {
     try {
         await recycleAllSessions();
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
     }
     el.closest('div#sessionHistMenu').remove();
     showMessage('All sessions deleted.');
@@ -680,7 +664,7 @@ function modifiersClicked(e) {
     let el = e.target;
     let menu = el?.querySelector('.session-menu');
     if (!menu) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - .session-menu element not found`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - .session-menu element not found`);
         return;
     }
 

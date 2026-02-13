@@ -46,7 +46,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
     rootEl.dispatchEvent(new CustomEvent('renderComplete', { bubbles: true }));
     config.onRenderComplete?.();
     cleanup();
-    /// end of the main block
 
     function cleanup() {
         delete rootEl.dataset.status;
@@ -150,7 +149,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
                 return det;
             default:
                 const res = renderMultilineContent(block.content);
-                if (Array.isArray(res)) return res; // <- return array directly
+                if (Array.isArray(res)) return res;
                 return res;
         }
 
@@ -185,7 +184,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
                 try {  clone.setAttribute(attr.name, attr.value);  }
                 catch (err) {  console.error(`[${_getLineNumber()}] - ${err.message}`, err);  }
             }
-            attachCopyHandler(clone); // reattach click on the copy button
+            attachCopyHandler(clone);
             targetParent.appendChild(clone);
             for (const child of Array.from(srcNode.childNodes)) {
                 await streamNode(child, clone);
@@ -228,7 +227,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             btn.className = 'code-copy-btn';
             btn.textContent = '📋';
             btn.title = 'Copy';
-
             btn.addEventListener('click', () => {
                 navigator.clipboard.writeText(code.textContent).then(() => {
                     btn.textContent = '✅';
@@ -315,7 +313,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         const tbody = document.createElement('tbody');
         table.appendChild(tbody);
 
-        // Filter out horizontal lines (e.g. +---+---+)
         const contentLines = lines.filter(line => !/^\s*\+[-+=+]+\+\s*$/.test(line));
 
         contentLines.forEach(line => {
@@ -383,7 +380,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             const match = line.match(/^\s{0,3}((?:>\s*)+)(.*)/);
             if (!match) { return; }
 
-            // const depth = match[1].length;
             const depth = (match[1].match(/>/g) || []).length;
             const text = match[2];
 
@@ -447,7 +443,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         if (/^\s*(\||\+).+(\||\+)\s*$/.test(line)) return 'table';
         if (/^\s*<\/?think>\s*$/.test(line)) return 'think';
         if (/^\s*<.+?>/.test(line)) return 'html';
-        // if (/^\s*<(?!think\b).+?>/.test(line)) return 'html';
         return 'general';
     }
 
@@ -458,7 +453,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         if (currentType === 'html') return /<\/.+?>/.test(trimmed);
         if (currentType === 'general') return trimmed === '';
         if (currentType === 'fence') {
-            // Determine if a fenced code block has been opened
             const isFenceOpened = currentBlock.content.length > 1 && (/^\s*([`']{3,})/).test(currentBlock.content?.[0]);
             const isSameBlockType = currentType === newType;
             const isFenceTerminator = isFenceOpened && (/^\s*([`']{3,})/).test(trimmed);
@@ -471,7 +465,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
 
     function attachCopyHandler(el) {
         if (el.classList.contains('code-copy-btn') && !el.dataset.bound) {
-            el.dataset.bound = '1';  // prevents attaching duplicate event listeners.
+            el.dataset.bound = '1';
             el.addEventListener('click', () => {
                 const code = el.closest('.code-block')?.querySelector('code')?.textContent;
                 if (!code) return;
@@ -493,11 +487,10 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
     function normaliseMd(text) {
         return text
             .replace(/([^\n])\n([`']{3,}.*?\n)([^\n])/g, '$1\n\n$2\n$3')
-            .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')             // headings
-            .replace(/([^\n])\n(>)/g, '$1\n\n$2')                    // blockquotes
-            // .replace(/([^\n])\n(\s*([-+*]|\d+\.)\s)/g, '$1\n\n$2')   // lists
-            .replace(/([^\n])\n(\|.*\|)/g, '$1\n\n$2')               // tables
-            .replace(/([^\n])\n(<[a-zA-Z])/g, '$1\n\n$2');           // HTML
+            .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
+            .replace(/([^\n])\n(>)/g, '$1\n\n$2')
+            .replace(/([^\n])\n(\|.*\|)/g, '$1\n\n$2')
+            .replace(/([^\n])\n(<[a-zA-Z])/g, '$1\n\n$2');
     }
 }
 

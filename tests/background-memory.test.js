@@ -156,13 +156,13 @@ describe('background-memory.js', () => {
                 'Hello',
                 1,
                 'System instructions',
-                'Page content',
+                null, // Page content no longer auto-stored (Phase 5)
                 []
             );
 
             expect(context).toBeDefined();
             expect(context.some(msg => msg.content === 'System instructions')).toBe(true);
-            expect(context.some(msg => msg.content.includes('PAGE CONTENT'))).toBe(true);
+            // Page content is no longer auto-included (Phase 5 - on-demand fetching)
             expect(context[context.length - 1].content).toBe('Hello');
         });
 

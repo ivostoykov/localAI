@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.28.28] - 2025-08-04 - latest
+## [1.28.31] - 2026-02-01 - latest
+
+- Added image format validation using magic byte detection to prevent misidentified file formats
+- Added support for GIF images alongside PNG and JPEG formats
+- Enhanced image handling to detect actual format regardless of file extension or MIME type
+- Fixed issue where WebP images disguised as PNG files would crash Ollama's llava:7b model
+- Improved error messages for unsupported image formats
+
+## [1.28.28] - 2025-08-04
 
 - bug preventing communication with the server fixed
 

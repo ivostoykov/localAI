@@ -17,10 +17,10 @@ function importFromFile(e) {
             var json = JSON.parse(reader.result);
             chrome.storage.local.set({ ['aiUserCommands']: json })
                 .then(() => showMessage('User Commands imported successfully.', 'success'))
-                .catch(e => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e));
+                .catch(e => console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e));
             aiUserCommands = json;
         } catch (err) {
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
         } finally {
             fileInput.remove();
         }
@@ -62,7 +62,6 @@ function getLineNumber() {
     const stackLines = e.stack.split("\n").map(line => line.trim());
     let index = stackLines.findIndex(line => line.includes(getLineNumber.name));
 
-    // return stackLines[index + 1]?.replace(/\s{0,}at\s+/, '') || "Unknown";
     return stackLines[index + 1]
         ?.replace(/\s{0,}at\s+/, '')
         ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
@@ -88,10 +87,10 @@ function checkExtensionState() {
     reloadRuntime();
     if (!chrome?.runtime?.id) {
         if (typeof (showMessage) === 'function') {
-            showMessage(`${manifest?.name || 'Unknown'} - Extension context invalidated. Please reload the tab.`, 'error');
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
+            showMessage(`${manifest?.name ?? ''} - Extension context invalidated. Please reload the tab.`, 'error');
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
         } else {
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
         }
         return false;
     }
@@ -100,22 +99,28 @@ function checkExtensionState() {
 }
 
 async function checkAndSetSessionName() {
-    const currentSession = await getActiveSession();
-    if (!currentSession || !currentSession?.title || !currentSession?.title?.toLowerCase()?.startsWith('session')) { return; }
-    const sessionData = currentSession?.data || [];
-    if (sessionData.length < 1) { return; }
-    const userInput = sessionData?.filter(el => el?.role === 'user');
-    if (userInput.length < 1) { return; }
-    if (!userInput[0]?.content) { return; }
-    await chrome.runtime.sendMessage({ action: "checkAndSetSessionName", text: userInput[0]?.content });
+    try {
+        const currentSession = await getActiveSession();
+        if (!currentSession || !currentSession?.title || !currentSession?.title?.toLowerCase()?.startsWith('session')) { return; }
+        const sessionData = currentSession?.messages || [];
+        if (sessionData.length < 1) { return; }
+        const userInput = sessionData?.filter(el => el?.role === 'user');
+        if (userInput.length < 1) { return; }
+        if (!userInput[0]?.content) { return; }
+        await chrome.runtime.sendMessage({ action: "checkAndSetSessionName", text: userInput[0]?.content });
+        return true;
+    } catch (err) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
+        return false;
+    }
 }
 
 async function getAiUrl() {
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     if (!laiOptions?.aiUrl) {
         let msg = 'Missing API endpoint!';
         showMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${msg}`, laiOptions);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg}`, laiOptions);
         return null;
     }
 
@@ -123,7 +128,7 @@ async function getAiUrl() {
     if (!url) {
         let msg = `Faild to compose the request URL - ${url}`;
         showMessage(msg, 'error');
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg};  request.url: ${url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
         return null;
     }
 
@@ -144,13 +149,13 @@ async function modelCanThink(modelName = '', url = '') {
     try {
         const response = await chrome.runtime.sendMessage({ action: 'modelCanThink', model: modelName, url });
         if (response?.error) {
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response error`, response?.error);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response error`, response?.error);
             return false;
         }
 
         return response?.canThink ?? false;
     } catch (err) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
     }
 }
@@ -161,13 +166,13 @@ async function modelCanUseTools(modelName = '') {
     try {
         const response = await chrome.runtime.sendMessage({ action: 'modelCanUseTools', model: modelName, });
         if (response?.error) {
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response error`, response?.error);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response error`, response?.error);
             return false;
         }
 
         return response?.canUseTools ?? false;
     } catch (err) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
     }
 }
@@ -178,6 +183,84 @@ function reloadRuntime() {
             chrome.runtime.reload();
         }
     } catch (err) {
-        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Safe runtime reload failed:`, err);
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Safe runtime reload failed:`, err);
     }
+}
+
+async function onImagePaste(e) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        if (item.type.startsWith('image/')) {
+            e.preventDefault();
+
+            try {
+                const blob = item.getAsFile();
+                if (!blob) {
+                    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to get image from clipboard`);
+                    return;
+                }
+
+                if (typeof handleImageFile === 'function') {
+                    await handleImageFile(blob);
+                    showMessage('Image pasted successfully', 'info');
+                } else {
+                    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - handleImageFile function not available`);
+                    showMessage('Failed to paste image: Image handler not loaded', 'error');
+                }
+            } catch (error) {
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error handling pasted image:`, error);
+                showMessage(`Failed to paste image: ${error.message}`, 'error');
+            }
+
+            break;
+        }
+    }
+}
+
+function generatePageHash(url, contentLength) {
+    return `${url}:${contentLength}`;
+}
+
+function waitForDOMToSettle(settleTime = 1000, maxWait = 10000) {
+    return new Promise((resolve) => {
+        let timeout;
+        let elapsed = 0;
+        let isResolved = false;
+        const startTime = Date.now();
+
+        const cleanup = () => {
+            if (isResolved) return;
+            isResolved = true;
+            clearTimeout(timeout);
+            observer.disconnect();
+            resolve();
+        };
+
+        const observer = new MutationObserver(() => {
+            if (isResolved) return;
+            clearTimeout(timeout);
+            elapsed = Date.now() - startTime;
+
+            if (elapsed >= maxWait) {
+                console.debug(`>>> ${manifest?.name ?? ''} - Max wait time reached (${maxWait}ms), settling now`);
+                cleanup();
+                return;
+            }
+
+            timeout = setTimeout(cleanup, settleTime);
+        });
+
+        if(document.body){
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        }
+
+        timeout = setTimeout(cleanup, settleTime);
+    });
 }

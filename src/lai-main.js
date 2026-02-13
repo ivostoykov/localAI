@@ -1,21 +1,14 @@
-/**
- * TODO (refactor UI):
- *   Event delegation vs. per-element bindings.
- *   We bind dozens of element-specific click handlers. As the UI grows you may hit listener bloat.
- *   Consider delegating through a shared parent when practical (already done for the "feedbackMessage" div).
- */
 let restartCounter = 0;
 const RESTART_LIMIT = 5;
 
 async function initSidebar() {
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     if (!chrome.runtime.id) { chrome.runtime.reload(); }
     const root = getRootElement();
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
         if (restartCounter < RESTART_LIMIT) {
             restartCounter++;
-            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - restarting: ${restartCounter}`);
             start();
         }
         return;
@@ -35,24 +28,27 @@ async function initSidebar() {
     });
 
     const ribbon = getRibbon();
-    if (!ribbon) { console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Main ribbon not found!`, ribbon); }
+    if (!ribbon) { console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, ribbon); }
     ribbon?.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
     ribbon?.querySelector('.temp-range-wrapper')?.addEventListener('click', modifiersClicked, true);
 
 
     const userInput = shadowRoot.getElementById('laiUserInput');
-    if (!userInput) { console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Main ribbon not found!`, userInput); }
+    if (!userInput) { console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, userInput); }
     userInput?.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e), false);
     userInput?.addEventListener('click', userInputClicked);
     userInput?.addEventListener('focus', async e => await userInputFocused(e));
     userInput?.addEventListener('blur', userInputBlurred, { capture: false });
+    userInput?.addEventListener('paste', async e => await onImagePaste(e));
 
     const userAreaContainer = shadowRoot.querySelector('.lai-user-area');
     userAreaContainer.querySelector('#libraryBtn')?.addEventListener('mousedown', e => libraryBtnClicked(e), { capture: false });
     userAreaContainer.querySelector('#quickPromptBtn')?.addEventListener('mousedown', async e => await quickPromptClicked(e), { capture: false });
     userAreaContainer.querySelector('#eraserBtn')?.addEventListener('mousedown', e => eraseUserInputArea(e));
+    userAreaContainer.querySelector('#debugBtn')?.addEventListener('mousedown', async e => await debugBtnClicked(e));
     userAreaContainer?.addEventListener('mouseenter', showUserInputRibbon);
     userAreaContainer?.addEventListener('mouseleave', hideUserInputRibbon);
+    initDebugBtn(Date.now() + 180000, userAreaContainer.querySelector('#debugBtn'));
 
     if (root) {
         root.addEventListener('dragenter', onUserInputDragEnter);
@@ -67,7 +63,7 @@ async function initSidebar() {
     await initRibbon();
 
     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
-    laiChatMessageList.dataset.watermark = `${manifest?.name || 'Unknown'} - ${manifest.version}`;
+    laiChatMessageList.dataset.watermark = `${manifest?.name ?? ''} - ${manifest.version}`;
     laiChatMessageList.addEventListener('click', hidePopups, false);
     laiChatMessageList.addEventListener('scroll', (e) => {
         if (laiChatMessageList.dataset.scrollType === 'auto') {
@@ -103,7 +99,11 @@ async function initSidebar() {
     resizeHandle.addEventListener('mousedown', e => laiResizeContainer(e));
 
     if (laiOptions.loadHistoryOnStart) {
-        restoreHistorySessionClicked().catch(er => console.error(er));
+        try {
+            if(shadowRoot){  shadowRoot?.click();  }
+        } catch (er) {
+            console.error(er)
+        }
     }
 
     shadowRoot.querySelectorAll('img.mic').forEach(img => {
@@ -117,9 +117,18 @@ async function initSidebar() {
 
     setModelNameLabel({ "model": laiOptions.aiModel });
     await buildMenuDropdowns();
-
-    await setActiveSessionPageData({ "url": document.location.href, "pageContent": await getPageTextContent() });
 };
+
+function initDebugBtn(timeout, el){
+    if(!chrome.runtime?.id) { return;  }
+    if(timeout < Date.now()) {  return; }
+    if(typeof debugBtnInit !== 'function') {
+        setTimeout(() => initDebugBtn(timeout, el), 1000);
+        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - debug btn init pending`, {remain: (Math.abs(timeout - Date.now())), fun: (typeof debugBtnInit), el});
+        return;
+    }
+    debugBtnInit(el);
+}
 
 function getCurrentSystemInstructions() {
     const shadowRoot = getShadowRoot();
@@ -136,16 +145,15 @@ async function createNewSessionClicked(e, shadowRoot) {
         userInput.value = '';
         userInput.focus();
     } else {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
     removeLocalStorageObject(activeSessionIdStorageKey);
     showMessage('New session created.', 'success');
 }
 
 async function onCloseSidebarClick(e, shadowRoot) {
-    // const pinned = shadowRoot.getElementById('laiPinned');
     const pinImg = getShadowRoot()?.querySelector('img[data-type="black_pushpin"]');
-    // const isPinned = !pinImg.classList.contains('invisible');
+
     if (isPinned()) { pinImg?.click(); }
     await laiSwapSidebarWithButton(true);
 }
@@ -164,14 +172,15 @@ async function recycleAllSessions(e, shadowRoot) {
     try {
         await Promise.all([
             removeLocalStorageObject(activeSessionKey),
+            removeLocalStorageObject(activeSessionIdKey),
             removeLocalStorageObject(allSessionsStorageKey),
-            chrome.storage.sync.remove(activeSessionKey),
+            // chrome.storage.sync.remove(activeSessionKey),
             clearAllMemory()
         ]);
         showMessage('Session history deleted.', 'success');
-        await createNewSessionClicked(e, shadowRoot);
+        // await createNewSessionClicked(e, shadowRoot); // no need of new session; this also clears the user input
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${error.message}`, error);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
         showMessage(error.message, 'error');
     }
 }
@@ -181,15 +190,15 @@ function laiShowSystemInstructions(e) {
     if (!shadowRoot) { return; }
     const sysIntructContainer = shadowRoot.getElementById('laiSysIntructContainer');
     const sysIntructInput = sysIntructContainer.querySelector('#laiSysIntructInput');
-    sysIntructContainer.classList.toggle('active');
-    if (sysIntructContainer.classList.contains('active')) {
-        sysIntructInput.focus();
+    sysIntructContainer?.classList.toggle('active');
+    if (sysIntructContainer?.classList.contains('active')) {
+        sysIntructInput?.focus();
     }
 }
 
 async function laiPushpinClicked(e) {
     const el = e.target;
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     const container = el.closest('div');
     let isPinned = false;
 
@@ -210,15 +219,15 @@ function laiInsertCommandText(text) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const textarea = shadowRoot.querySelector('textarea');
-    const cursorPosition = textarea.selectionStart;
-    const textBeforeCursor = textarea.value.substring(0, cursorPosition);
-    const textAfterCursor = textarea.value.substring(cursorPosition);
+    const cursorPosition = textarea?.selectionStart;
+    const textBeforeCursor = textarea?.value.substring(0, cursorPosition);
+    const textAfterCursor = textarea?.value.substring(cursorPosition);
 
-    let prefixEnd = textBeforeCursor.lastIndexOf('@{{');
+    let prefixEnd = textBeforeCursor?.lastIndexOf('@{{');
     if (prefixEnd < 0) { prefixEnd = 0; }
-    textarea.value = textBeforeCursor.substring(0, prefixEnd) + text + textAfterCursor;
-    textarea.selectionStart = textarea.selectionEnd = prefixEnd + text.length;
-    textarea.focus();
+    textarea.value = textBeforeCursor?.substring(0, prefixEnd) + text + textAfterCursor;
+    textarea.selectionStart = textarea.selectionEnd = prefixEnd + text?.length;
+    textarea?.focus();
     laiHideSuggestions();
 }
 
@@ -265,7 +274,7 @@ function onUserInputDragLeave(e) {
     if (!shadowRoot) { return; }
     const dropzone = shadowRoot.getElementById('dropzone');
     dropzone.classList.remove('hover');
-    setTimeout(() => dropzone.classList.add('invisible'), 750); // wait transition to complete
+    setTimeout(() => dropzone.classList.add('invisible'), 750);
 }
 
 function showAttachment(theAttachment) {
@@ -289,7 +298,7 @@ async function attachmentImgClicked(e) {
     let el = e.target;
     let attachmentId = el.getAttribute('data-index');
     if (!attachmentId) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Attachment Id not found`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Attachment Id not found`);
         console.error(el);
         return;
     }
@@ -328,7 +337,6 @@ function clearAttachments() {
     if (!attachmentContainer) { return; }
     attachmentContainer.replaceChildren();
     attachmentContainer.classList.remove('active');
-    // attachments = [];
 }
 
 function adjustHeight(userInput) {
@@ -367,7 +375,7 @@ async function userInputFocused(e) {
         clearAttachments();
         attachments.forEach(a => showAttachment(a));
     } catch (err) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
     }
 }
 
@@ -398,6 +406,13 @@ function hidePopups(e) {
     shadowRoot?.querySelector('#commandListContainer')?.classList.add('invisible');
 }
 
+async function stripDebugCommands(str){
+    const re = /(@\{\{(?:debug|nodebug)\}\})/gi;
+    const result = str.match(re)?.pop() ?? "";
+    if(result){  toggleDebug(result.toLowerCase() === '@{{debug}}');   }
+    return result ? str.replace(result, '') : str;
+}
+
 async function onPromptTextAreaKeyDown(e) {
     const elTarget = e.target;
     e.stopImmediatePropagation();
@@ -405,43 +420,39 @@ async function onPromptTextAreaKeyDown(e) {
 
     if (e.key === 'Enter' && e.code !== 'NumpadEnter' && !e.shiftKey) {
 
-        if (isAskingForHelp(e) || await checkCommandHandler(e)) {
+        if (isAskingForHelp(e) || await checkCommandHandler(elTarget)) {
             e.preventDefault();
-            return false;
+            if (elTarget?.value?.trim() === '') {  return false;  }
         }
 
         e.preventDefault();
         const shadowRoot = getShadowRoot();
         if (!shadowRoot) { return; }
-        shadowRoot.getElementById('laiSysIntructContainer').classList.remove('active');
+        shadowRoot.getElementById('laiSysIntructContainer')?.classList.remove('active');
 
         if (elTarget?.value?.trim() === '') {
             showMessage('It looks like there is no propt yet.', 'warning');
             return;
         }
 
-        messages = [];
+        const userInput = await stripDebugCommands(elTarget.value.trim()) ?? "";
+        if(!userInput) {
+            elTarget.value = '';
+            elTarget?.blur();
+            return;
+        }
 
         // update UI
-        await addInputCardToUIChatHistory(elTarget.value, 'user', messages.length - 1);
+        await addInputCardToUIChatHistory(userInput, 'user');
         await addInputCardToUIChatHistory('', 'ai');
 
-        const userInput = elTarget.value;
-
-        messages = [{ "role": "user", "content": `${userInput}\n${messages.map(e => e.content).join('\n')}` }];
-        if (images.length > 0) { messages[0]["images"] = images; }
-
         try {
-            dumpInConsole(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - messages collected are ${messages.length}`, messages);
-            const idx = await getActiveSessionId();
-            if (!idx) { await createNewSession(elTarget.value); }
-
-            shadowRoot.getElementById('laiAbort')?.classList.remove('invisible');
-            shadowRoot.querySelector('#attachContainer')?.classList.remove('active');
-            elTarget.classList.add('invisible');
+            shadowRoot?.getElementById('laiAbort')?.classList.remove('invisible');
+            shadowRoot?.querySelector('#attachContainer')?.classList.remove('active');
+            elTarget?.classList.add('invisible');
             elTarget.value = '';
             hideUserInputRibbon(e);
-            await queryAI();
+            await queryAI(userInput);
         } catch (e) {
             showMessage(`ERROR: ${e.message}`, e);
         } finally {
@@ -449,89 +460,6 @@ async function onPromptTextAreaKeyDown(e) {
         }
     }
 }
-
-/* function replaceCommandPlaceholders(userInput) {
-    const CMD_LABELS = {
-        'page': 'page content',
-        'now': 'timestamp',
-        'today': 'current date',
-        'time': 'current time'
-    };
-
-    let cleaned = userInput;
-    Object.entries(CMD_LABELS).forEach(([cmd, label]) => {
-        const regex = new RegExp(`@\\{\\{${cmd}\\}\\}`, 'g');
-        cleaned = cleaned.replace(regex, `[see ${label} attachment]`);
-    });
-
-    return cleaned;
-} */
-
-/* async function addcommandPlaceholdersValues(userInputValue) {
-    const userCommands = [...userInputValue.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
-    const content = [];
-    const attachments = await getAttachments();
-
-    const existingCmds = new Set((attachments ?? []).map(att => att.cmd).filter(Boolean));
-
-    for (const cmd of userCommands) {
-        let cmdText = '';
-        if (Array.isArray(cmd)) { cmdText = cmd.pop().trim(); }
-
-        if (existingCmds.has(cmdText)) { continue; }
-
-        let attachment;
-        switch (cmdText) {
-            case 'page':
-                const pageData = await getActiveSessionPageData();
-                const pageContent = pageData?.pageContent ?? await getPageTextContent();
-                if(!pageContent){ console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Empty page content!`, pageData);  }
-                attachment = {
-                    cmd: 'page',
-                    type: "snippet",
-                    content: pageContent,
-                    // content: await getPageTextContent(),
-                    sourceUrl: location.href
-                };
-                break;
-            case 'now':
-                attachment = {
-                    cmd: 'now',
-                    type: "snippet",
-                    content: `current date and time or timestamp is: ${(new Date()).toISOString()}`,
-                    sourceUrl: location.href
-                };
-                break;
-            case "today":
-                attachment = {
-                    cmd: 'today',
-                    type: "snippet",
-                    content: `current date is: ${(new Date()).toISOString().split('T')[0]}`,
-                    sourceUrl: location.href
-                };
-                break;
-            case "time":
-                attachment = {
-                    cmd: 'time',
-                    type: "snippet",
-                    content: `current time is: ${(new Date()).toISOString().split('T')[1]}`,
-                    sourceUrl: location.href
-                };
-                break;
-        }
-
-        if (attachment) {
-            attachment.id = crypto.randomUUID();
-            content.push(attachment);
-            existingCmds.add(cmdText);
-        }
-    }
-
-    if (content.length > 0) {
-        await addAttachment(content);
-        content.forEach(att => showAttachment(att));
-    }
-} */
 
 function transformTextInHtml(inputText) {
     const lastChatText = document.createElement('span');
@@ -548,31 +476,6 @@ function transformTextInHtml(inputText) {
     return lastChatText;
 }
 
-/**
- * Recursively builds and returns a DocumentFragment containing the specified elements.
- *
- * @param {Object|Object[]} elements - An object or an array of objects representing HTML elements to create.
- * Each object should have a tag name as its key and an optional attributes object as its value.
- * @returns {DocumentFragment|HTMLElement|null} A DocumentFragment containing the created elements,
- * a single HTMLElement if only one element is provided, or null if no elements are provided.
- *
- * @example
- * // Example usage:
- * const elements = [
- *   {
- *     "span": {
- *       "class": "lai-edit-item-action",
- *       "data-type": "edit",
- *       "data-index": 0,
- *       "children": [
- *         { "img": { "src": "img/edit.svg" } }
- *       ]
- *     }
- *   }
- * ];
- * const fragment = buildElements(elements);
- * document.body.appendChild(fragment);
- */
 function buildElements(elements) {
     if (!elements) { return; }
     if (!Array.isArray(elements)) { elements = [elements]; }
@@ -593,7 +496,7 @@ function buildElements(elements) {
             }
         }
 
-        fragment.appendChild(newElement); // Append the newly created element to a document fragment
+        fragment.appendChild(newElement);
     }
 
     return fragment.childNodes.length === 1 ? fragment.firstChild : fragment;
@@ -621,15 +524,6 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
     });
     const lastChatText = transformTextInHtml(inputText);
 
-    //experimental
-    // if(type !== 'ai'){
-    //     // lastChatText.innerHTML = '';
-    //     // await parseAndRender(inputText, lastChatText, {streamReply: false});
-    //     const pre = document.createElement('pre');
-    //     pre.textContent = inputText;
-    //     lastChatText.innerHTML = '';
-    //     lastChatText.appendChild(pre);
-    // }
     const arrButtons = [
         {
             "span": {
@@ -765,7 +659,7 @@ function insertIntoDocument(e, type) {
 function click2insert(e, textEl, callback) {
     const shadowRoot = getShadowRoot();
     if (!document.hasFocus() || document.visibilityState !== 'visible') {
-        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Page is not active.`);
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page is not active.`);
         return;
     }
 
@@ -792,7 +686,7 @@ function click2insert(e, textEl, callback) {
             });
         }
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${error.message}`, error);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error: ${error.message}`, error);
     } finally {
         if (typeof (callback) === 'function') {
             callback();
@@ -851,20 +745,18 @@ async function copyChatElementContent(e, type) {
     const evt = e;
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
     const textContent = element.innerText || '';
-    // let textContent = element ? await getElementSessionContent(element) : '';
 
     try {
         await navigator.clipboard.writeText(textContent);
         laiShowCopyHint(evt)
     } catch (err) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err);
     }
 }
 
 async function editUserInput(e, type) {
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
     const textContent = element.innerText || '';
-    // let textContent = element ? await getElementSessionContent(element) : '';
     const container = element.closest("#laiChatMessageList");
     const currentSession = await getActiveSession();
     const idx = await findElementHistoryIndex(element);
@@ -875,16 +767,15 @@ async function editUserInput(e, type) {
 
     if (idx > -1) { children.slice(idx).forEach(child => child.remove()); }
 
-    if ((currentSession?.data || []).length > 0) {
-        currentSession.data.splice(idx, 1);
-        if (currentSession.data.lengh > 0) { await setActiveSession(currentSession); }
+    if ((currentSession?.messages || []).length > 0) {
+        currentSession.messages.splice(idx, 1);
+        if (currentSession.messages.length > 0) { await setActiveSession(currentSession); }
         else { await deleteActiveSession(); }
     }
 
     userInputField.focus();
 }
 
-// handle code snippets clicks in AI response
 function laiSourceTextClicked(e) {
     const clickedSourceTitle = e.target.closest('.lai-source-title');
     if (!clickedSourceTitle) { return; }
@@ -901,18 +792,18 @@ function laiSourceTextClicked(e) {
             clickedSourceTitle.classList.toggle('copied');
             setTimeout(() => clickedSourceTitle.classList.toggle('copied'), 3000);
         })
-        .catch(err => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
+        .catch(err => console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
 }
 
 async function laiSwapSidebarWithButton(forceClose = false) {
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
     const sideBar = shadowRoot.getElementById('laiSidebar');
     const mainButton = shadowRoot.getElementById('laiMainButton');
     if (!sideBar || !mainButton) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Sidebar or button not found!`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sidebar or button not found!`);
         return;
     }
 
@@ -933,10 +824,10 @@ async function laiUpdateMainButtonStyles() {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) return;
 
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     const btn = shadowRoot.getElementById('laiMainButton');
     if (!btn) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Main button not found!`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main button not found!`);
         return;
     }
 
@@ -961,9 +852,9 @@ async function laiAbortRequest(e) {
     if (checkExtensionState()) {
         try {
             await chrome.runtime.sendMessage({ action: "abortFetch" });
-            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+            if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e) {
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${e.message}`, e);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error: ${e.message}`, e);
         }
     }
 
@@ -973,8 +864,8 @@ async function laiAbortRequest(e) {
     shadowRoot?.getElementById('laiUserInput')?.classList.remove('invisible');
 }
 
-async function queryAI() {
-    const laiOptions = await getLaiOptions();
+async function queryAI(userInput) {
+    const laiOptions = await getOptions();
     if (!checkExtensionState()) {
         setTimeout(async () => await laiAbortRequest(), 1000);
         return;
@@ -986,10 +877,7 @@ async function queryAI() {
     }
 
     const shadowRoot = getShadowRoot();
-    const tempInput = shadowRoot?.querySelector('#tempInput');
-    let temp = tempInput?.value || 0.5;
-
-    const data = { "messages": messages, };
+    const data = { "userInput": userInput };
     let options = getModelModifiers();
     if (options) { data["options"] = options; }
 
@@ -997,15 +885,7 @@ async function queryAI() {
         data["think"] = false;
     }
 
-    if (laiOptions.aiUrl.indexOf('api') > -1) {
-        if (laiOptions.aiModel.trim() === '') {
-            showMessage('Please choose a model from the list!');
-            return;
-        } else {
-            data['model'] = laiOptions.aiModel.trim();
-        }
-    }
-
+    // tools could be temporary disabled from the UI regardless of the general options state
     const toolFunctions = !shadowRoot?.querySelector('#toolFunctions')?.classList?.contains('disabled') || false;
     const sysInstruct = getCurrentSystemInstructions();
     const requestData = {
@@ -1019,18 +899,18 @@ async function queryAI() {
     try {
         updateStatusBar('Prompt sent to the model, awaiting response...');
         const response = await chrome.runtime.sendMessage(requestData);
-        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
 
         if (response?.status === 'error' && response?.message) {
             showMessage(response.message, 'error');
-            throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Response error: ${response.message}`, response);
+            throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - Response error: ${response.message}`, response);
         }
 
     } catch (e) {
         if (e.message.indexOf('Extension context invalidated.') > -1) {
             showMessage(`${e.message}. Please reload the page.`, 'warning');
         }
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
         shadowRoot?.getElementById('laiAbort')?.classList.add('invisible');
         shadowRoot?.getElementById('laiUserInput')?.classList.remove('invisible');
     }
@@ -1058,13 +938,13 @@ function laiExtractDataFromResponse(response) {
         response = JSON.parse(responseJson);
     } catch (err) {
         showMessage(err.message, 'error');
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error parsing response`, response);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing response`, response);
         return '';
     }
 
     if(!response.model || !response.message || !response.message.content){
-        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Wrong response`, response);
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Wrong response`, response);
     }
 
     setModelNameLabel(response?.model ?? 'unknown');
@@ -1085,7 +965,7 @@ function scrollChatHistoryContainer(e) {
     const shadowRoot = getShadowRoot();
     const laiChatMessageList = shadowRoot?.querySelector('#laiChatMessageList');
     if (!laiChatMessageList) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
         return;
     }
     laiChatMessageList.dataset.scrollType = 'auto';
@@ -1100,7 +980,7 @@ function renderCompleteFired(e) {
 }
 
 function getParseAndRenderOptions(rootEl) {
-    if (!rootEl) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Target element not found!`); }
+    if (!rootEl) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Target element not found!`); }
 
     const shadowRoot = getShadowRoot();
     const controller = new AbortController();
@@ -1125,7 +1005,6 @@ async function onRuntimeMessage(response, sender, sendResponse) {
     if (!shadowRoot) {
         if (restartCounter < RESTART_LIMIT) {
             restartCounter++;
-            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - restarting: ${restartCounter}`);
             start();
         }
         return;
@@ -1141,12 +1020,11 @@ async function onRuntimeMessage(response, sender, sendResponse) {
                 recipient?.setAttribute("id", "laiActiveAiInput");
             }
             if (!recipient && response.action.toLowerCase().startsWith('stream')) {
-                console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - no recipient`);
                 return;
             }
         }
     } catch (error) {
-        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - restarting: ${restartCounter}`, error, response);
+        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - restarting: ${restartCounter}`, error, response);
     }
 
     switch (response.action) {
@@ -1159,11 +1037,11 @@ async function onRuntimeMessage(response, sender, sendResponse) {
                 if (!dataChunk) { return; }
                 updateStatusBar('Receiving and processing data...');
                 const rootRecipient = laiGetRecipient();
-                if (!rootRecipient) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Target element not found!`) }
+                if (!rootRecipient) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Target element not found!`) }
                 await parseAndRender(dataChunk, rootRecipient, getParseAndRenderOptions(rootRecipient) || {});
             } catch (err) {
                 streamDataError = err;
-                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err, dataChunk, response);
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, dataChunk, response);
             }
             break;
         case "streamEnd":
@@ -1180,13 +1058,16 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         case "activePageSelection":
             if (!response.selection) {
                 showMessage('Element picked up successfully.', 'info')
-                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
                 break;
             }
+
+            const cleanedSelection = cleanSelection(response.selection);
             let newActivePageSelectionAttachment = {
                 id: crypto.randomUUID(),
                 type: "snippet",
-                content: response.selection ?? '',
+                content: cleanedSelection,
+                filename: 'Selected Text',
                 sourceUrl: location.href
             };
             await addAttachment(newActivePageSelectionAttachment);
@@ -1197,7 +1078,7 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         case "inserSelectedInPrompt":
             if (!response.selection) {
                 showMessage('Element picked up successfully.', 'info')
-                console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
                 break;
             }
             const isSidebarActive = getSideBar()?.classList.contains('active');
@@ -1206,10 +1087,12 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             shadowRoot.getElementById('laiUserInput').value += `${promptVal.length > 0 ? "\n" : ""}${response.selection}`;
             break;
         case "activePageContent":
+            const pageContent = await cleanPageContent();
             let newActivePageContentAttachment = {
                 id: crypto.randomUUID(),
                 type: "snippet",
-                content: await getPageTextContent(),
+                content: pageContent,
+                filename: 'Page Content',
                 sourceUrl: location.href
             };
             await addAttachment(newActivePageContentAttachment);
@@ -1246,7 +1129,7 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         resetStatusbar();
     }
 
-    sendResponse();
+    sendResponse({result: true});
     return true;
 }
 
@@ -1261,7 +1144,7 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
         textAres.classList.remove('invisible');
         // textAres.focus();
     } else {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - User input area not found!`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - User input area not found!`);
     }
 
     if (abortText && recipient) {
@@ -1293,7 +1176,7 @@ function laiGetRecipient() {
 async function ask2ExplainSelection(response) {
     if (!response) {
         showMessage('Nothing received to explain!', 'warning');
-        console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response: `, response);
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response: `, response);
         return;
     }
 
@@ -1302,7 +1185,7 @@ async function ask2ExplainSelection(response) {
 
     const sideBar = getSideBar();
     if (!sideBar) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - ${[getLineNumber()]}: Sidebar not found!`);
+        console.error(`>>> ${manifest?.name ?? ''} - ${[getLineNumber()]}: Sidebar not found!`);
         return;
     }
 
@@ -1310,7 +1193,15 @@ async function ask2ExplainSelection(response) {
     if (!userInput) { return; }
 
     const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
-    attachments.push(await getPageTextContent());
+    const cleanPageText = await getPageTextContent()
+    const theAttachment = {
+      id: crypto.randomUUID(),
+      type: "snippet",
+      content: `SELECTION SNIPPET START:\n${cleanPageText}\nSELECTION SNIPPET END`,
+      filename: 'User Selection'
+    };
+    await addAttachment(theAttachment);
+    showAttachment(theAttachment);
 
     const enterEvent = new KeyboardEvent('keydown', {
         bubbles: true,
@@ -1369,7 +1260,7 @@ function laiResizeContainer(e) {
 }
 
 function getRegExpMatches(regex, userInput) {
-    if (!regex instanceof RegExp) { return; }
+    if (!(regex instanceof RegExp)) { return; }
 
     const matches = [];
     let match;
@@ -1383,17 +1274,20 @@ function getRegExpMatches(regex, userInput) {
     return matches;
 }
 
-async function checkCommandHandler(e) {
+async function checkCommandHandler(userInput) {
     let res = false;
-    const userInput = e.target;
+    // const userInput = e.target;
     if (!userInput || (userInput?.value?.trim() || '') === '') { return res; }
-
-    // if(await checkForHooksCmd(e)){  return true;  }
 
     const matches = getRegExpMatches(/\/(\w+)(?:\((\w+)\))?[\t\n\s]?/gi, userInput);
     if (matches.length < 1) { return res; }
 
     const shadowRoot = getShadowRoot();
+    if(!shadowRoot){
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Extension DOM not found!`);
+        return;
+    }
+
     let continueLoop = true;
     for (let i = 0; i < matches.length; i++) {
         const cmd = matches[i][1]?.toLowerCase();
@@ -1439,7 +1333,7 @@ async function checkCommandHandler(e) {
                 break;
             case 'list':
                 continueLoop = false;
-                popUserCommandList(e);
+                popUserCommandList(userInput);
                 res = true;
                 break;
             case 'model':
@@ -1448,24 +1342,34 @@ async function checkCommandHandler(e) {
                     const model = getActiveModel();
                     updateStatusBar(`Awaiting information about ${model}...`);
                     const response = await chrome.runtime.sendMessage({ action: "modelInfo", model: model });
-                    if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                    if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
 
                     if (response?.status === 'error' && response?.message) {
                         showMessage(response.message, 'error');
-                        throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Response error: ${response.message}`, response);
+                        throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - Response error: ${response.message}`, response);
                     }
 
                     showMessage(`${model} capabilities: ${response?.capabilities?.join(', ') ?? 'unknown'}`, 'info', 10000);
-                } catch (e) {
-                    if (e.message.indexOf('Extension context invalidated.') > -1) {
-                        showMessage(`${e.message}. Please reload the page.`, 'warning');
+                } catch (err) {
+                    if (err.message.indexOf('Extension context invalidated.') > -1) {
+                        showMessage(`${err.message}. Please reload the page.`, 'warning');
                     }
-                    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+                    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
                 }
                 finally {
                     resetStatusbar();
                     shadowRoot?.getElementById('laiUserInput')?.focus();
                 }
+                res = true;
+                break;
+            case 'tool':
+            case 'tools':
+                shadowRoot?.querySelector('#toolFunctions')?.classList.remove('disabled');
+                res = true;
+                break;
+            case 'notool':
+            case 'notools':
+                shadowRoot?.querySelector('#toolFunctions')?.classList.add('disabled');
                 res = true;
                 break;
             default:
@@ -1556,7 +1460,7 @@ function addToUserCommands(cmdData, idx = -1) {
             if (e.message.indexOf('Extension context invalidated.') > -1) {
                 showMessage(`${e.message}. Please reload the page.`, 'error');
             }
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
         });
 }
 
@@ -1690,14 +1594,10 @@ function micClicked(e) {
     });
 }
 
-/**
- * type may be "ai" or "user" defining which imput will be dumped
- * i is optional zero based index of the required block
- */
 function dumpRawContent(type = 'ai', i) {
     const sideBar = getSideBar();
     if (!sideBar) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - SideBar not found!`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - SideBar not found!`);
         return;
     }
 
@@ -1705,18 +1605,18 @@ function dumpRawContent(type = 'ai', i) {
     let content;
     if (i && i >= 0 && i < aiInputs.length) {
         content = aiInputs[i]?.rawContent.messages ? aiInputs[i]?.rawContent.messages.map(e => e.content).join('') : aiInputs[i]?.rawContent || '';
-        console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - raw content:}`, content);
+        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - raw content:}`, content);
     } else {
         aiInputs.forEach((el, idx) => {
             content = el.rawContent.messages ? el.rawContent?.messages.map(e => e.content).join('') : el.rawContent || '';
-            console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - raw content: ${idx}`, content);
+            console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - raw content: ${idx}`, content);
         });
     }
 }
 
 function storeLastGeneratedPrompt(data) {
     if (!data) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - No prompt received!`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No prompt received!`);
         return;
     }
 
@@ -1724,13 +1624,13 @@ function storeLastGeneratedPrompt(data) {
     try {
         promptData = typeof (data) === 'string' ? JSON.parse(data) : data;
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error parsing received prompt`, data);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing received prompt`, data);
         return;
     }
 
     const sideBar = getSideBar();
     if (!sideBar) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - SideBar not found!`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - SideBar not found!`);
         return;
     }
 
@@ -1747,7 +1647,7 @@ function dumpInConsole(message = '', obj, consoleAction = 'log') {
             console[consoleAction](message, obj);
         }
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error parsing JSON or logging message: ${error.message}`, error);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing JSON or logging message: ${error.message}`, error);
     }
 }
 

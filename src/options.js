@@ -1,13 +1,20 @@
 const manifest = chrome.runtime.getManifest();
 document.title = manifest?.name || 'Unknown' || '';
-document.getElementById('pageTitle').textContent = `${manifest?.name || 'Unknown'} - ${manifest.version}`;
+document.getElementById('pageTitle').textContent = `${manifest?.name ?? ''} - ${manifest.version}`;
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', async (e) => {
     document.querySelector('.menu-item')?.click();
-    loadSettings();
-    await attachDataListListeners();
+    await loadSettings(e);
+    await attachDataListListeners(e);
     await getAiUserCommands();
-    attachListeners();
+    attachListeners(e);
+});
+
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        document.getElementById('laiOptionsForm')?.requestSubmit();
+    }
 });
 
 document.addEventListener('pendingChanges', () => {
@@ -18,7 +25,6 @@ document.addEventListener('pendingChanges', () => {
 document.addEventListener('changesSaved', () => {
     const btn = document.getElementById('cancelButton');
     btn.textContent = "Close";
-    // btn.onclick = () => window.close();
 });
 
 document.getElementById('laiOptionsForm').addEventListener('submit', async e => await saveSettings(e));
@@ -32,20 +38,8 @@ document.getElementById('cancelButton').addEventListener('click', e => {
     if (e.target.textContent === 'Close') { window.close(); }
 });
 
-// Filtering form listeners
-document.getElementById('laiFilteringForm').addEventListener('submit', async e => await saveSettings(e));
-setTimeout(() => {
-    document.getElementById('laiFilteringForm').addEventListener('input', () => {
-        document.dispatchEvent(new CustomEvent('pendingChanges'));
-    });
-}, 500)
-document.getElementById('btnSaveFilterForm').addEventListener('click', () => document.getElementById('laiFilteringForm').requestSubmit());
-document.getElementById('cancelFilterButton').addEventListener('click', e => {
-    if (e.target.textContent === 'Close') { window.close(); }
-});
 
-// Auto-save filtering fields on change
-['defaultSelectors', 'siteSpecificSelectors', 'contentFilteringEnabled'].forEach(fieldId => {
+/* ['defaultSelectors', 'siteSpecificSelectors', 'contentFilteringEnabled'].forEach(fieldId => {
     const field = document.getElementById(fieldId);
     if (field) {
         field.addEventListener('change', async () => await autoSaveFilteringField(fieldId));
@@ -53,7 +47,7 @@ document.getElementById('cancelFilterButton').addEventListener('click', e => {
             field.addEventListener('blur', async () => await autoSaveFilteringField(fieldId));
         }
     }
-});
+}); */
 document.getElementById('tempRange').addEventListener('input', updateTempValue);
 document.getElementById('tempInput').addEventListener('input', updateTempValue);
 
@@ -61,7 +55,7 @@ document.querySelectorAll('.menu-item').forEach(item => {
     item.addEventListener('click', async e => {
         const sectionClicked = e.target?.dataset?.section || '';
         if (!sectionClicked) {
-            console.error(`Section [${sectionClicked}] is empty or missing!`);
+            console.error(`[${getLineNumber()}]: Section [${sectionClicked}] is empty or missing!`);
             return;
         }
         await mainMenuSwitched(sectionClicked);
@@ -86,16 +80,20 @@ function updateTempValue(e) {
         val < 0.5 ? 'Stricter' : val > 0.5 ? 'More Creative' : 'Neutral';
 }
 
-function loadSettings(e) {
-    chrome.storage.sync.get('laiOptions', function (obj) {
-        const formData = obj.laiOptions || {};
-        // delete formData?.toolsEnabled; // obsolate and not needed anymore - just to remove from the storage
+async function loadSettings(e) {
+    try {
+        const obj = await chrome.storage.sync.get('laiOptions');
+        const formData = obj['laiOptions'] || {};
+        if (Object.keys(formData).length < 1) {
+            showMessage("No options found!", "error");
+            return;
+        }
 
-        laiOptions = formData;
-
+        console.log(`[${getLineNumber()}]: Stored form data`, formData);
         const dataLists = ['modelList', 'urlList', 'toolFuncList', 'generativeHelperList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
+            console.log(`[${getLineNumber()}]: Stored form data`, { i, list, dataLists: dataLists[i] });
             if (!formData[list]) { continue; }
 
             const el = document.querySelector(`select[data-list="${list}"]`);
@@ -109,88 +107,94 @@ function loadSettings(e) {
 
         Object.keys(formData)?.forEach(key => {
             const element = document.getElementById(key);
-            if (element) {
-                if (element.type === 'checkbox') {
-                    element.checked = formData[key];
-                } else {
-                    element.value = formData[key];
-                }
+            console.log(`[${getLineNumber()}]: ${key}: ${element?.id} is ${element?.type}; formData: ${formData?.[key]} is ${typeof formData?.[key]}`);
+            if (!element) {  return;  }
+            if (element.type === 'checkbox') {
+                element.checked = formData[key];
+            } else {
+                element.value = formData[key];
             }
         });
 
         document.getElementById("tempInput").dispatchEvent(new Event('input', { bubbles: true }));
-    });
+
+    } catch (err) {
+        console.error(`>>> [${getLineNumber()}] - Error loading data:`, err);
+        showMessage(`Failed to load data - ${err?.message}`, 'error');
+    }
 }
 
 async function saveSettings(e) {
-    e.preventDefault();
-
-    const optionsData = {};
-    const elements = e.target.elements;
-    if (!elements) {
-        showMessage(`Failed to save changes!`, 'error');
-        console.error(`Form element not found or empty: ${e.target?.id}`, e.target);
-        return;
-    }
-
-    for (let i = 0; i < elements.length; i++) {
-        const element = elements[i];
-        if (['select', 'checkbox', 'text', 'textarea', 'number', 'range', 'url'].indexOf(element.type) < 0) {
-            continue;
-        }
-        optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
-    }
-
-    const dataLists = ['modelList', 'urlList', 'generativeHelperList'];
-    for (let i = 0; i < dataLists.length; i++) {
-        const list = dataLists[i];
-        const el = document.querySelector(`select[data-list="${list}"]`);
-        const options = Array.from(el.options);
-        if (/^Select/i.test(options[0].text) || !options[0].text) { options.shift(); }
-        optionsData[el.id] = el.options[el.selectedIndex].value;
-        let attributeValues = Array.from(options)?.map(e => e.getAttribute('value')).sort();
-        optionsData[list] = attributeValues ?? [];
-    }
-
-    laiOptions = optionsData;
-    await chrome.storage.sync.set({ 'laiOptions': optionsData });
-    showMessage('Settings saved', 'success');
-    document.dispatchEvent(new CustomEvent('changesSaved'));
-}
-
-async function autoSaveFilteringField(fieldId) {
     try {
-        const field = document.getElementById(fieldId);
-        if (!field) {
-            console.error(`>>> ${manifest?.name || 'Unknown'} - Field ${fieldId} not found`);
+        e.preventDefault();
+
+        const optionsData = {};
+        const elements = e.target.elements;
+        if (!elements) {
+            showMessage(`Failed to save changes!`, 'error');
+            console.error(`[${getLineNumber()}]: Form element not found or empty: ${e.target?.id}`, e.target);
             return;
         }
 
-        // Load current options
+        for (let i = 0; i < elements.length; i++) {
+            const element = elements[i];
+            console.log(`[${getLineNumber()}]: ${element?.id} is ${element?.type}`);
+            if (['select', 'checkbox', 'text', 'textarea', 'number', 'range', 'url'].indexOf(element.type) < 0) {
+                continue;
+            }
+            optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
+        }
+
+        const dataLists = ['modelList', 'urlList', 'generativeHelperList'];
+        for (let i = 0; i < dataLists.length; i++) {
+            const list = dataLists[i];
+            const el = document.querySelector(`select[data-list="${list}"]`);
+            const options = Array.from(el.options);
+            if (/^Select/i.test(options[0].text) || !options[0].text) { options.shift(); }
+            optionsData[el.id] = el.options[el.selectedIndex].value;
+            let attributeValues = Array.from(options)?.map(e => e.getAttribute('value')).sort();
+            optionsData[list] = attributeValues ?? [];
+        }
+
+        console.log(`>>> [${getLineNumber()}] - Options Data:`, optionsData);
+        await chrome.storage.sync.set({ 'laiOptions': optionsData });
+        showMessage('Settings saved', 'success');
+        document.dispatchEvent(new CustomEvent('changesSaved'));
+    } catch (err) {
+        console.error(`>>> [${getLineNumber()}] - Error saving data:`, err);
+        showMessage(`Failed to save data - ${err?.message}`, 'error');
+    }
+}
+
+/* async function autoSaveFilteringField(fieldId) {
+    try {
+        const field = document.getElementById(fieldId);
+        if (!field) {
+            console.error(`>>> [${getLineNumber()}] - Field ${fieldId} not found`);
+            return;
+        }
+
         const stored = await chrome.storage.sync.get('laiOptions');
         const optionsData = stored.laiOptions || {};
 
-        // Update the specific field (handle checkbox vs text fields)
         optionsData[fieldId] = field.type === 'checkbox' ? field.checked : field.value;
 
-        // Save back to storage
-        laiOptions = optionsData;
         await chrome.storage.sync.set({ 'laiOptions': optionsData });
 
         showMessage('Filtering settings auto-saved', 'success');
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - Error auto-saving ${fieldId}:`, error);
+        console.error(`>>> [${getLineNumber()}] - Error auto-saving ${fieldId}:`, error);
         showMessage('Failed to save filtering settings', 'error');
     }
-}
+} */
 
 function cancelOptions() {
-    window.close(); // Closes the options page
+    window.close();
 }
 
 async function mainMenuSwitched(section) {
     if (!section) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Expected section is null or missing - ${section}`);
+        console.error(`>>> [${getLineNumber()}] - [${getLineNumber()}] - Expected section is null or missing - ${section}`);
         return;
     }
 
@@ -201,10 +205,11 @@ async function mainMenuSwitched(section) {
         case 'tools':
             await showToolSection();
             break;
+        case 'filtering':
         case 'general':
             break;
         default:
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: Wrong section Id - ${section}!`);
+            console.error(`>>> [${getLineNumber()}] - error: Wrong section Id - ${section}!`);
             break;
     }
 }
@@ -213,7 +218,6 @@ function attachListeners(e) {
     document.getElementById('showEmbeddedButton').addEventListener('click', onshowEmbeddedButtonClicked);
     document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
 
-    // document.querySelectorAll('.navbar-item')?.forEach(item => {  item.addEventListener('click', async (e) => {  await switchSection(e);  });  });
     document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
     document.querySelector('#newPromptBtn')?.addEventListener('click', async e => { await createNewPrompt(e); });
     document.querySelectorAll('#exportPromptBtn, #exportFuncBtn')?.forEach(btn => {
@@ -238,8 +242,10 @@ function addSelectOptions(selectEl, objData) {
         op.value = objData?.val ?? 'unknown!';
         if (objData?.isSelected) { op.setAttribute('selected', 'selected'); }
         selectEl.appendChild(op);
+        return true;
     } catch (e) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> [${getLineNumber()}] - ${e.message}`, e);
+        return false;
     }
 }
 
@@ -262,7 +268,7 @@ async function showPromptSection() {
     try {
         await getAiUserCommands();
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${error.message}`, error);
+        console.error(`>>> [${getLineNumber()}] - error: ${error.message}`, error);
     } finally { hideSpinner(); }
 }
 
@@ -273,7 +279,7 @@ async function getAiUserCommands() {
     const aiUserCommands = commands.aiUserCommands || [];
     const promptContainer = document.querySelector('#promptsContainer');
     if (!promptContainer) {
-        console.error(`${promptContainer} not found!`, promptContainer)
+        console.error(`[${getLineNumber()}]: ${promptContainer} not found!`, promptContainer)
         return;
     }
     promptContainer.replaceChildren();
@@ -281,7 +287,7 @@ async function getAiUserCommands() {
 
     const promptTemplate = document.getElementById('promptTemplate')?.content;
     if (!promptTemplate) {
-        console.error(`promptTemplate [${promptTemplate}] not found!`);
+        console.error(`[${getLineNumber()}]: promptTemplate [${promptTemplate}] not found!`);
         return;
     }
     if (height > 0) { promptContainer.style.height = `${height}px`; }
@@ -298,7 +304,6 @@ async function getAiUserCommands() {
     }
 }
 
-// command and tools ribbon
 async function attachDataListListeners(e) {
 
     const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons', 'generativeHelperButtons'];
@@ -345,11 +350,8 @@ function onshowEmbeddedButtonClicked(e) {
     } else {
         mainButtonIcon.classList.add('invisible');
     }
+    document.dispatchEvent(new CustomEvent('pendingChanges'));
 }
-
-
-// command and tools card related
-//prompts (command)
 
 async function createNewPrompt(e) {
     const promptSection = document.querySelector('#promptsContainer');
@@ -393,7 +395,7 @@ async function applyPromptCardAction(e) {
             const getParentEvent = () => e;
             navigator.clipboard.writeText(data?.textContent || '')
                 .then(() => { showHint(getParentEvent()); })
-                .catch(err => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
+                .catch(err => console.error(`>>> [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
             break;
         case 'undo':
             copyBtn.classList.remove('invisible');
@@ -419,7 +421,6 @@ async function applyPromptCardAction(e) {
             parent.classList.remove('prompt-item-edit');
             parent.querySelectorAll('.js-ptompt-card-item').forEach(el => el.setAttribute('contenteditable', false));
             await savePrompts(closestSection);
-            // await savePrompts(e);
             break;
 
         case 'delete':
@@ -442,7 +443,6 @@ async function savePrompts(section) {
         showMessage('No section provided! Save is not possible!', "error");
         return;
     }
-    // const section = e.target.closest('section');
     const storageData = [];
     let storageKey = '';
     switch (section?.id) {
@@ -455,7 +455,7 @@ async function savePrompts(section) {
                     storageData.push(jsonObject);
                 } catch (error) {
                     showMessage(`Invalid JSON in card ${idx + 1}!`);
-                    console.error('Invalid JSON: jsonString', error);
+                    console.error(`[${getLineNumber()}]: Invalid JSON: jsonString`, error);
                 }
             });
             break;
@@ -470,7 +470,7 @@ async function savePrompts(section) {
             });
             break;
         default:
-            console.err("Missing section id!", section);
+            console.error(`[${getLineNumber()}]: Missing section id!`, section);
             showMessage('Missing section id!', "error");
             return;
     }
@@ -479,13 +479,12 @@ async function savePrompts(section) {
     showMessage('Data updated successfully.', 'success');
 }
 
-// tools
 async function showToolSection() {
     showSpinner();
     try {
         await getTools();
     } catch (error) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - error: ${error.message}`, error);
+        console.error(`>>> [${getLineNumber()}] - error: ${error.message}`, error);
     } finally { hideSpinner(); }
 }
 
@@ -538,8 +537,6 @@ async function createNewToolFunc(e) {
         });
     newPromptItem.querySelector('.prompt-body').setAttribute('contenteditable', true);
 }
-
-// dialog
 
 function showDialog(title, options) {
     const dialog = document.getElementById('laiDialog');
@@ -611,13 +608,13 @@ function fillModelList(models = [], selector = '') {
     if (models.length < 1) { return; }
     if (!selector) {
         showMessage("Missing selector!", "success");
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Missing selector! ${selector || 'empty string'}`, models);
+        console.error(`>>> [${getLineNumber()}] - Missing selector! ${selector || 'empty string'}`, models);
         return;
     }
 
     let modelDataList = document.querySelector(selector);
     if (!modelDataList) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Cannot find modelList element!`);
+        console.error(`>>> [${getLineNumber()}] - Cannot find modelList element!`);
         return;
     }
 
@@ -631,13 +628,11 @@ function fillModelList(models = [], selector = '') {
         op = document.createElement('option');
         op.value = op.text = models[i].name;
         if (models[i].name === activeModelName) { op.setAttribute('selected', 'selected'); }
-        // if (models[i].name === laiOptions?.aiModel) { op.setAttribute('selected', 'selected'); }
         modelDataList.appendChild(op);
     }
 }
 
 function extenddList(e) {
-    //    datalist = datalist ?? e.target.parentElement.nextElementSibling;
     let datalist = e.target.closest('div.el-holder');
     datalist = datalist?.querySelector('select');
     if (!datalist) { return; }
@@ -694,8 +689,8 @@ async function testConnection(e) {
         showMessage(`Connection to ${url} successfull.`, "success");
     } catch (e) {
         showMessage(`Connection to ${url} failed! - ${e.message}`, "error");
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response`, response);
+        console.error(`>>> [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> [${getLineNumber()}] - response`, response);
     } finally {
         hideSpinner();
     }
@@ -715,7 +710,7 @@ async function deleteStorageCollection(e) {
         document.querySelector(`#${container}`)?.replaceChildren();
         showMessage(`All ${label} have been deleted.`, 'success');
     } catch (err) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err)
+        console.error(`>>> [${getLineNumber()}] - ${err.message}`, err)
     }
 }
 
@@ -762,7 +757,7 @@ function importFromFile(e) {
     let callback;
     if (storageKey === 'unknown') {
         showMessage("Failed to locate data storage!", "error");
-        console.error(`${getLineNumber()} - Wrong storage key!`, e.target);
+        console.error(`[${getLineNumber()}] - Wrong storage key!`, e.target);
         return;
     }
 
@@ -787,7 +782,7 @@ function importFromFile(e) {
 
         default:
             showMessage("Failed to locate data storage!", "error");
-            console.error(`${getLineNumber()} - Wrong storage key!`, e.target);
+            console.error(`[${getLineNumber()}] - Wrong storage key!`, e.target);
             return;
             break;
     }
@@ -802,7 +797,7 @@ function importFromFile(e) {
             showMessage(`${file.name} imported successfully.`, 'success');
             if (typeof callback === 'function') { await callback(); }
         } catch (err) {
-            console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+            console.error(`>>> [${getLineNumber()}] - ${err.message}`, err);
         } finally {
             hideSpinner();
         }
@@ -865,12 +860,11 @@ function copyValue(e) {
     const getParentEvent = () => e;
     navigator.clipboard.writeText(datalist.options[datalist.selectedIndex].value || '')
         .then(() => { showHint(getParentEvent()); })
-        .catch(err => console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
+        .catch(err => console.error(`>>> [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
 }
 
 async function loadModels(e) {
     showSpinner();
-    // const elTarget = e?.target;
     const aiUrl = document.querySelector('#aiUrl');
     if (!aiUrl) {
         showMessage(`No API endpoint found - ${aiUrl?.value}!`, 'error');
@@ -908,8 +902,8 @@ async function loadModels(e) {
             fillModelList(models.models, '#generativeHelper');
         }
     } catch (e) {
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
-        console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - response`, response);
+        console.error(`>>> [${getLineNumber()}] - ${e.message}`, e);
+        console.error(`>>> [${getLineNumber()}] - response`, response);
     } finally {
         hideSpinner();
         showMessage("Model list successfully updated.", "success");

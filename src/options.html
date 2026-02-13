@@ -22,215 +22,225 @@
 
     <!-- Right panel -->
     <main class="content-area">
+      <form id="laiOptionsForm" class="container">
+
+      <div id="generalRibbon" class="ribbon">
+        <button type="submit" id="btnSaveForm">Save</button>
+        <button type="button" id="cancelButton">Close</button>
+        <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#general-settings" target="_blank">
+          <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+        </a>
+      </div>
+
 
       <!-- Panels -->
-      <section id="general" class="content-section">
-        <div id="generalRibbon" class="ribbon">
-          <button type="submit" id="btnSaveForm">Save</button>
-          <button type="button" id="cancelButton">Close</button>
-          <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#general-settings" target="_blank" >
-            <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-          </a>
-        </div>
-
-        <form id="laiOptionsForm" class="container">
-
-          <div class="group checkboxes-sliders">
-            <div>
-              <input type="checkbox" id="showEmbeddedButton" />
-              <label for="showEmbeddedButton">Show embedded button</label>
-              <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon" title="Embedded button icon">
-            </div>
-            <div>
-              <input type="checkbox" id="openPanelOnLoad" />
-              <label for="openPanelOnLoad">Open panel on load</label>
-            </div>
-            <div>
-              <input type="checkbox" id="closeOnClickOut" />
-              <label for="closeOnClickOut">Close Sidebar when clicking outside</label>
-            </div>
-            <div>
-              <input type="checkbox" id="closeOnSendTo" />
-              <label for="closeOnSendTo">Close after Send To</label>
-            </div>
-            <div>
-              <input type="checkbox" id="closeOnCopy" />
-              <label for="closeOnCopy">Close Sidebar after copy</label>
-            </div>
-            <div>
-              <input type="checkbox" id="loadHistoryOnStart" />
-              <label for="loadHistoryOnStart">Load history on start</label>
-            </div>
-            <div>
-              <label for="tempRange">Temperature</label>
-              <input type="range" id="tempRange" min="0" max="1" value="0.5" step="0.1" />
-              <input type="number" id="tempInput" min="0" max="1" value="0.5" step="0.1" />
-              <output id="tempOutput">Neutral</output>
-            </div>
-          </div>
-<!--  -->
-<hr class="separator">
-<!--  -->
-          <div class="group selects-inputs">
-            <div class="el-holder">
-              <label for="aiModel">Model:</label>
-              <select id="aiModel" data-list="modelList">
-                <option value="" selected="selected">Select Model</option>
-              </select>
-              <div id="modelButtons">
-                <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
-                  title="Reload models">
-                <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+        <section id="general" class="content-section">
+          <div class="container">
+            <div class="group checkboxes-sliders">
+              <div>
+                <input type="checkbox" id="showEmbeddedButton" />
+                <label for="showEmbeddedButton">Show embedded button</label>
+                <img src="img/icon128.svg" id="mainButtonIcon" class="icon-button" alt="Embedded button icon"
+                  title="Embedded button icon">
+              </div>
+              <div>
+                <input type="checkbox" id="openPanelOnLoad" />
+                <label for="openPanelOnLoad">Open panel on load</label>
+              </div>
+              <div>
+                <input type="checkbox" id="closeOnClickOut" />
+                <label for="closeOnClickOut">Close Sidebar when clicking outside</label>
+              </div>
+              <div>
+                <input type="checkbox" id="closeOnSendTo" />
+                <label for="closeOnSendTo">Close after Send To</label>
+              </div>
+              <div>
+                <input type="checkbox" id="closeOnCopy" />
+                <label for="closeOnCopy">Close Sidebar after copy</label>
+              </div>
+              <div>
+                <input type="checkbox" id="loadHistoryOnStart" />
+                <label for="loadHistoryOnStart">Load history on start</label>
+              </div>
+              <div>
+                <input type="checkbox" id="debug" />
+                <label for="debug">Enable debug logging</label>
+              </div>
+              <div>
+                <label for="tempRange">Temperature</label>
+                <input type="range" id="tempRange" min="0" max="1" value="0.5" step="0.1" />
+                <input type="number" id="tempInput" min="0" max="1" value="0.5" step="0.1" />
+                <output id="tempOutput">Neutral</output>
               </div>
             </div>
-
-            <div class="el-holder">
-              <label for="generativeHelper">Generative Helper:</label>
-              <select id="generativeHelper" data-list="generativeHelperList">
-                <option value="" selected="selected"></option>
-              </select>
-              <div id="generativeHelperButtons">
-                <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
-                <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#generative-model" target="_blank" >
+            <!--  -->
+            <hr class="separator">
+            <!--  -->
+            <div class="group selects-inputs">
+              <div class="el-holder">
+                <label for="aiModel">Model:</label>
+                <select id="aiModel" data-list="modelList">
+                  <option value="" selected="selected">Select Model</option>
+                </select>
+                <div id="modelButtons">
+                  <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                  <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                  <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
+                    title="Reload models">
+                  <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                </div>
+              </div>
+        
+              <div class="el-holder">
+                <label for="generativeHelper">Generative Helper:</label>
+                <select id="generativeHelper" data-list="generativeHelperList">
+                  <option value="" selected="selected"></option>
+                </select>
+                <div id="generativeHelperButtons">
+                  <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                  <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                  <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
+                    title="Reload models">
+                  <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                  <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#generative-model" target="_blank">
+                    <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+                  </a>
+                </div>
+              </div>
+        
+              <div class="el-holder">
+                <label for="tika">Document Converter:</label>
+                <input type="url" id="tika" />
+                <div id="tikaButtons">
+                  <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                    title="Test connection">
+                </div>
+                <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#document-converter" target="_blank">
                   <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
                 </a>
               </div>
-            </div>
-
-            <div class="el-holder">
-              <label for="tika">Document Converter:</label>
-              <input type="url" id="tika" />
-              <div id="tikaButtons">
-                <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                  title="Test connection">
+        
+              <div class="el-holder">
+                <label for="toolFunc">Tools/Functions:</label>
+                <input type="url" id="toolFunc" />
+                <div id="toolButtons">
+                  <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                    title="Test connection">
+                </div>
               </div>
-                <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#document-converter" target="_blank" >
-                  <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-                </a>
-            </div>
-
-            <div class="el-holder">
-              <label for="toolFunc">Tools/Functions:</label>
-              <input type="url" id="toolFunc" />
-              <div id="toolButtons">
-                <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                  title="Test connection">
-              </div>
-            </div>
-
-            <div class="el-holder">
-              <label for="aiUrl">Endpoint:</label>
-              <select id="aiUrl" data-list="urlList">
-                <option value="" selected="selected">Select End Point</option>
-              </select>
-              <div id="urlButtons">
-                <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                  title="Test connection">
-                <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
-                <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
-                <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
-                  title="Remove from list">
-                <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
-                  title="Remove the list">
-                <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#end-points" target="_blank" >
-                  <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-                </a>
+        
+              <div class="el-holder">
+                <label for="aiUrl">Endpoint:</label>
+                <select id="aiUrl" data-list="urlList">
+                  <option value="" selected="selected">Select End Point</option>
+                </select>
+                <div id="urlButtons">
+                  <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
+                    title="Test connection">
+                  <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
+                    title="Edit selected">
+                  <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
+                  <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
+                    title="Remove from list">
+                  <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
+                    title="Remove the list">
+                  <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
+                  <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
+                  <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                  <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#end-points" target="_blank">
+                    <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+                  </a>
+                </div>
               </div>
             </div>
-          </div>
-<!--  -->
-          <hr class="separator">
-<!--  -->
-          <div class="group text-areas">
-            <div>
-              <label for="systemInstructions">System Instructions:</label>
-              <textarea id="systemInstructions" rows="15"></textarea>
-            </div>
-            <div>
-              <label for="personalInfo">Personal Information:</label>
-              <textarea id="personalInfo" rows="5"></textarea>
-            </div>
-          </div>
-        </form>
-      </section>
-
-      <section id="filtering" class="content-section invisible">
-        <div id="filteringRibbon" class="ribbon">
-          <button type="submit" id="btnSaveFilterForm">Save</button>
-          <button type="button" id="cancelFilterButton">Close</button>
-        </div>
-
-        <form id="laiFilteringForm" class="container">
-
-          <div class="group checkboxes-sliders">
-            <div>
-              <input type="checkbox" id="contentFilteringEnabled" checked />
-              <label for="contentFilteringEnabled">Enable content filtering (recommended)</label>
+            <!--  -->
+            <hr class="separator">
+            <!--  -->
+            <div class="group text-areas">
+              <div>
+                <label for="systemInstructions">System Instructions:</label>
+                <textarea id="systemInstructions" rows="15"></textarea>
+              </div>
+              <div>
+                <label for="personalInfo">Personal Information:</label>
+                <textarea id="personalInfo" rows="5"></textarea>
+              </div>
             </div>
           </div>
+        </section>
 
-          <hr class="separator">
+        <section id="filtering" class="content-section invisible">
 
-          <div class="group text-areas">
-            <div>
-              <label for="defaultSelectors">Default selectors to remove (comma-separated):</label>
-              <textarea id="defaultSelectors" rows="6">script,style,code,nav,header,footer,aside,iframe,[role='navigation'],[role='banner'],[role='contentinfo'],.advertisement,.ad,.cookie-notice,.social-share,.comments,.related-posts</textarea>
+          <div class="container">
 
-              <p class="help-text">CSS selectors to remove from all pages. Examples: nav, .advertisement, [role="banner"]</p>
+            <div class="group checkboxes-sliders">
+              <div>
+                <input type="checkbox" id="contentFilteringEnabled" checked />
+                <label for="contentFilteringEnabled">Enable content filtering (recommended)</label>
+              </div>
             </div>
+
+            <hr class="separator">
+
+            <div class="group text-areas">
+              <div>
+                <label for="defaultSelectors">Default selectors to remove (comma-separated):</label>
+                <textarea id="defaultSelectors" rows="6"
+                  placeholder="script,style,code,nav,header,footer,aside,iframe,[role='navigation'],[role='banner'],[role='contentinfo'],.advertisement,.ad,.cookie-notice,.social-share,.comments,.related-posts"></textarea>
+
+                <p class="help-text">CSS selectors to remove from all pages. Examples: nav, .advertisement, [role="banner"]
+                </p>
+              </div>
+            </div>
+
+            <hr class="separator">
+
+            <div class="group text-areas">
+              <div>
+                <label for="siteSpecificSelectors">Site-specific selectors to remove (one per line):</label>
+                <textarea id="siteSpecificSelectors" rows="10"
+                  placeholder="linkedin.com:[class*='premium'],[class*='upsell'],[class*='promoted'],.msg-overlay-bubble-header&#10;twitter.com:.trends,.recommendations,[data-testid='sidebarColumn']&#10;github.com:.footer,.signup-prompt&#10;stackoverflow.com:.s-topbar,.s-sidebarwidget"></textarea>
+                <p class="help-text">Format: <i>"domain.name:selector1,selector2,[class*='add']"</i> (one domain per line)
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <section id="prompts" class="content-section invisible">
+          <div id="promptRibbon" class="ribbon">
+            <button id="newPromptBtn">New</button>
+            <button id="exportPromptBtn">Export</button>
+            <button id="importPromptBtn">Import</button>
+            <button id="deletePromptBtn">Delete All</button>
+            <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#user-commands" target="_blank">
+              <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+            </a>
           </div>
 
-          <hr class="separator">
+          <div id="promptsContainer" class="container">
+            <h1>Prompts</h1>
+          </div>
+        </section>
 
-          <div class="group text-areas">
-            <div>
-              <label for="siteSpecificSelectors">Site-specific selectors to remove (one per line):</label>
-              <textarea id="siteSpecificSelectors" rows="10">linkedin.com:[class*='premium'],[class*='upsell'],[class*='promoted'],.msg-overlay-bubble-header
-twitter.com:.trends,.recommendations,[data-testid='sidebarColumn']
-github.com:.footer,.signup-prompt
-stackoverflow.com:.s-topbar,.s-sidebarwidget</textarea>
-              <p class="help-text">Format: <i>"domain.name:selector1,selector2,[class*='add']"</i> (one domain per line)</p>
-            </div>
+        <section id="tools" class="content-section invisible">
+          <div id="toolsRibbon" class="ribbon">
+            <button id="newFuncBtn">New</button>
+            <button id="exportFuncBtn">Export</button>
+            <button id="importFuncBtn">Import</button>
+            <button id="deleteFuncBtn">Delete All</button>
+            <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#functions-tools" target="_blank">
+              <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+            </a>
           </div>
 
-        </form>
-      </section>
-
-      <section id="prompts" class="content-section invisible">
-        <div id="promptRibbon" class="ribbon">
-          <button id="newPromptBtn">New</button>
-          <button id="exportPromptBtn">Export</button>
-          <button id="importPromptBtn">Import</button>
-          <button id="deletePromptBtn">Delete All</button>
-          <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#user-commands" target="_blank" >
-            <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-          </a>
-        </div>
-
-        <div id="promptsContainer" class="container"> <h1>Prompts</h1></div>
-      </section>
-
-      <section id="tools" class="content-section invisible">
-        <div id="toolsRibbon" class="ribbon">
-          <button id="newFuncBtn">New</button>
-          <button id="exportFuncBtn">Export</button>
-          <button id="importFuncBtn">Import</button>
-          <button id="deleteFuncBtn">Delete All</button>
-          <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#functions-tools" target="_blank" >
-            <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-          </a>
-        </div>
-
-        <div id="toolsContainer" class="container"> <h1>Tools</h1></div>
-      </section>
+          <div id="toolsContainer" class="container">
+            <h1>Tools</h1>
+          </div>
+        </section>
+      </form>
     </main>
   </div>
 
@@ -292,6 +302,7 @@ stackoverflow.com:.s-topbar,.s-sidebarwidget</textarea>
       </div>
   </template>
 
+  <!-- <script src="jslib/log.js"></script> -->
   <script src="options.js"></script>
 </body>
 </html>

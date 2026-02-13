@@ -1,6 +1,6 @@
 {
   "name": "local-ai-helper",
-  "version": "1.28.29",
+  "version": "1.28.32",
   "type": "module",
   "description": "Local AI helper Chrome extension",
   "scripts": {
@@ -10,11 +10,15 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^2.1.8",
-    "@vitest/ui": "^2.1.8",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "^4.0.18",
     "@webext-core/fake-browser": "^1.3.2",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^25.0.1",
-    "vitest": "^2.1.8"
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "@ankimcp/anki-mcp-server": "^0.13.1",
+    "npm": "^11.9.0"
   }
 }

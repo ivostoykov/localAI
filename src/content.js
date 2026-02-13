@@ -1,27 +1,19 @@
-const manifest = chrome.runtime.getManifest();
-const EXT_NAME = manifest?.name ?? 'Unknown';
-const storageOptionKey = 'laiOptions';
-const storageUserCommandsKey = 'aiUserCommands';
-const activeSessionKey = 'activeSession';
-const allSessionsStorageKey = 'aiSessions';
-const activeSessionIdStorageKey = 'activeSessionId';
-const activePageStorageKey = 'activePage';
 const commandPlaceholders = {
   "@{{page}}": "Include page into the prompt",
   "@{{dump}}": "Dump LLM response into the console",
   "@{{now}}": "Include current date and time",
   "@{{today}}": "Include current date without the time",
-  "@{{time}}": "Include current time without the date"
+  "@{{time}}": "Include current time without the date",
+  "@{{debug}}": "Enable debug logging",
+  "@{{nodebug}}": "Disable debug logging"
 };
-
 var aiUserCommands = [];
 var userCmdItemBtns = { 'edit': null, 'execute': null, 'paste': null, 'delete': null };
-var images = [];
 var userScrolled = false;
 var isElementSelectionActive = false;
 var lastRegisteredErrorMessage = [];
 lastRegisteredErrorMessage.lastLength = 0;
-var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{help}}', '@{{?}}'];
+var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{debug}}', '@{{nodebug}}', '@{{help}}', '@{{?}}'];
 var userPredefinedCmd = [
   { "commandName": "add", "commandDescription": "Create a new predefined prompt" },
   { "commandName": "edit(command_name)", "commandDescription": "Edit the command corresponding to name, provided in the brackets" },
@@ -43,38 +35,6 @@ function getActiveModel() {
 
 chrome.runtime.onMessage.addListener(onRuntimeMessage);
 
-window.addEventListener('message', async (event) => {
-  if (event.source !== window) { return; }
-  if (event.data?.type === 'reconnect' && event.data.name === EXT_NAME) {
-    Array.from(document.getElementsByTagName('local-ai'))?.forEach(el => el?.remove());
-
-    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Message received will try to reconnect...`);
-
-    const ready = await waitForStorageReady();
-    if (!ready) { return; }
-
-    allDOMContentLoaded(event);
-
-    showMessage('Extension reloaded', 'success');
-    console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension reloaded.`);
-  }
-});
-
-async function waitForStorageReady(timeout = 2000) {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    try {
-      await chrome.storage.local.get(null);
-      return true;
-    } catch {
-      await new Promise(res => setTimeout(res, 100));
-    }
-  }
-  return false;
-}
-
-//------------------------
-
 document.addEventListener('DOMContentLoaded', async (e) => await start());
 
 async function start() {
@@ -94,7 +54,7 @@ async function allDOMContentLoaded(e) {
   document.addEventListener('click', async function (event) {
     closeQuickPromptListMenu(event);
     if (isElementSelectionActive) {
-      laiGetClickedSelectedElement(event);
+      getSelectedClickedElement(event);
     }
 
     await closeAllDropDownRibbonMenus(event);
@@ -110,7 +70,7 @@ async function allDOMContentLoaded(e) {
       return;
     }
 
-    const options = await getLaiOptions()
+    const options = await getOptions()
     if (options.closeOnClickOut && !isPinned()) { await laiSwapSidebarWithButton(event); }
   }, true);
 
@@ -118,17 +78,13 @@ async function allDOMContentLoaded(e) {
     if (isElementSelectionActive) {
       if (e.key === "Escape") {
         isElementSelectionActive = false;
-        document.querySelectorAll(`[data-original-border]`)?.forEach(el => {
-          const currentBorder = el.getAttribute('data-original-border');
-          el.style.border = currentBorder;
-          el.removeAttribute('data-original-border');
-        });
+        clearAllElementDecorations();
         return;
       }
     }
 
     if (e.key !== "Escape") { return; }
-    const laiOptions = await getLaiOptions()
+    const laiOptions = await getOptions()
     if (!laiOptions.closeOnClickOut) { return; }
 
     const pluginContainer = document.getElementById('localAI')?.shadowRoot?.getElementById('laiSidebar');
@@ -153,10 +109,10 @@ async function allDOMContentLoaded(e) {
   try {
     await removeLocalStorageObject('activeSessionIndex'); // TODO: for sync - to be removed
     await removeLocalStorageObject(activeSessionIdStorageKey);
-    await setActiveSessionPageData({ "url": document.location.href, "pageContent": await getPageTextContent() });
+    await setActiveSessionPageData();
     await getAiUserCommands(); //TODO: remove it as global
   } catch (err) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${err.message}`, err);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
     return;
   }
 
@@ -165,10 +121,18 @@ async function allDOMContentLoaded(e) {
     const cssList = manifest?.web_accessible_resources?.map(el => el?.resources)?.flat()?.filter(el => el?.endsWith('css'))
       ?? ['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css'];
     await Promise.all(laiFetchStyles(cssList));
-    // await Promise.all(laiFetchStyles(['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css']));
   } catch (error) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }
+}
+
+if ('navigation' in window) {
+    window.addEventListener("popstate", triggerUpdate);
+    window.addEventListener("pushstate", triggerUpdate);
+    window.addEventListener("replacestate", triggerUpdate);
+    navigation.addEventListener('navigate', async () => {
+        await setActiveSessionPageData();
+    });
 }
 
 function attachElementSelectionListenersToFrames() {
@@ -176,7 +140,8 @@ function attachElementSelectionListenersToFrames() {
   frames.forEach((frame) => {
     frame.addEventListener('load', () => {
       try {
-        const doc = frame.contentWindow.document;
+        const doc = frame?.contentWindow?.document;
+        if(!doc || !doc.addEventListener){  return;  }
 
         doc.addEventListener('mouseover', function (event) {
           if (!isElementSelectionActive) return;
@@ -195,24 +160,18 @@ function attachElementSelectionListenersToFrames() {
 
         doc.addEventListener('click', function (event) {
           if (isElementSelectionActive) {
-            laiGetClickedSelectedElement(event);
+            getSelectedClickedElement(event);
           }
         }, true);
 
       } catch (e) {
-        console.warn('Access denied to frame:', e);
+        console.log('Access denied to frame!', e);
       }
     });
   });
 }
 
 async function updateTabPageContentStorage() {
-  checkActiveTab();
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") { checkActiveTab(); }
-  });
-
   ['pushState', 'replaceState'].forEach(type => {
     const orig = history[type];
     history[type] = function (...args) {
@@ -221,32 +180,10 @@ async function updateTabPageContentStorage() {
       return result;
     };
   });
-
-  if (!('navigation' in window)) {
-    window.addEventListener("popstate", triggerUpdate);
-    window.addEventListener("pushstate", triggerUpdate); // only if patched manually
-    window.addEventListener("replacestate", triggerUpdate); // only if patched manually
-  }
 }
 
 function triggerUpdate() {
-  console.debug(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - window url before active check: ${location.href}`);
-
-  checkActiveTab();
-}
-
-function checkActiveTab() {
-  try {
-    chrome.runtime.sendMessage({ action: "CHECK_ACTIVE_TAB" }, async (isActive) => {
-      if (isActive) {
-        await setActiveSessionPageData({ url: location.href, pageContent: await getPageTextContent() });
-      } else {
-        console.debug(`>>> ${manifest?.name || 'unknown'} - [${getLineNumber()}] - tab is not active, skipping: ${location.href}`);
-      }
-    });
-  } catch (err) {
-    console.warn(`>>> ${manifest?.name || 'unknown'} - [${getLineNumber()}] - checkActiveTab failed:`, err);
-  }
+  console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - window url before active check: ${location.href}`);
 }
 
 async function init() {
@@ -257,6 +194,7 @@ async function init() {
 
     const localAI = document.createElement('local-ai');
     localAI.id = "localAI";
+    localAI.dataset.intance = Date.now();
     const style = document.createElement('style');
     style.textContent = `
         #localAI {
@@ -282,60 +220,109 @@ async function init() {
     await initSidebar();
     await laiUpdateMainButtonStyles();
   } catch (err) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);
   }
 }
 
 // Main orchestrator - coordinates the page content workflow
 async function getPageTextContent() {
-  const startChildCount = document.body.childNodes.length;
-  console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Starting page content extraction - DOM children: ${startChildCount}`);
+  const cleanedDOM = await getDocumentContentFiltered();
+  return await getExtractedFilteredContent(cleanedDOM);
+}
 
-  const bodyClone = document.body.cloneNode(true);
-  const filterConfig = await loadFilteringConfig();
-  const cleanedDOM = applyContentFiltering(bodyClone, filterConfig);
+async function getExtractedFilteredContent(cleanedDOM) {
   const structure = extractTextStructure(cleanedDOM);
   const result = formatPageContent(structure);
-
-  console.log(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Finished - output: ${result.length} chars`);
-
+  // console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - page:\n ${result}`);
   return result;
 }
 
-function applyContentFiltering(domClone, filterConfig) {
-  // 1. First remove default selectors (script, style, etc.)
-  if (filterConfig.enabled && filterConfig.selectors) {
-    removeElementsBySelectors(domClone, filterConfig.selectors);
-  }
-
-  // 2. Then remove extension-injected elements
+async function getDocumentContentFiltered() {
+  const domClone = await removeElementsBySelectors();
   removeAllExtensionInjectedElements(domClone);
-
   return domClone;
 }
 
 function removeAllExtensionInjectedElements(domClone) {
-  const extensionUrlElements = domClone.querySelectorAll('[src^="chrome-extension://"], [href^="chrome-extension://"], [src^="moz-extension://"], [href^="moz-extension://"]');
-  extensionUrlElements.forEach(el => el.remove());
+  try {
+    const extensionUrlElements = domClone.querySelectorAll('[src^="chrome-extension://"], [href^="chrome-extension://"], [src^="moz-extension://"], [href^="moz-extension://"]');
+    extensionUrlElements.forEach(el => el.remove());
 
-  // 2. Remove custom elements (likely extension-injected)
-  const customElements = Array.from(domClone.querySelectorAll('*'))
-    .filter(el => el.tagName.includes('-'));
-  customElements.forEach(el => el.remove());
+    const customElements = Array.from(domClone.querySelectorAll('*'))
+      .filter(el => el.tagName.includes('-'));
+    customElements.forEach(el => el.remove());
 
-  const localAiElements = domClone.querySelectorAll('local-ai');
-  localAiElements.forEach(el => el.remove());
+    const localAiElements = domClone.querySelectorAll('local-ai');
+    localAiElements.forEach(el => el.remove());
+  } catch (err) {
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, err);
+  }
 }
 
-function removeElementsBySelectors(domClone, selectors) {
-  selectors.forEach(selector => {
-    try {
-      const elements = domClone.querySelectorAll(selector);
-      elements.forEach(el => el.remove());
-    } catch (e) {
-      console.warn(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Invalid selector: ${selector}`, e);
+async function removeElementsBySelectors() {
+  const filterConfig = await loadFilteringConfig();
+  const selectors = filterConfig?.selectors ?? null;
+  const domClone = document.body.cloneNode(true);
+  if(!filterConfig?.enabled || !selectors){ return domClone;  }
+
+
+  try {
+    Array.from(domClone.attributes).forEach(attr => {
+      domClone.removeAttribute(attr.name);
+    });
+
+    domClone
+      .querySelectorAll(selectors.join(','))
+      .forEach(e => e.remove());
+
+  } catch (err) {
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, err);
+  }
+  console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - after cleaning`, domClone);
+  return domClone;
+}
+
+function getARIAContext(element, rootElement) {
+  if (!element || !element.attributes) return '';
+
+  if (element.getAttribute('aria-hidden') === 'true') {
+    return null;
+  }
+
+  const textAriaAttrs = ['aria-label', 'aria-labelledby', 'aria-describedby', 'aria-description'];
+
+  const relevantAttrs = Array.from(element.attributes)
+    .filter(attr => textAriaAttrs.includes(attr.name));
+
+  if (relevantAttrs.length < 1) return '';
+
+  const parts = [];
+
+  for (const attr of relevantAttrs) {
+    const name = attr.name;
+    if (!name) {  continue;  }
+    const value = attr.value.trim();
+    if (!value) {  continue;  }
+
+    switch (name) {
+      case 'aria-label':
+      case 'aria-description':
+        parts.push(`${name}: ${value}`);
+        break;
+
+      case 'aria-labelledby':
+      case 'aria-describedby':
+        if (!rootElement) {  continue;   }
+        const refElement = rootElement.getElementById(value);
+        const refText = refElement?.textContent.trim();
+        if (refText) {
+          parts.push(`${name}: ${refText}`);
+        }
+        break;
     }
-  });
+  }
+
+  return parts.length > 0 ? `[${parts.join('; ')}] ` : '';
 }
 
 // Extract text with hierarchical structure
@@ -353,12 +340,17 @@ function extractTextStructure(domClone) {
     const node = walker.currentNode;
     if (!hasVisibleText(node)) continue;
 
-    const parentTag = node.parentElement?.tagName || '';
+    const parent = node.parentElement;
+    const parentTag = parent?.tagName || '';
     let text = node.nodeValue.trim();
 
-    // Strip CDATA markers if present
     text = text.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
     if (!text) continue;
+
+    const ariaContext = getARIAContext(parent, domClone);
+    if (ariaContext === null) continue; // Skip aria-hidden elements
+
+    if (ariaContext) {  text = ariaContext + text;  }
 
     if (headings.includes(parentTag)) {
       if (currentSection.content.length) structure.push(currentSection);
@@ -372,21 +364,35 @@ function extractTextStructure(domClone) {
   return structure;
 }
 
-// Check if node has visible text and is still connected to the DOM
 function hasVisibleText(node) {
   if (!node?.nodeValue || !/[^\n\r\t ]/.test(node.nodeValue)) {
     return false;
   }
 
-  // Ensure the node's parent still exists in the tree (not detached)
-  if (!node.parentElement) {
+  const parent = node.parentElement;
+  if (!parent) {  return false;  }
+
+  const parentTag = parent.tagName?.toLowerCase();
+  if (parentTag === 'script' || parentTag === 'style' || parentTag === 'noscript') {
+    return false;
+  }
+
+  let element = parent;
+  while (element && element !== document.body) {
+    if (element.getAttribute('aria-hidden') === 'true') {
+      return false;
+    }
+    element = element.parentElement;
+  }
+
+  const computedStyle = window.getComputedStyle(parent);
+  if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden') {
     return false;
   }
 
   return true;
 }
 
-// Format the final output
 function formatPageContent(structure) {
   const formattedSections = structure.map(section => {
     const title = section.title ? `\n\n## ${section.title}\n` : '';
@@ -402,13 +408,15 @@ async function loadFilteringConfig() {
     const options = stored.laiOptions || {};
 
     const enabled = options.contentFilteringEnabled ?? true;
-    const defaultSelectors = options.defaultSelectors || getDefaultSelectors();
+    const defaultSelectors = options.defaultSelectors || '';
     const siteSpecificRules = options.siteSpecificSelectors || '';
 
-    // Parse default selectors (comma-separated)
+    if (!defaultSelectors) {
+      console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - defaultSelectors is empty! No default filtering will be applied.`);
+    }
+
     const selectors = defaultSelectors.split(',').map(s => s.trim()).filter(s => s);
 
-    // Parse site-specific selectors
     const hostname = window.location.hostname;
     const siteRules = parseSiteSpecificSelectors(siteSpecificRules, hostname);
     if (siteRules.length > 0) {
@@ -420,16 +428,12 @@ async function loadFilteringConfig() {
       selectors
     };
   } catch (e) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error loading filtering config:`, e);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error loading filtering config:`, e);
     return {
       enabled: true,
-      selectors: getDefaultSelectors().split(',').map(s => s.trim()).filter(s => s)
+      selectors: []
     };
   }
-}
-
-function getDefaultSelectors() {
-  return "nav,header,footer,aside,iframe,[role='navigation'],[role='banner'],[role='contentinfo'],.advertisement,.ad,.cookie-notice,.social-share,.comments,.related-posts";
 }
 
 function parseSiteSpecificSelectors(siteSpecificRules, hostname) {
@@ -461,32 +465,36 @@ function clearElementOverDecoration(e) {
   el.removeAttribute('data-original-border');
 }
 
-async function laiGetClickedSelectedElement(event) {
-  isElementSelectionActive = false;
-  clearElementOverDecoration(event);
+function clearAllElementDecorations() {
+  document.querySelectorAll('[data-original-border]').forEach(el => {
+    const original = el.getAttribute('data-original-border') || '';
+    el.style.border = original;
+    el.removeAttribute('data-original-border');
+  });
+}
+
+async function getSelectedClickedElement(event) {
   let el = event.target;
+  isElementSelectionActive = false;
+  clearAllElementDecorations();
   let isImg = el.tagName === 'IMG';
   let theAttachment;
   if (isImg) {
-    // TODO: add image to the attachments with type image
-    try {
-      const response = await chrome.runtime.sendMessage({ action: 'getImageBase64', url: el.src });
-      if (chrome.runtime.lastError) { throw new Error(`${manifest?.name || 'Unknown'} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-      if (!response.base64) { throw new Error(`Failed to get the image from ${el.src}`); }
-
-      images.push(response?.base64);
-      showMessage('Image picked up successfully.', 'info')
-      updateStatusBar('Selected image added to the context.');
-      showAttachment(el.title || el.alt || el.src.split('/').pop());
-    } catch (error) {
-      showMessage(error.message);
-    }
+    showMessage('Right-click the image and select "Copy image", then paste it into the input field (Ctrl+V).', 'info');
   } else {
+    const filters = await loadFilteringConfig();
+    // const content = el.innerText?.trim() || '';
+    const content = await getExtractedFilteredContent(el, filters);
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selected element content:\n${content}`);
+    if (!content) {
+      showMessage('Selected element has no visible text.', 'warn');
+      return;
+    }
     theAttachment = {
       id: crypto.randomUUID(),
       type: "snippet",
-      content: el.innerText ?? '',
-      sourceUrl: location.href
+      content: `SNIPPET START:\n${content}\nSNIPPET END`,
+      filename: 'Selected Element'
     };
     await addAttachment(theAttachment);
     showAttachment(theAttachment);
@@ -497,9 +505,8 @@ async function laiGetClickedSelectedElement(event) {
 
 async function buildMainButton() {
   var theMainButton = await createMainButtonElement();
-  // Guard against createMainButtonElement returning nothing
   if (!theMainButton) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to create main button element.`);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to create main button element.`);
     return;
   }
   const shadowRoot = getShadowRoot();
@@ -509,7 +516,7 @@ async function buildMainButton() {
   theMainButton.querySelector('div.close-semi-sphere-button')?.addEventListener('click', async (e) => {
     e.stopPropagation();
     e.stopImmediatePropagation();
-    const laiOptions = await getLaiOptions();
+    const laiOptions = await getOptions();
     theMainButton.classList.add('lai-fade-out');
     laiOptions.showEmbeddedButton = false;
 
@@ -521,10 +528,10 @@ async function buildMainButton() {
 }
 
 async function createMainButtonElement() {
-  const laiOptions = await getLaiOptions();
+  const laiOptions = await getOptions();
   reloadRuntime();
   if (!chrome?.runtime?.id) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`);
     return;
   }
   var theMainButton = Object.assign(document.createElement('div'), {
@@ -565,10 +572,10 @@ async function laiFetchAndBuildSidebarContent() {
   reloadRuntime();
 
   try {
-    if (!chrome.runtime.id) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`); }
+    if (!chrome.runtime.id) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Extension context invalidated. Please reload the tab.`); }
 
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { throw new Error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Failed to find the shadow root!`); }
+    if (!shadowRoot) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to find the shadow root!`); }
 
     const response = await fetch(chrome.runtime.getURL('sidebar.html'));
     const data = await response.text();
@@ -581,7 +588,7 @@ async function laiFetchAndBuildSidebarContent() {
 
     shadowRoot.appendChild(theSideBar);
   } catch (error) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error loading the HTML: ${error.message}`, error);
   }
 }
 
@@ -621,18 +628,16 @@ function showMessage(messagesToShow, type, timeout) {
   const shadowRoot = getShadowRoot();
   if (!shadowRoot) { return; }
   const sideBar = getSideBar();
-  // Ensure sidebar element exists before using it
   if (!sideBar) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - showMessage: sidebar element not found.`);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - showMessage: sidebar element not found.`);
     return;
   }
   if (!sideBar.classList.contains('active')) {
-    // Ensure sidebar is opened to show messages; catch errors to avoid silent failures
     setTimeout(() => {
       laiSwapSidebarWithButton()
         .catch(error => {
           console.error(
-            `>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - Error opening sidebar for message: ${error.message}`,
+            `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error opening sidebar for message: ${error.message}`,
             error
           );
         });
@@ -648,6 +653,7 @@ function showMessage(messagesToShow, type, timeout) {
 
   const types = ['success', 'error', 'info', 'warning'];
   type = types.find(el => el === type) || 'info';
+  if(!timeout){  timeout = type === 'error' ? 7500 : 3000;  }
 
   for (let i = 0; i < messagesToShow.length; i++) {
     const msgText = document.createElement('p');
@@ -666,9 +672,9 @@ function showMessage(messagesToShow, type, timeout) {
       lastRegisteredErrorMessage = Array.from(msg.children).map(el => el.textContent);
     }
     handleErrorButton();
-    msg.replaceChildren(); // clear the space
+    msg.replaceChildren();
     msg.classList.remove('feedback-message-active');
-  }, timeout ?? type === 'error' ? 7500 : 3000);
+  }, timeout);
   if (timerId) {
     msg.setAttribute('data-timerId', timerId);
   }
@@ -677,7 +683,7 @@ function showMessage(messagesToShow, type, timeout) {
 async function buildMenuDropdowns() {
   const shadowRoot = getShadowRoot();
   const menuDropDowns = shadowRoot.querySelectorAll('#cogMenu select');
-  const laiOptions = await getLaiOptions();
+  const laiOptions = await getOptions();
   for (let i = 0; i < menuDropDowns.length; i++) {
     const list = menuDropDowns[i];
     const selectOption = list.querySelectorAll('option')[0];
@@ -695,36 +701,6 @@ async function buildMenuDropdowns() {
       if (m === laiOptions[data?.selected]) { option.selected = true; }
       list.appendChild(option);
     });
-  }
-}
-
-async function getLaiOptions() {
-  const defaults = {
-    "openPanelOnLoad": false,
-    "aiUrl": "",
-    "aiModel": "",
-    "closeOnClickOut": true,
-    "closeOnCopy": false,
-    "closeOnSendTo": true,
-    "showEmbeddedButton": false,
-    "loadHistoryOnStart": false,
-    "systemInstructions": 'You are a helpful assistant.',
-    "personalInfo": ''
-  };
-
-  try {
-    const obj = await getOptions();
-    const laiOptions = Object.assign({}, defaults, obj ?? {});
-    return laiOptions;
-  } catch (e) {
-    console.error(`>>> ${manifest?.name || 'Unknown'} - [${getLineNumber()}] - ${e.message}`, e);
-    // Inform the user and fall back to defaults
-    try {
-      showMessage(`Error loading options: ${e.message}. Using default settings.`, 'error');
-    } catch (_) {
-      // ignore if UI not yet ready
-    }
-    return defaults;
   }
 }
 

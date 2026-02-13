@@ -11,7 +11,7 @@ const sessionsCode = fs.readFileSync(
 );
 
 // Execute sessions.js code in global scope
-const executeSessionsCode = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdStorageKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', sessionsCode + '; return { createNewSession, deleteSession, deleteActiveSession, deleteSessionById, deleteActiveSessionId, getSession, getActiveSession, getActiveSessionById, getAllSessions, setAllSessions, setActiveSessionId, getActiveSessionId, setActiveSession, getAiUserCommands, setAiUserCommands, getOptions, setOptions, getActiveSessionPageData, setActiveSessionPageData, removeActiveSessionPageData, deleteSessionMemory, clearAllMemory };');
+const executeSessionsCode = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdStorageKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', sessionsCode + '; return { createNewSession, deleteSession, deleteActiveSession, deleteSessionById, deleteActiveSessionId, getSession, getActiveSession, getActiveSessionById, getAllSessions, setAllSessions, setActiveSessionId, getActiveSessionId, setActiveSession, getAiUserCommands, setAiUserCommands, getOptions, setOptions, deleteSessionMemory, clearAllMemory };');
 
 let funcs;
 
@@ -43,8 +43,7 @@ describe('sessions.js', () => {
 
             expect(session.id).toBeDefined();
             expect(session.title).toContain('Session');
-            expect(session.data).toEqual([]);
-            expect(session.attachments).toEqual([]);
+            expect(session.messages).toEqual([]);
             expect(session.model).toBeDefined();
         });
 
@@ -220,20 +219,20 @@ describe('sessions.js', () => {
         it('updates existing session', async () => {
             const session = await funcs.createNewSession('Original');
             session.title = 'Updated';
-            session.data = [{ role: 'user', content: 'Hello' }];
+            session.messages = [{ role: 'user', content: 'Hello' }];
             await funcs.setActiveSession(session);
             const retrieved = await funcs.getSession(session.id, false);
 
             expect(retrieved.title).toBe('Updated');
-            expect(retrieved.data).toHaveLength(1);
+            expect(retrieved.messages).toHaveLength(1);
         });
 
         it('filters out empty sessions when saving', async () => {
             const session1 = await funcs.createNewSession('Session 1');
-            session1.data = [{ role: 'user', content: 'Message' }];
+            session1.messages = [{ role: 'user', content: 'Message' }];
 
             const session2 = await funcs.createNewSession('Session 2');
-            // session2 has empty data, so when we save session1, session2 gets filtered out
+            // session2 has empty messages, so when we save session1, session2 gets filtered out
             await funcs.setActiveSession(session1);
 
             const sessions = await funcs.getAllSessions();
@@ -244,8 +243,7 @@ describe('sessions.js', () => {
 
         it('skips save of empty session', async () => {
             const session = await funcs.createNewSession('Empty');
-            session.data = [];
-            session.attachments = [];
+            session.messages = [];
 
             const consoleSpy = vi.spyOn(console, 'debug');
             await funcs.setActiveSession(session);
@@ -257,14 +255,14 @@ describe('sessions.js', () => {
 
         it('throws error if session has no ID', async () => {
             const consoleSpy = vi.spyOn(console, 'error');
-            await funcs.setActiveSession({ data: [] });
+            await funcs.setActiveSession({ messages: [] });
 
             expect(consoleSpy).toHaveBeenCalled();
         });
 
         it('throws error if session not found', async () => {
             const consoleSpy = vi.spyOn(console, 'error');
-            await funcs.setActiveSession({ id: 'non-existent', data: ['test'] });
+            await funcs.setActiveSession({ id: 'non-existent', messages: ['test'] });
 
             expect(consoleSpy).toHaveBeenCalled();
         });
@@ -280,10 +278,22 @@ describe('sessions.js', () => {
             expect(options.temperature).toBe(0.7);
         });
 
-        it('returns empty object if no options stored', async () => {
+        it('returns default options if no options stored', async () => {
             const options = await funcs.getOptions();
 
-            expect(options).toEqual({});
+            expect(options).toMatchObject({
+                openPanelOnLoad: false,
+                aiUrl: '',
+                aiModel: '',
+                closeOnClickOut: true,
+                closeOnCopy: false,
+                closeOnSendTo: true,
+                showEmbeddedButton: false,
+                loadHistoryOnStart: false,
+                systemInstructions: 'You are a helpful assistant.',
+                personalInfo: '',
+                debug: false
+            });
         });
     });
 
@@ -297,68 +307,8 @@ describe('sessions.js', () => {
         });
     });
 
-    describe('getActiveSessionPageData', () => {
-        it('returns stored page data', async () => {
-            const pageData = { url: 'https://example.com', pageContent: 'Content' };
-            await fakeBrowser.storage.local.set({ [activePageStorageKey]: pageData });
-            const result = await funcs.getActiveSessionPageData();
-
-            expect(result).toEqual(pageData);
-        });
-
-        it('returns null if no data stored', async () => {
-            const result = await funcs.getActiveSessionPageData();
-
-            expect(result).toBeNull();
-        });
-    });
-
-    describe('setActiveSessionPageData', () => {
-        it('stores valid page data', async () => {
-            const pageData = { url: 'https://example.com', pageContent: 'Content' };
-            await funcs.setActiveSessionPageData(pageData);
-            const result = await funcs.getActiveSessionPageData();
-
-            expect(result).toEqual(pageData);
-        });
-
-        it('returns early if data is null', async () => {
-            await funcs.setActiveSessionPageData(null);
-            const result = await funcs.getActiveSessionPageData();
-
-            expect(result).toBeNull();
-        });
-
-        it('skips update if URL same and content exists', async () => {
-            const pageData1 = { url: 'https://example.com', pageContent: 'Original' };
-            await funcs.setActiveSessionPageData(pageData1);
-
-            const pageData2 = { url: 'https://example.com', pageContent: 'New' };
-            await funcs.setActiveSessionPageData(pageData2);
-
-            const result = await funcs.getActiveSessionPageData();
-            expect(result.pageContent).toBe('Original');
-        });
-
-        it('warns and returns if URL present but no content', async () => {
-            const consoleSpy = vi.spyOn(console, 'warn');
-            await funcs.setActiveSessionPageData({ url: 'https://example.com' });
-
-            expect(consoleSpy).toHaveBeenCalled();
-            const result = await funcs.getActiveSessionPageData();
-            expect(result).toBeNull();
-        });
-    });
-
-    describe('removeActiveSessionPageData', () => {
-        it('removes page data from storage', async () => {
-            await funcs.setActiveSessionPageData({ url: 'https://example.com', pageContent: 'Content' });
-            await funcs.removeActiveSessionPageData();
-            const result = await funcs.getActiveSessionPageData();
-
-            expect(result).toBeNull();
-        });
-    });
+    // REMOVED: getActiveSessionPageData, setActiveSessionPageData, removeActiveSessionPageData tests
+    // These functions were deprecated in Phase 5 (page content now fetched on-demand)
 
     describe('getAiUserCommands', () => {
         it('returns stored commands', async () => {

@@ -3,13 +3,13 @@ async function quickPromptClicked(e) {
     e.stopPropagation();
 
     const shadowRoot = getShadowRoot();
-    shadowRoot.querySelector('.prompt-menu')?.remove();
+    shadowRoot?.querySelector('.prompt-menu')?.remove();
 
-    const tmpl = shadowRoot.querySelector('#promptMenuTemplate');
+    const tmpl = shadowRoot?.querySelector('#promptMenuTemplate');
     const clone = tmpl.content.cloneNode(true);
     shadowRoot.appendChild(clone);
 
-    const menu = shadowRoot.querySelector('.prompt-menu');
+    const menu = shadowRoot?.querySelector('.prompt-menu');
     await buildPromptList(menu?.querySelector('.dynamic-prompt-list'));
 
     const searchInput = menu.querySelector('.search-input')
@@ -52,7 +52,7 @@ async function insertClickedPrompt(e, promptDiv) {
     let prompt = cmd.find(el => el.commandName === promptDiv?.textContent?.trim());
     prompt = prompt?.commandBody ?? 'Unknown';
     const shadowRoot = getShadowRoot();
-    const userInput = shadowRoot.querySelector('#laiUserInput')
+    const userInput = shadowRoot?.querySelector('#laiUserInput')
     userInput.value = prompt;
     userInput.focus();
     removeQuickPromptMenu(e);
@@ -83,7 +83,7 @@ function libraryBtnClicked(e) {
     e.stopImmediatePropagation();
     e.stopPropagation();
     updateStatusBar("Library is empty.");
-    setTimeout(resetStatusbar(), 2000);
+    setTimeout(resetStatusbar, 2000);
 }
 
 function removeQuickPromptListFilter(e) {
@@ -107,16 +107,16 @@ function quickPromptBtnClicked(e) {
 
 function removeQuickPromptMenu(e) {
     const shadowRoot = getShadowRoot();
-    const menu = shadowRoot.querySelector('.prompt-menu');
+    const menu = shadowRoot?.querySelector('.prompt-menu');
     menu.remove();
 }
 
 function eraseUserInputArea(e) {
     const shadowRoot = getShadowRoot();
-    const userInput = shadowRoot.querySelector('#laiUserInput')
+    const userInput = shadowRoot?.querySelector('#laiUserInput')
     userInput.value = '';
     updateStatusBar("User input area updated.");
-    setTimeout(resetStatusbar(), 2000);
+    setTimeout(resetStatusbar, 2000);
     userInput.focus();
 }
 
@@ -126,8 +126,30 @@ function closeQuickPromptListMenu(e) {
     if (path.some(el => el.classList?.contains('dynamic-prompt-list'))) { return; }
 
     const shadowRoot = getShadowRoot();
-    const menu = shadowRoot.querySelector('.prompt-menu');
+    const menu = shadowRoot?.querySelector('.prompt-menu');
     if (!menu) { return; }
     if(e.composedPath()?.some(el => el?.classList?.contains?.('lai-user-area'))) {  return;  }
     if (!path.includes(menu)) { removeQuickPromptMenu(e); }
+}
+
+async function debugBtnClicked(e){
+    let el = e.composedPath()[0]
+    await toggleDebug();
+    el = el.tagName === 'IMG' ? el.closest('button') : e.target;
+    await debugBtnInit(el);
+}
+
+async function debugBtnInit(btn){
+    const options = await getOptions();
+    const debug = options?.debug ?? false;
+    const debugImg = btn.querySelector('img[data-type="debug"]');
+    const noDebugImg = btn.querySelector('img[data-type="nodebug"]');
+
+    if(debug){
+        debugImg.classList.remove('invisible');
+        noDebugImg.classList.add('invisible');
+    } else {
+        noDebugImg.classList.remove('invisible');
+        debugImg.classList.add('invisible');
+    }
 }
