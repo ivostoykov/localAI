@@ -240,8 +240,9 @@ async function getOptions() {
     };
 
     try {
-        const opt = await chrome.storage.sync.get(storageOptionKey);
-        const aiOptions = opt[storageOptionKey] || {};
+        const key = storageOptionKey || 'laiOptions';
+        const opt = await chrome.storage.sync.get(key);
+        const aiOptions = opt[key] || {};
         const laiOptions = Object.assign({}, aiOptions);
 
         // Only apply defaults for missing fields
@@ -260,9 +261,10 @@ async function getOptions() {
 
 async function setOptions(options) {
     try {
+        const key = storageOptionKey || 'laiOptions';
         const e = new Error();
         console.log(`>>> ${manifest?.name ?? ''} - ${setOptions?.name}`, options, e, )
-        await chrome.storage.sync.set({ [storageOptionKey]: options });
+        await chrome.storage.sync.set({ [key]: options });
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error, options);
     }

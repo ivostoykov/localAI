@@ -2,6 +2,11 @@ const manifest = chrome.runtime.getManifest();
 document.title = manifest?.name || 'Unknown' || '';
 document.getElementById('pageTitle').textContent = `${manifest?.name ?? ''} - ${manifest.version}`;
 
+async function getOptions() {
+    const stored = await chrome.storage.sync.get('laiOptions');
+    return stored.laiOptions || {};
+}
+
 document.addEventListener('DOMContentLoaded', async (e) => {
     document.querySelector('.menu-item')?.click();
     await loadSettings(e);
@@ -82,8 +87,7 @@ function updateTempValue(e) {
 
 async function loadSettings(e) {
     try {
-        const obj = await chrome.storage.sync.get('laiOptions');
-        const formData = obj['laiOptions'] || {};
+        const formData = await getOptions();
         if (Object.keys(formData).length < 1) {
             showMessage("No options found!", "error");
             return;
@@ -165,28 +169,6 @@ async function saveSettings(e) {
         showMessage(`Failed to save data - ${err?.message}`, 'error');
     }
 }
-
-/* async function autoSaveFilteringField(fieldId) {
-    try {
-        const field = document.getElementById(fieldId);
-        if (!field) {
-            console.error(`>>> [${getLineNumber()}] - Field ${fieldId} not found`);
-            return;
-        }
-
-        const stored = await chrome.storage.sync.get('laiOptions');
-        const optionsData = stored.laiOptions || {};
-
-        optionsData[fieldId] = field.type === 'checkbox' ? field.checked : field.value;
-
-        await chrome.storage.sync.set({ 'laiOptions': optionsData });
-
-        showMessage('Filtering settings auto-saved', 'success');
-    } catch (error) {
-        console.error(`>>> [${getLineNumber()}] - Error auto-saving ${fieldId}:`, error);
-        showMessage('Failed to save filtering settings', 'error');
-    }
-} */
 
 function cancelOptions() {
     window.close();
@@ -329,7 +311,7 @@ async function attachDataListListeners(e) {
                     break;
                 case 'asc':
                 case 'desc':
-                    b.addEventListener('click', e => sortDatalist(e));
+                    b.addEventListener('click', async e => await sortDatalist(e));
                     break;
                 case 'reload':
                     b.addEventListener('click', async e => await loadModels(e));
@@ -604,7 +586,7 @@ function refreshTarget(gldValues) {
 
 // utils
 
-function fillModelList(models = [], selector = '') {
+async function fillModelList(models = [], selector = '') {
     if (models.length < 1) { return; }
     if (!selector) {
         showMessage("Missing selector!", "success");
@@ -618,6 +600,7 @@ function fillModelList(models = [], selector = '') {
         return;
     }
 
+    const laiOptions = await getOptions();
     let activeModelName = laiOptions?.[selector.replace(/^#/, '')];
     let op = modelDataList.options[0];
     modelDataList.replaceChildren();
@@ -825,7 +808,7 @@ function shrinkList(e) {
     }
 }
 
-function sortDatalist(e) {
+async function sortDatalist(e) {
     let datalist = e.target.closest('div.el-holder');
     datalist = datalist?.querySelector('select');
     if (!datalist) { return; }
@@ -846,6 +829,7 @@ function sortDatalist(e) {
         options.sort((a, b) => a.value.localeCompare(b.value));
     }
 
+    const laiOptions = await getOptions();
     datalist.replaceChildren();
     datalist.appendChild(op0);
     options.forEach(option => datalist.appendChild(option));
@@ -898,8 +882,8 @@ async function loadModels(e) {
         models = await response.json();
         if (models.models && Array.isArray(models.models)) {
             models.models.sort((a, b) => a.name.localeCompare(b.name));
-            fillModelList(models.models, '#aiModel');
-            fillModelList(models.models, '#generativeHelper');
+            await fillModelList(models.models, '#aiModel');
+            await fillModelList(models.models, '#generativeHelper');
         }
     } catch (e) {
         console.error(`>>> [${getLineNumber()}] - ${e.message}`, e);
