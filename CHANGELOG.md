@@ -1,7 +1,15 @@
 # Local AI - Changelog
 
-## [1.28.31] - 2026-02-01 - latest
+## [1.28.55] - 2026-02-15 - latest
 
+- Refactored the session management.
+- Refactored context management.
+- Split UI and context history for clarity
+- Added additional commands to user input
+- Added internal tool call handling for page browsing
+- Separated internal from user tools (external resources)
+- Added global page filtering to reduce context noise
+- Added per domain filtering for fine-tuning what page content will be included in the context
 - Added image format validation using magic byte detection to prevent misidentified file formats
 - Added support for GIF images alongside PNG and JPEG formats
 - Enhanced image handling to detect actual format regardless of file extension or MIME type

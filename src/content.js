@@ -5,7 +5,9 @@ const commandPlaceholders = {
   "@{{today}}": "Include current date without the time",
   "@{{time}}": "Include current time without the date",
   "@{{debug}}": "Enable debug logging",
-  "@{{nodebug}}": "Disable debug logging"
+  "@{{nodebug}}": "Disable debug logging",
+  "@{{tools}}": "Switch tools on",
+  "@{{notools}}": "Switch tools off"
 };
 var aiUserCommands = [];
 var userCmdItemBtns = { 'edit': null, 'execute': null, 'paste': null, 'delete': null };
@@ -20,7 +22,11 @@ var userPredefinedCmd = [
   { "commandName": "error", "commandDescription": "Show last error" },
   { "commandName": "model", "commandDescription": "Show model info" },
   { "commandName": "lastMessage", "commandDescription": "Show last message" },
-  { "commandName": "list", "commandDescription": "Show all defined commands" }
+  { "commandName": "list", "commandDescription": "Show all defined commands" },
+  { "commandName": "tools", "commandDescription": "Switch tools on (temporary)" },
+  { "commandName": "notools", "commandDescription": "Switch tools off (temporary)" },
+  { "commandName": "debug", "commandDescription": "Enable debug logging (temporary)" },
+  { "commandName": "nodebug", "commandDescription": "Disable debug logging (temporary)" }
 ];
 
 function getRootElement() { return document.documentElement.querySelector('localAI') || document.getElementById('localAI'); }

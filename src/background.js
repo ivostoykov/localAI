@@ -1172,6 +1172,7 @@ Text_to_describe:
     if (await modelCanThink(model, url)) { jsonPrompt["think"] = false; }
 
     try {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - prompt`, {url, jsonPrompt});
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1181,12 +1182,13 @@ Text_to_describe:
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, data);
         await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, data, 'debug', tab?.id);
         let title = data?.response?.split('\n')?.map(x => x?.trim())?.filter(Boolean)?.slice(-1)?.[0]?.trim() ?? null;
-        title = title.replace(/^\n?title:\s{1,}/i, '');
-        title = title.replace(/[^a-z0-9\s]/gi, '')
-            .trim()
-            .split(/\s+/)
-            .slice(0, 5)
-            .join(' ');
+        if(!title)  {  return;  }
+        title = title?.replace(/^\n?title:\s{1,}/i, '');
+        title = title?.replace(/[^a-z0-9\s]/gi, '')
+            ?.trim()
+            ?.split(/\s+/)
+            ?.slice(0, 5)
+            ?.join(' ');
         return title;
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);

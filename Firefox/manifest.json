@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local AI helper",
-  "version": "1.28.29",
+  "version": "1.28.55",
   "options_page": "options.html",
   "permissions": [
     "activeTab",
@@ -10,29 +10,33 @@
     "scripting",
     "webRequest"
   ],
-  "host_permissions": [
-    "*://*/*",
-    "<all_urls>"
-  ],
+  "host_permissions": ["*://*/*"],
   "background": {
     "scripts": [
+      "jslib/constants.js",
+      "jslib/log.js",
+      "background-memory.js",
+      "jslib/sessions.js",
+      "jslib/session-repository.js",
+      "jslib/internal-tools.js",
       "background.js"
     ]
   },
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "js": [
-        "lai-main.js",
-        "jslib/files.js",
-        "jslib/sessions.js",
-        "jslib/solomd2html.js",
-        "jslib/user_input_ribbon.js",
+        "jslib/constants.js",
         "jslib/utils.js",
+        "jslib/sessions.js",
+        "jslib/log.js",
+        "jslib/content-cleaner.js",
+        "jslib/files.js",
+        "jslib/solomd2html.js",
         "jslib/ribbon.js",
         "jslib/stt.js",
+        "jslib/user_input_ribbon.js",
+        "lai-main.js",
         "content.js"
       ],
       "run_at": "document_start"
@@ -57,9 +61,7 @@
         "lai-main.js",
         "img/*.svg"
       ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "matches": ["<all_urls>"]
     }
   ],
   "browser_specific_settings": {

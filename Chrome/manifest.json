@@ -1,7 +1,8 @@
 {
     "manifest_version": 3,
     "name": "Local AI helper",
-    "version": "1.28.22",
+    "short_name": "localAI",
+    "version": "1.28.55",
     "options_page": "options.html",
     "permissions": [
         "activeTab",
@@ -19,17 +20,25 @@
     "content_scripts": [
         {
             "matches": [
-                "<all_urls>"
+                "http://*/*",
+                "https://*/*"
+            ],
+            "exclude_matches": [
+                "*://chrome.google.com/*",
+                "*://chrome.google.com/webstore/*"
             ],
             "js": [
-                "lai-main.js",
-                "jslib/files.js",
-                "jslib/sessions.js",
-                "jslib/solomd2html.js",
-                "jslib/user_input_ribbon.js",
+                "jslib/constants.js",
                 "jslib/utils.js",
+                "jslib/sessions.js",
+                "jslib/log.js",
+                "jslib/content-cleaner.js",
+                "jslib/files.js",
+                "jslib/solomd2html.js",
                 "jslib/ribbon.js",
                 "jslib/stt.js",
+                "jslib/user_input_ribbon.js",
+                "lai-main.js",
                 "content.js"
             ],
             "run_at": "document_start"
