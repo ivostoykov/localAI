@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.28.55] - 2026-02-15 - latest
+## [1.28.58] - 2026-02-15 - latest
 
 - Refactored the session management.
 - Refactored context management.
