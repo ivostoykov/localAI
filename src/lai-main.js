@@ -36,7 +36,9 @@ async function initSidebar() {
     const userInput = shadowRoot.getElementById('laiUserInput');
     if (!userInput) { console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, userInput); }
     userInput?.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e), false);
+    userInput?.addEventListener('input', e => laiUpdateSuggestions(e.target));
     userInput?.addEventListener('click', userInputClicked);
+    userInput?.addEventListener('click', e => laiUpdateSuggestions(e.target));
     userInput?.addEventListener('focus', async e => await userInputFocused(e));
     userInput?.addEventListener('blur', userInputBlurred, { capture: false });
     userInput?.addEventListener('paste', async e => await onImagePaste(e));
@@ -215,35 +217,100 @@ async function laiPushpinClicked(e) {
     shadowRoot.getElementById('laiUserInput')?.focus();
 }
 
-function laiInsertCommandText(text) {
+function laiGetActiveTrigger(textarea) {
+    const cursor = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.substring(0, cursor);
+    const lineStart = textBeforeCursor.lastIndexOf('\n') + 1;
+    const lineBeforeCursor = textBeforeCursor.substring(lineStart);
+
+    const atMatch = lineBeforeCursor.match(/(^|(?<=\s))@(\{*)$/);
+    if (atMatch) {
+        const braces = atMatch[2];
+        if (braces.length > 2) { return null; }
+        const typed = braces.length === 2 ? lineBeforeCursor.match(/@\{\{(\w*)$/)?.[1] ?? '' : null;
+        return { type: '@', braces: braces.length, filter: typed };
+    }
+
+    const slashMatch = lineBeforeCursor.match(/(^|(?<=\s))\/(\w*)$/);
+    if (slashMatch) {
+        return { type: '/', filter: slashMatch[2] };
+    }
+
+    return null;
+}
+
+function laiInsertSuggestionSuffix(suffix) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
-    const textarea = shadowRoot.querySelector('textarea');
-    const cursorPosition = textarea?.selectionStart;
-    const textBeforeCursor = textarea?.value.substring(0, cursorPosition);
-    const textAfterCursor = textarea?.value.substring(cursorPosition);
-
-    let prefixEnd = textBeforeCursor?.lastIndexOf('@{{');
-    if (prefixEnd < 0) { prefixEnd = 0; }
-    textarea.value = textBeforeCursor?.substring(0, prefixEnd) + text + textAfterCursor;
-    textarea.selectionStart = textarea.selectionEnd = prefixEnd + text?.length;
-    textarea?.focus();
+    const textarea = shadowRoot.getElementById('laiUserInput');
+    const cursor = textarea.selectionStart;
+    const before = textarea.value.substring(0, cursor);
+    const after = textarea.value.substring(cursor);
+    textarea.value = before + suffix;
+    textarea.value += after;
+    textarea.selectionStart = textarea.selectionEnd = cursor + suffix.length;
+    textarea.focus();
     laiHideSuggestions();
 }
 
-function laiShowSuggestions(input) {
+function laiShowSuggestions(trigger) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const suggestionBox = shadowRoot.getElementById('laiSuggestionBox');
-    suggestionBox.innerHTML = ''; // Clear previous suggestions
-    Object.keys(commandPlaceholders).forEach(cmd => {
-        if (cmd.startsWith(input)) {
-            const suggestion = document.createElement('div');
-            suggestion.textContent = `${cmd} - ${commandPlaceholders.cmd}th`;
-            suggestion.onclick = function () { laiInsertCommandText(cmd); };
-            suggestionBox.appendChild(suggestion);
+    suggestionBox.innerHTML = '';
+
+    let items = [];
+
+    if (trigger.type === '@') {
+        if (trigger.braces < 2) {
+            items = Object.keys(commandPlaceholders).map(cmd => ({
+                label: cmd,
+                description: commandPlaceholders[cmd],
+                suffix: cmd.substring(1 + trigger.braces)
+            }));
+        } else {
+            const filter = trigger.filter ?? '';
+            items = Object.keys(commandPlaceholders)
+                .filter(cmd => cmd.substring(3).startsWith(filter))
+                .map(cmd => ({
+                    label: cmd,
+                    description: commandPlaceholders[cmd],
+                    suffix: cmd.substring(3 + filter.length)
+                }));
         }
+    } else {
+        const filter = (trigger.filter ?? '').toLowerCase();
+        const allCmds = [...userPredefinedCmd, ...aiUserCommands];
+        items = allCmds
+            .filter(cmd => cmd.commandName.toLowerCase().startsWith(filter))
+            .map(cmd => ({
+                label: `/${cmd.commandName}`,
+                description: cmd.commandDescription ?? '',
+                suffix: cmd.commandName.substring(filter.length)
+            }));
+    }
+
+    if (items.length === 0) {
+        laiHideSuggestions();
+        return;
+    }
+
+    items.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = 'lai-suggestion-item';
+        if (idx === 0) { row.classList.add('active'); }
+        const labelEl = document.createElement('span');
+        labelEl.className = 'lai-suggestion-label';
+        labelEl.textContent = item.label;
+        const descEl = document.createElement('span');
+        descEl.className = 'lai-suggestion-desc';
+        descEl.textContent = item.description;
+        row.appendChild(labelEl);
+        row.appendChild(descEl);
+        row.dataset.suffix = item.suffix;
+        suggestionBox.appendChild(row);
     });
+
     suggestionBox.classList.remove('invisible');
 }
 
@@ -252,6 +319,40 @@ function laiHideSuggestions() {
     if (!shadowRoot) { return; }
     const suggestionBox = shadowRoot.getElementById('laiSuggestionBox');
     suggestionBox.classList.add('invisible');
+    suggestionBox.innerHTML = '';
+}
+
+function laiMoveSuggestionSelection(direction) {
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) { return; }
+    const suggestionBox = shadowRoot.getElementById('laiSuggestionBox');
+    const items = Array.from(suggestionBox.querySelectorAll('.lai-suggestion-item'));
+    if (items.length === 0) { return; }
+    const activeIdx = items.findIndex(el => el.classList.contains('active'));
+    items[activeIdx]?.classList.remove('active');
+    const nextIdx = (activeIdx + direction + items.length) % items.length;
+    items[nextIdx].classList.add('active');
+    items[nextIdx].scrollIntoView({ block: 'nearest' });
+}
+
+function laiConfirmSuggestion() {
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) { return false; }
+    const suggestionBox = shadowRoot.getElementById('laiSuggestionBox');
+    if (suggestionBox.classList.contains('invisible')) { return false; }
+    const active = suggestionBox.querySelector('.lai-suggestion-item.active');
+    if (!active) { return false; }
+    laiInsertSuggestionSuffix(active.dataset.suffix);
+    return true;
+}
+
+function laiUpdateSuggestions(textarea) {
+    const trigger = laiGetActiveTrigger(textarea);
+    if (!trigger) {
+        laiHideSuggestions();
+        return;
+    }
+    laiShowSuggestions(trigger);
 }
 
 // user input
@@ -413,10 +514,41 @@ async function stripDebugCommands(str){
     return result ? str.replace(result, '') : str;
 }
 
+function onSuggestionBoxKeyDown(e) {
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) { return false; }
+    const suggestionBox = shadowRoot.getElementById('laiSuggestionBox');
+    if (suggestionBox.classList.contains('invisible')) { return false; }
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        laiMoveSuggestionSelection(1);
+        return true;
+    }
+    if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        laiMoveSuggestionSelection(-1);
+        return true;
+    }
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        laiConfirmSuggestion();
+        return true;
+    }
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        laiHideSuggestions();
+        return true;
+    }
+    return false;
+}
+
 async function onPromptTextAreaKeyDown(e) {
     const elTarget = e.target;
     e.stopImmediatePropagation();
     e.stopPropagation();
+
+    if (onSuggestionBoxKeyDown(e)) { return; }
 
     if (e.key === 'Enter' && e.code !== 'NumpadEnter' && !e.shiftKey) {
 

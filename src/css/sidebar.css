@@ -548,21 +548,39 @@ local-ai *,
 }
 
 /* intelliSense */
-#lai-suggestion-box {
-    position: absolute;
-    border: 1px solid #ccc;
-    background: white;
-    display: none;
-    z-index: 1000;
+.lai-suggestion-box {
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--lai-border-color, #ccc);
+    background: var(--lai-bg-color, #fff);
+    box-sizing: border-box;
+    z-index: 10;
 }
 
-#lai-suggestion-box div {
-    padding: 5px;
-    cursor: pointer;
+.lai-suggestion-item {
+    display: flex;
+    gap: 0.75em;
+    padding: 4px 8px;
+    cursor: default;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
-#lai-suggestion-box div:hover {
-    background-color: #f0f0f0;
+.lai-suggestion-item.active {
+    background-color: var(--lai-highlight-color, #0078d4);
+    color: #fff;
+}
+
+.lai-suggestion-label {
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.lai-suggestion-desc {
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* help popup */

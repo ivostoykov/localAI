@@ -15,6 +15,7 @@
         - [Speech Recognition](#speech-recognition)
         - [Attach file](#attach-file)
         - [Commands](#commands)
+            - [Command Hints](#command-hints)
             - [System commands](#system-commands)
             - [Custom Commends](#custom-commands)
 - [Options](#options)
@@ -186,6 +187,35 @@ Images can be provided as a selected element on the page or pass as an attachmen
 Click on the file icon to delete it.
 
 ### Commands
+
+#### Command Hints
+
+While typing in the prompt area, a hint box appears automatically above the input field when a command trigger is detected, helping to discover and complete available commands without having to memorise them.
+
+There are two triggers:
+
+- **`/`** — lists slash commands (system and custom). Type `/` preceded by a space or at the start of a line to open the list.
+- **`@`** — lists context placeholders. Type `@` preceded by a space or at the start of a line to open the list. The trigger remains active while the input matches `@`, `@{`, or `@{{...`; any other character after `@` closes the box.
+
+As you continue typing after the trigger, the list filters to matching entries. The box closes automatically when no matches remain or a non-matching character is typed.
+
+**Keyboard navigation:**
+
+| Key | Action |
+|-----|--------|
+| `↓` / `↑` | Move selection down / up |
+| `Tab` | Append the highlighted completion to the input |
+| `Escape` | Dismiss the hint box |
+
+**Valid trigger examples:**
+
+| Input | Result |
+|-------|--------|
+| `/list` | Shows slash commands matching `list` |
+| `summarise @{{page}}` | `@` preceded by a space — valid trigger |
+| `@{{now}}: do something` | `@` at line start — valid trigger |
+| `test@mail.com` | No preceding space — not triggered |
+| `tell me 2/3` | No preceding space — not triggered |
 
 #### System Commands
 

@@ -1,6 +1,15 @@
 # Local AI - Changelog
 
-## [1.28.58] - 2026-02-15 - latest
+## [1.28.65] - 2026-02-18 - latest
+
+- Added command hint box above the input area, triggered by `/` (slash commands) or `@` (context placeholders)
+- Hint box filters the matching list as the user types and hides on non-matching input
+- Arrow keys navigate the list; Tab appends the completion suffix; Escape dismisses
+- Fixed `rootElement.getElementById` error in `getARIAContext` — replaced with `querySelector`
+- Fixed missing closing bracket and misplaced `return` in `getARIAContext`
+- Fixed typo `$err.message` → `err.message` in `getARIAContext` error handler
+
+## [1.28.58] - 2026-02-15
 
 - Refactored the session management.
 - Refactored context management.

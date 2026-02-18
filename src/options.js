@@ -24,11 +24,19 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('pendingChanges', () => {
     const btn = document.getElementById('cancelButton');
+    if(!btn){
+        console.warn(`[${getLineNumber()}]: 'cancelButton' not found!`);
+        return;
+    }
     btn.textContent = "Cancel";
     btn.onclick = () => location.reload();
 });
 document.addEventListener('changesSaved', () => {
     const btn = document.getElementById('cancelButton');
+    if(!btn){
+        console.warn(`[${getLineNumber()}]: 'cancelButton' not found!`);
+        return;
+    }
     btn.textContent = "Close";
 });
 
@@ -43,16 +51,6 @@ document.getElementById('cancelButton').addEventListener('click', e => {
     if (e.target.textContent === 'Close') { window.close(); }
 });
 
-
-/* ['defaultSelectors', 'siteSpecificSelectors', 'contentFilteringEnabled'].forEach(fieldId => {
-    const field = document.getElementById(fieldId);
-    if (field) {
-        field.addEventListener('change', async () => await autoSaveFilteringField(fieldId));
-        if (field.type !== 'checkbox') {
-            field.addEventListener('blur', async () => await autoSaveFilteringField(fieldId));
-        }
-    }
-}); */
 document.getElementById('tempRange').addEventListener('input', updateTempValue);
 document.getElementById('tempInput').addEventListener('input', updateTempValue);
 
@@ -102,9 +100,9 @@ async function loadSettings(e) {
 
             const el = document.querySelector(`select[data-list="${list}"]`);
             if (!el) { continue; }
-            const op0 = el.options[0];
+            const op0 = el.options[0] || null;
             el.replaceChildren();
-            el.appendChild(op0);
+            if (op0) { el.appendChild(op0); }
             formData[list]?.forEach(value => addSelectOptions(el, { "val": value, "isSelected": (value === formData.aiUrl ?? '') }));
             if (el.options.length === 1) { el.selectedIndex = 0; }
         }
@@ -146,6 +144,9 @@ async function saveSettings(e) {
             if (['select', 'checkbox', 'text', 'textarea', 'number', 'range', 'url'].indexOf(element.type) < 0) {
                 continue;
             }
+            if(!element.id || !element.type){
+                console.warn('Problem with saving data from the element', element)
+            }
             optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
         }
 
@@ -153,10 +154,22 @@ async function saveSettings(e) {
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             const el = document.querySelector(`select[data-list="${list}"]`);
+            if (!el) {
+                console.warn(`[${getLineNumber()}]: Element with data-list="${list}" not found`);
+                continue;
+            }
             const options = Array.from(el.options);
-            if (/^Select/i.test(options[0].text) || !options[0].text) { options.shift(); }
-            optionsData[el.id] = el.options[el.selectedIndex].value;
-            let attributeValues = Array.from(options)?.map(e => e.getAttribute('value')).sort();
+            const hasEmptyFirstOption = options[0] && (/^Select/i.test(options[0].text) || !options[0].text);
+            const selectedIdx = el.selectedIndex >= 0 ? el.selectedIndex : 0;
+
+            optionsData[el.id] = el.options[selectedIdx]?.value || '';
+
+            const startIdx = hasEmptyFirstOption ? 1 : 0;
+            let attributeValues = Array.from(el.options)
+                .slice(startIdx)
+                .map(e => e.getAttribute('value'))
+                .filter(v => v)
+                .sort();
             optionsData[list] = attributeValues ?? [];
         }
 
@@ -217,7 +230,7 @@ function attachListeners(e) {
 
 function addSelectOptions(selectEl, objData) {
     try {
-        if (!selectEl || !Object.keys(objData).length === 0) { return; }
+        if (!selectEl || Object.keys(objData).length === 0) { return; }
         const op = document.createElement('option');
         if (!op) { return; }
         op.text = objData?.text ?? objData?.val;
@@ -339,7 +352,11 @@ async function createNewPrompt(e) {
     const promptSection = document.querySelector('#promptsContainer');
     if (!promptSection) { return; }
 
-    const promptTemplate = document.getElementById('promptTemplate').content;
+    const promptTemplate = document.getElementById('promptTemplate')?.content;
+    if (!promptTemplate) {
+        console.error(`[${getLineNumber()}]: promptTemplate not found!`);
+        return;
+    }
     const clone = document.importNode(promptTemplate, true);
     const promptItem1 = promptSection.querySelector('.prompt-item');
     if (promptItem1) {
@@ -501,7 +518,11 @@ async function getTools() {
 async function createNewToolFunc(e) {
     const promptSection = document.querySelector('#toolsContainer');
     if (!promptSection) { return; }
-    const promptTemplate = document.getElementById('functionTemplate').content;
+    const promptTemplate = document.getElementById('functionTemplate')?.content;
+    if (!promptTemplate) {
+        console.error(`[${getLineNumber()}]: functionTemplate not found!`);
+        return;
+    }
     const clone = document.importNode(promptTemplate, true);
     const promptItem1 = promptSection.querySelector('.prompt-item');
     if (promptItem1) {
@@ -568,7 +589,7 @@ function refreshTarget(gldValues) {
     if (Object.keys(gldValues).length < 1) { return; }
     const target = document.querySelector(`#${gldValues.targetId || ''}`);
     if (!target || !gldValues?.newValue) { return; }
-    if (gldValues?.selectedIndex) {
+    if (gldValues?.selectedIndex >= 0 && target.options[gldValues.selectedIndex]) {
         target.options[gldValues.selectedIndex].value = gldValues.newValue;
         if (gldValues.dlgIsSelected || false) {
             target.options[gldValues.selectedIndex].setAttribute('selected', 'selected');
@@ -602,10 +623,12 @@ async function fillModelList(models = [], selector = '') {
 
     const laiOptions = await getOptions();
     let activeModelName = laiOptions?.[selector.replace(/^#/, '')];
-    let op = modelDataList.options[0];
+    let op = modelDataList.options[0] || null;
     modelDataList.replaceChildren();
-    modelDataList.appendChild(op);
-    op.setAttribute('selected', 'selected');
+    if (op) {
+        modelDataList.appendChild(op);
+        op.setAttribute('selected', 'selected');
+    }
 
     for (let i = 0; i < models.length; i++) {
         op = document.createElement('option');
@@ -625,7 +648,7 @@ function extenddList(e) {
     options.targetId = datalist.id;
     if (options.action === 'edit') {
         options.selectedIndex = datalist.selectedIndex;
-        options.selectedValue = datalist.selectedIndex > 0 ? datalist.options[datalist.selectedIndex]?.value : '';
+        options.selectedValue = datalist.selectedIndex >= 0 && datalist.options[datalist.selectedIndex] ? datalist.options[datalist.selectedIndex].value : '';
     } else {
         options.selectedValue = '';
     }
@@ -647,6 +670,10 @@ function hideSpinner() {
 
 function showMessage(message, type) {
     const msg = document.querySelector('.message-box');
+    if (!msg) {
+        console.error(`[${getLineNumber()}]: message-box not found!`);
+        return;
+    }
     msg.innerHTML = message;
     msg.classList.remove('invisible', 'success', 'error', 'warning', 'info');
     msg.classList.add(type || 'info');
@@ -663,7 +690,12 @@ async function testConnection(e) {
         const el = container.querySelector('input[type="url"]') || container.querySelector('select');
         if (!el) { throw new Error(`No API endpoint value found - ${el?.value}!`); }
 
-        url = el.tagName === 'INPUT' ? el.value.trim() : el.options[el.selectedIndex].value;
+        if (el.tagName === 'INPUT') {
+            url = el.value.trim();
+        } else {
+            const idx = el.selectedIndex >= 0 ? el.selectedIndex : 0;
+            url = el.options[idx]?.value || '';
+        }
         if (!url || !url.startsWith('http')) { throw new Error(`Invalid API endpoint - ${url}!`); }
         url = (new URL(url)).origin;
 
@@ -792,7 +824,7 @@ function importFromFile(e) {
 function shrinkList(e) {
     let datalist = e.target.closest('div.el-holder');
     datalist = datalist?.querySelector('select');
-    if (!datalist || datalist?.options.lenght < 2) { return; }
+    if (!datalist || datalist?.options.length < 2) { return; }
 
     const action = e.target.getAttribute('data-action')?.toLowerCase();
     if (action === 'removeall') {
@@ -841,8 +873,11 @@ async function sortDatalist(e) {
 function copyValue(e) {
     let datalist = e.target.closest('div.el-holder');
     datalist = datalist?.querySelector('select');
+    if (!datalist) { return; }
+    const idx = datalist.selectedIndex >= 0 ? datalist.selectedIndex : 0;
+    const value = datalist.options[idx]?.value || '';
     const getParentEvent = () => e;
-    navigator.clipboard.writeText(datalist.options[datalist.selectedIndex].value || '')
+    navigator.clipboard.writeText(value)
         .then(() => { showHint(getParentEvent()); })
         .catch(err => console.error(`>>> [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
 }
@@ -856,8 +891,9 @@ async function loadModels(e) {
         return false;
     }
 
-    let urlVal = aiUrl.options[aiUrl.selectedIndex].value.trim();
-    if (urlVal === '') { return; }
+    const idx = aiUrl.selectedIndex >= 0 ? aiUrl.selectedIndex : 0;
+    let urlVal = aiUrl.options[idx]?.value?.trim() || '';
+    if (!urlVal) { return; }
     if (!urlVal.startsWith('http')) {
         showMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
         hideSpinner();

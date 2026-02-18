@@ -306,25 +306,29 @@ function getARIAContext(element, rootElement) {
 
   for (const attr of relevantAttrs) {
     const name = attr.name;
-    if (!name) {  continue;  }
+    if (!name) { continue; }
     const value = attr.value.trim();
-    if (!value) {  continue;  }
+    if (!value) { continue; }
 
-    switch (name) {
-      case 'aria-label':
-      case 'aria-description':
-        parts.push(`${name}: ${value}`);
-        break;
+    try {
+      switch (name) {
+        case 'aria-label':
+        case 'aria-description':
+          parts.push(`${name}: ${value}`);
+          break;
 
-      case 'aria-labelledby':
-      case 'aria-describedby':
-        if (!rootElement) {  continue;   }
-        const refElement = rootElement.getElementById(value);
-        const refText = refElement?.textContent.trim();
-        if (refText) {
-          parts.push(`${name}: ${refText}`);
-        }
-        break;
+        case 'aria-labelledby':
+        case 'aria-describedby':
+          if (!rootElement) { continue; }
+          const refElement = rootElement.querySelector(`#${CSS.escape(value)}`);
+          const refText = refElement?.textContent.trim();
+          if (refText) {
+            parts.push(`${name}: ${refText}`);
+          }
+          break;
+      }
+    } catch (err) {
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, { element, rootElement, err });
     }
   }
 
