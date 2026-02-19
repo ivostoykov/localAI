@@ -26,7 +26,8 @@ var userPredefinedCmd = [
   { "commandName": "tools", "commandDescription": "Switch tools on (temporary)" },
   { "commandName": "notools", "commandDescription": "Switch tools off (temporary)" },
   { "commandName": "debug", "commandDescription": "Enable debug logging (temporary)" },
-  { "commandName": "nodebug", "commandDescription": "Disable debug logging (temporary)" }
+  { "commandName": "nodebug", "commandDescription": "Disable debug logging (temporary)" },
+  { "commandName": "pin", "commandDescription": "Toggle panel pin" }
 ];
 
 function getRootElement() { return document.documentElement.querySelector('localAI') || document.getElementById('localAI'); }
@@ -251,15 +252,17 @@ async function getDocumentContentFiltered() {
 
 function removeAllExtensionInjectedElements(domClone) {
   try {
-    const extensionUrlElements = domClone.querySelectorAll('[src^="chrome-extension://"], [href^="chrome-extension://"], [src^="moz-extension://"], [href^="moz-extension://"]');
-    extensionUrlElements.forEach(el => el.remove());
-
-    const customElements = Array.from(domClone.querySelectorAll('*'))
-      .filter(el => el.tagName.includes('-'));
-    customElements.forEach(el => el.remove());
-
-    const localAiElements = domClone.querySelectorAll('local-ai');
-    localAiElements.forEach(el => el.remove());
+    Array.from(domClone.querySelectorAll('*')).forEach(el => {
+      if (
+        el.tagName.includes('-') ||
+        Array.from(el.attributes).some(attr =>
+          attr.value.includes('chrome-extension://') ||
+          attr.value.includes('moz-extension://')
+        )
+      ) {
+        el.remove();
+      }
+    });
   } catch (err) {
     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, err);
   }

@@ -1504,6 +1504,11 @@ async function checkCommandHandler(userInput) {
                 shadowRoot?.querySelector('#toolFunctions')?.classList.add('disabled');
                 res = true;
                 break;
+            case 'pin':
+                shadowRoot?.querySelector('#laiPinned img:not(.invisible)')?.click();
+                continueLoop = false;
+                res = true;
+                break;
             default:
                 const idx = aiUserCommands.findIndex(el => el.commandName.toLowerCase() === cmd);
                 if (idx > -1) {
