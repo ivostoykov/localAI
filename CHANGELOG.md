@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.28.68] - 2026-02-18 - latest
+## [1.28.70] - 2026-02-18 - latest
 
 - Added command hint box above the input area, triggered by `/` (slash commands) or `@` (context placeholders)
 - Hint box filters the matching list as the user types and hides on non-matching input

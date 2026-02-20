@@ -551,6 +551,7 @@ async function onPromptTextAreaKeyDown(e) {
     if (onSuggestionBoxKeyDown(e)) { return; }
 
     if (e.key === 'Enter' && e.code !== 'NumpadEnter' && !e.shiftKey) {
+        laiHideSuggestions();
 
         if (isAskingForHelp(e) || await checkCommandHandler(elTarget)) {
             e.preventDefault();
@@ -1521,6 +1522,7 @@ async function checkCommandHandler(userInput) {
         if (res) {
             userInput.value = userInput?.value?.replace(matches[i][0], '');
             if (userInput.value === '\n') { userInput.value = ''; }
+            laiHideSuggestions();
         }
         if (!continueLoop) { break; }
     }
