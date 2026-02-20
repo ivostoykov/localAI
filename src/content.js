@@ -272,8 +272,7 @@ async function removeElementsBySelectors() {
   const filterConfig = await loadFilteringConfig();
   const selectors = filterConfig?.selectors ?? null;
   const domClone = document.body.cloneNode(true);
-  if(!filterConfig?.enabled || !selectors){ return domClone;  }
-
+  if(!domClone || !filterConfig?.enabled || !selectors){ return domClone;  }
 
   try {
     Array.from(domClone.attributes).forEach(attr => {
@@ -281,11 +280,11 @@ async function removeElementsBySelectors() {
     });
 
     domClone
-      .querySelectorAll(selectors.join(','))
-      .forEach(e => e.remove());
+      ?.querySelectorAll(selectors.join(','))
+      ?.forEach(e => e.remove());
 
   } catch (err) {
-    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, err);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, {err, filterConfig, selectors, domClone});
   }
   console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - after cleaning`, domClone);
   return domClone;

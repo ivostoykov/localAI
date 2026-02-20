@@ -275,6 +275,12 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             }
 
             const li = document.createElement('li');
+            if (isOrdered) {
+                const num = parseInt(marker.replace('.', ''), 10);
+                if (!isNaN(num) && parent.el.children.length === 0) {
+                    parent.el.setAttribute('start', num);
+                }
+            }
             li.appendChild(renderInline(text));
             parent.el.appendChild(li);
         });
@@ -404,6 +410,10 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         const span = document.createElement('span');
         span.innerHTML = content
             .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/<(https?:\/\/[^>]+?)>/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+            .replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+            .replace(/\[(https?:\/\/[^\]]+?)\]/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+            .replace(/(?<!\])\b(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/__(.*?)__/g, '<strong>$1</strong>')
             .replace(/\s\*(.*?)\*\s/g, '<em>$1</em>')
