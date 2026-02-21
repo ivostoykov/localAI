@@ -628,7 +628,7 @@ async function fetchDataAction(request, sender) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - userInput:`, userInput);
 
     let activeSession = await getActiveSession();
-    const turnNumber = (activeSession?.turnNumber || 0) + 1;
+    const turnNumber = Math.floor((activeSession?.messages?.length || 0) / 2) + 1;
     let attachments = [...(activeSession?.attachments || [])];
     const { pageContent, pageHash } = await processCommandArguments(userInput, attachments);
     const cleanedUserInput = replaceCommandPlaceholders(userInput);
@@ -670,7 +670,6 @@ async function fetchDataAction(request, sender) {
     }
 
     request.data.messages = optimisedMessages;
-    activeSession.turnNumber = turnNumber;
     activeSession.messages = structuredClone(request.data.messages);
     await setActiveSession(activeSession);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - updated request`, request.data);
@@ -739,7 +738,7 @@ async function fetchDataAction(request, sender) {
         await checkResponseTextAndBody({sender, responseText, body});
 
         activeSession.messages.push(responseMessage);
-        activeSession.attachments = [];
+        delete activeSession.attachments;
         await setActiveSession(activeSession);
 
         const assistantResponse = responseMessage?.content || '';

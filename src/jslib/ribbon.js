@@ -595,8 +595,6 @@ async function restoreHistorySessionClicked(e = null, sessionIdx = null) {
     sessionIdx = sessionIdx ?? await getActiveSessionId();
     if(!sessionIdx){  return;  }
 
-    const shadowRoot = getShadowRoot();
-    shadowRoot?.click();
     const session = await getActiveSessionById(sessionIdx);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Retrieved session:`, session);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - session.messages length:`, session?.messages?.length);
@@ -623,6 +621,7 @@ async function restoreHistorySessionClicked(e = null, sessionIdx = null) {
         await parseAndRender(msg.content, aiReplyTextElement, { streamReply: false });
     }
 
+    const shadowRoot = getShadowRoot();
     const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
 
