@@ -1,7 +1,7 @@
 async function getMyTabId() {
     return new Promise((resolve) => {
         chrome.runtime.sendMessage({ action: 'getTabId' }, (response) => {
-            resolve(response.tabId);
+            resolve(response?.tabId);
         });
     });
 }

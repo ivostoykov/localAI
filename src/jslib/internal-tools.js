@@ -29,11 +29,11 @@ function relativeDate(str) {
     return new Date(Date.now() + multiplier * n * units[key]);
 }
 
-async function getAllSessionPages() {
+async function getAllSessionPages(tabId) {
     const sessionId = await getActiveSessionId();
     if (!sessionId) { return "No active session yet."; }
 
-    const data = await getActiveSessionPageData();
+    const data = await getActiveSessionPageData(tabId);
     if (data?.pageContent && data?.pageHash) {
         const currentPage = {
             url: data.url || location.href,
@@ -51,11 +51,11 @@ async function getAllSessionPages() {
         : "No pages stored in this session yet";
 }
 
-async function getLastSessionPages(count = 1) {
+async function getLastSessionPages(count = 1, tabId) {
     const sessionId = await getActiveSessionId();
     if (!sessionId) { return "No active session yet."; }
 
-    const data = await getActiveSessionPageData();
+    const data = await getActiveSessionPageData(tabId);
     if (data?.pageContent && data?.pageHash) {
         const currentPage = {
             url: data.url || location.href,
@@ -121,20 +121,20 @@ async function getConversationTurn(turnNumber) {
 }
 
 async function listRecentSessions(limit = 10) {
-    const allSessions = await backgroundMemory.getAllFromStore('sessions');
+    const allSessions = await getAllSessions();
 
     if (allSessions.length === 0) {
         return "No sessions found.";
     }
 
     const sorted = allSessions
-        .sort((a, b) => b.lastAccessed - a.lastAccessed)
+        .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
         .slice(0, limit);
 
     return JSON.stringify(sorted.map(s => ({
-        sessionId: s.sessionId,
+        sessionId: s.id,
         title: s.title || 'Untitled',
-        lastAccessed: new Date(s.lastAccessed).toISOString(),
+        lastAccessed: new Date(s.lastAccessedAt).toISOString(),
         createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : 'Unknown'
     })), null, 2);
 }
@@ -196,10 +196,10 @@ async function execInternalTool(call = {}, tabId = null) {
             return data?.pageContent || 'No page content available';
 
         case "get_all_session_pages":
-            return await getAllSessionPages();
+            return await getAllSessionPages(tabId);
 
         case "get_last_session_pages":
-            return await getLastSessionPages(call?.function?.arguments?.count);
+            return await getLastSessionPages(call?.function?.arguments?.count, tabId);
 
         case "clear_old_page_context":
             return await clearOldPageContext();

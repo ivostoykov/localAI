@@ -533,7 +533,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
     return data;
 }
 
-async function processCommandPlaceholders(userInputValue, existingAttachments = []) {
+async function processCommandPlaceholders(userInputValue, existingAttachments = [], tabId) {
     const userCommands = [...userInputValue.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
     const newAttachments = [];
 
@@ -549,7 +549,7 @@ async function processCommandPlaceholders(userInputValue, existingAttachments = 
         let attachment;
         switch (cmdText) {
             case 'page':
-                const pageData = await getActiveSessionPageData();
+                const pageData = await getActiveSessionPageData(tabId);
                 const pageContent = pageData?.pageContent ?? "";
                 if (!pageContent) {
                     console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content for @{{page}}`, pageData);
@@ -616,10 +616,10 @@ function replaceCommandPlaceholders(userInput) {
     return cleaned;
 }
 
-async function processCommandArguments(userInput, attachments) {
+async function processCommandArguments(userInput, attachments, tabId) {
     let pageContent = null;
     let pageHash = null;
-    const commandAttachments = await processCommandPlaceholders(userInput, attachments);
+    const commandAttachments = await processCommandPlaceholders(userInput, attachments, tabId);
     if (commandAttachments.length > 0) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Processed ${commandAttachments.length} command placeholder(s)`);
         attachments.push(...commandAttachments);
@@ -663,9 +663,10 @@ async function fetchDataAction(request, sender) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - userInput:`, userInput);
 
     let activeSession = await getActiveSession();
-    const turnNumber = Math.floor((activeSession?.messages?.length || 0) / 2) + 1;
+    const userAssistantMessages = (activeSession?.messages || []).filter(m => m.role === 'user' || m.role === 'assistant');
+    const turnNumber = Math.floor(userAssistantMessages.length / 2) + 1;
     let attachments = [...(activeSession?.attachments || [])];
-    const { pageContent, pageHash } = await processCommandArguments(userInput, attachments);
+    const { pageContent, pageHash } = await processCommandArguments(userInput, attachments, sender?.tab?.id);
     const cleanedUserInput = replaceCommandPlaceholders(userInput);
     const systemInstructions = request.systemInstructions || laiOptions?.systemInstructions || '';
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to call buildOptimisedContext, backgroundMemory is:`, typeof backgroundMemory);
@@ -781,8 +782,9 @@ async function fetchDataAction(request, sender) {
 
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to store turn: sessionId=${activeSession.id}, turn=${turnNumber}, userInputLength=${userInput?.length}, responseLength=${assistantResponse?.length}`);
         try {
-            await backgroundMemory.storeTurn(
+            await backgroundMemory.storeTurnWithEmbeddings(
                 activeSession.id,
+                sender?.tab?.id,
                 turnNumber,
                 userInput,
                 assistantResponse

@@ -250,6 +250,11 @@ class BackgroundMemory {
       await this.delete(STORES.CONVERSATIONS, turn.id);
     }
 
+    const embeddings = await this.query(STORES.EMBEDDINGS, 'sessionId', sessionId);
+    for (const embedding of embeddings) {
+      await this.delete(STORES.EMBEDDINGS, embedding.id);
+    }
+
     await this.delete(STORES.CONTEXT, sessionId);
     await this.delete(STORES.SESSIONS, sessionId);
   }
@@ -370,9 +375,14 @@ class BackgroundMemory {
       await this.init();
 
       const existing = await this.query(STORES.EMBEDDINGS, 'contentHash', embeddingData.contentHash);
-      if (existing && existing.length > 0) {
-        console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Content already embedded, skipping:`, embeddingData.contentHash);
-        return existing[0].id;
+      const duplicate = existing.find(e =>
+        e.sessionId === embeddingData.sessionId &&
+        e.tabId === embeddingData.tabId
+      );
+
+      if (duplicate) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Content already embedded for this session/tab, skipping:`, embeddingData.contentHash);
+        return duplicate.id;
       }
 
       return await this.put(STORES.EMBEDDINGS, embeddingData);
