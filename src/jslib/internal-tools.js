@@ -12,6 +12,11 @@ function relativeDate(str) {
     const units = {s:1e3,m:6e4,h:36e5,d:864e5,w:6048e5,mo:2592e6,y:31536e6};
     const matches = str.trim().match(/\d+|[a-z]+/gi);
     if (!matches || matches.length < 2) {
+        console.error(`>>> ${manifest?.name ?? ''} - [internal-tools.js:relativeDate] - Invalid time offset format:`, {
+            input: str,
+            matches,
+            expectedFormat: 'Examples: "3d ago", "2w from now", "1mo ago"'
+        });
         throw new Error("Invalid time offset format");
     }
     const [n, u] = matches;
@@ -19,6 +24,12 @@ function relativeDate(str) {
                 u.toLowerCase().startsWith('y') ? 'y' : u[0].toLowerCase();
 
     if (!units[key]) {
+        console.error(`>>> ${manifest?.name ?? ''} - [internal-tools.js:relativeDate] - Unknown time unit:`, {
+            input: str,
+            parsedUnit: u,
+            parsedKey: key,
+            validUnits: Object.keys(units)
+        });
         throw new Error(`Unknown time unit: ${u}`);
     }
 

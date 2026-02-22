@@ -500,6 +500,13 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
                 }
                 break;
             default:
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid tool type:`, {
+                    toolCallFunctionType: toolCall?.function?.type,
+                    toolCallFunctionName: toolCall?.function?.name,
+                    funcType,
+                    toolCall,
+                    availableTypes: ['tool', 'function']
+                });
                 throw new Error(`Invalid tool type: ${toolCall.function.type} found in this tool's object: ${JSON.stringify(toolCall || "{}")}`);
         }
 
@@ -869,7 +876,16 @@ async function checkResponseTextAndBody(params){
 }
 
 async function fetchExtResponse(url, options, resentWithoutTools = true, tab) {
-    if (!url || !options.method) { throw new Error('Either URL or request options are empty or missing!'); }
+    if (!url || !options.method) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid fetchExtResponse parameters:`, {
+            url,
+            optionsMethod: options?.method,
+            options,
+            resentWithoutTools,
+            tabId: tab?.id
+        });
+        throw new Error('Either URL or request options are empty or missing!');
+    }
     let requestBody;
     try {
         const response = await fetch(url, options);
