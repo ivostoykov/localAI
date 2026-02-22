@@ -285,6 +285,8 @@ describe('sessions.js', () => {
                 openPanelOnLoad: false,
                 aiUrl: '',
                 aiModel: '',
+                embedUrl: '',
+                embeddingModel: '',
                 closeOnClickOut: true,
                 closeOnCopy: false,
                 closeOnSendTo: true,

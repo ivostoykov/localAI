@@ -92,7 +92,7 @@ async function loadSettings(e) {
         }
 
         console.log(`[${getLineNumber()}]: Stored form data`, formData);
-        const dataLists = ['modelList', 'urlList', 'toolFuncList', 'generativeHelperList'];
+        const dataLists = ['modelList', 'urlList', 'toolFuncList', 'embeddingModelList', 'embedUrlList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             console.log(`[${getLineNumber()}]: Stored form data`, { i, list, dataLists: dataLists[i] });
@@ -150,7 +150,7 @@ async function saveSettings(e) {
             optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
         }
 
-        const dataLists = ['modelList', 'urlList', 'generativeHelperList'];
+        const dataLists = ['modelList', 'urlList', 'embeddingModelList', 'embedUrlList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             const el = document.querySelector(`select[data-list="${list}"]`);
@@ -301,7 +301,7 @@ async function getAiUserCommands() {
 
 async function attachDataListListeners(e) {
 
-    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons', 'generativeHelperButtons'];
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons', 'embeddingModelButtons', 'embedUrlButtons'];
     for (let x = 0; x < containers.length; x++) {
         const container = document.querySelector(`#${containers[x]}`);
         if (!container) { continue; }
@@ -919,7 +919,7 @@ async function loadModels(e) {
         if (models.models && Array.isArray(models.models)) {
             models.models.sort((a, b) => a.name.localeCompare(b.name));
             await fillModelList(models.models, '#aiModel');
-            await fillModelList(models.models, '#generativeHelper');
+            await fillModelList(models.models, '#embeddingModel');
         }
     } catch (e) {
         console.error(`>>> [${getLineNumber()}] - ${e.message}`, e);

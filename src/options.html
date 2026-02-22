@@ -1,12 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title></title>
   <link rel="stylesheet" href="css/options.css" />
   <link rel="stylesheet" href="css/options_dlg.css" />
 </head>
+
 <body>
   <h1 id="pageTitle">Extension Options</h1>
   <div class="options-layout">
@@ -24,16 +26,16 @@
     <main class="content-area">
       <form id="laiOptionsForm" class="container">
 
-      <div id="generalRibbon" class="ribbon">
-        <button type="submit" id="btnSaveForm">Save</button>
-        <button type="button" id="cancelButton">Close</button>
-        <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#general-settings" target="_blank">
-          <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-        </a>
-      </div>
+        <div id="generalRibbon" class="ribbon">
+          <button type="submit" id="btnSaveForm">Save</button>
+          <button type="button" id="cancelButton">Close</button>
+          <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#general-settings" target="_blank">
+            <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+          </a>
+        </div>
 
 
-      <!-- Panels -->
+        <!-- Panels -->
         <section id="general" class="content-section">
           <div class="container">
             <div class="group checkboxes-sliders">
@@ -78,77 +80,121 @@
             <hr class="separator">
             <!--  -->
             <div class="group selects-inputs">
-              <div class="el-holder">
-                <label for="aiModel">Model:</label>
-                <select id="aiModel" data-list="modelList">
-                  <option value="" selected="selected">Select Model</option>
-                </select>
-                <div id="modelButtons">
-                  <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                  <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                  <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
-                    title="Reload models">
-                  <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+              <!-- Left Column: Chat Configuration -->
+              <div>
+                <div class="el-holder">
+                  <label for="aiUrl">Endpoint:</label>
+                  <select id="aiUrl" data-list="urlList">
+                    <option value="" selected="selected">Select End Point</option>
+                  </select>
+                  <div id="urlButtons">
+                    <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection"
+                      alt="Test connection" title="Test connection">
+                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
+                      title="Edit selected">
+                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list"
+                      title="Add to list">
+                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
+                      title="Remove from list">
+                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
+                      title="Remove the list">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc"
+                      title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                      title="Soft List Desc">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                    <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#end-points"
+                      target="_blank">
+                      <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+                    </a>
+                  </div>
+                </div>
+
+                <div class="el-holder">
+                  <label for="aiModel">Model:</label>
+                  <select id="aiModel" data-list="modelList">
+                    <option value="" selected="selected">Select Model</option>
+                  </select>
+                  <div id="modelButtons">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc"
+                      title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                      title="Soft List Desc">
+                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
+                      title="Reload models">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                  </div>
+                </div>
+
+                <div class="el-holder">
+                  <label for="toolFunc">Tools:</label>
+                  <input type="url" id="toolFunc" />
+                  <div id="toolButtons">
+                    <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection"
+                      alt="Test connection" title="Test connection">
+                  </div>
                 </div>
               </div>
-        
-              <div class="el-holder">
-                <label for="generativeHelper">Generative Helper:</label>
-                <select id="generativeHelper" data-list="generativeHelperList">
-                  <option value="" selected="selected"></option>
-                </select>
-                <div id="generativeHelperButtons">
-                  <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                  <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                  <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
-                    title="Reload models">
-                  <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                  <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#generative-model" target="_blank">
-                    <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-                  </a>
+
+              <!-- Right Column: Embedding & Document Configuration -->
+              <div>
+                <div class="el-holder">
+                  <label for="embedUrl">Embedding Endpoint:</label>
+                  <select id="embedUrl" data-list="embedUrlList">
+                    <option value="" selected="selected">Select Embedding End Point</option>
+                  </select>
+                  <div id="embedUrlButtons">
+                    <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection"
+                      alt="Test connection" title="Test connection">
+                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
+                      title="Edit selected">
+                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list"
+                      title="Add to list">
+                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
+                      title="Remove from list">
+                    <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
+                      title="Remove the list">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc"
+                      title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                      title="Soft List Desc">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                    <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#embedding-endpoints"
+                      target="_blank">
+                      <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+                    </a>
+                  </div>
                 </div>
-              </div>
-        
-              <div class="el-holder">
-                <label for="tika">Document Converter:</label>
-                <input type="url" id="tika" />
-                <div id="tikaButtons">
-                  <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                    title="Test connection">
+
+                <div class="el-holder">
+                  <label for="embeddingModel">Embedding Model:</label>
+                  <select id="embeddingModel" data-list="embeddingModelList">
+                    <option value="" selected="selected"></option>
+                  </select>
+                  <div id="embeddingModelButtons">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc"
+                      title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                      title="Soft List Desc">
+                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
+                      title="Reload models">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                    <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#embedding-model"
+                      target="_blank">
+                      <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
+                    </a>
+                  </div>
                 </div>
-                <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#document-converter" target="_blank">
-                  <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
-                </a>
-              </div>
-        
-              <div class="el-holder">
-                <label for="toolFunc">Tools/Functions:</label>
-                <input type="url" id="toolFunc" />
-                <div id="toolButtons">
-                  <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                    title="Test connection">
-                </div>
-              </div>
-        
-              <div class="el-holder">
-                <label for="aiUrl">Endpoint:</label>
-                <select id="aiUrl" data-list="urlList">
-                  <option value="" selected="selected">Select End Point</option>
-                </select>
-                <div id="urlButtons">
-                  <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection" alt="Test connection"
-                    title="Test connection">
-                  <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected"
-                    title="Edit selected">
-                  <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add to list" title="Add to list">
-                  <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove from list"
-                    title="Remove from list">
-                  <img src="img/remove-all.svg" class="model-icon-button" data-action="removeAll" alt="Remove all"
-                    title="Remove the list">
-                  <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc" title="Soft list Asc">
-                  <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc" title="Soft List Desc">
-                  <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
-                  <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#end-points" target="_blank">
+
+                <div class="el-holder">
+                  <label for="tika">Document Converter:</label>
+                  <input type="url" id="tika" />
+                  <div id="tikaButtons">
+                    <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection"
+                      alt="Test connection" title="Test connection">
+                  </div>
+                  <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#document-converter"
+                    target="_blank">
                     <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
                   </a>
                 </div>
@@ -189,7 +235,8 @@
                 <textarea id="defaultSelectors" rows="6"
                   placeholder="script,style,code,nav,header,footer,aside,iframe,[role='navigation'],[role='banner'],[role='contentinfo'],.advertisement,.ad,.cookie-notice,.social-share,.comments,.related-posts"></textarea>
 
-                <p class="help-text">CSS selectors to remove from all pages. Examples: nav, .advertisement, [role="banner"]
+                <p class="help-text">CSS selectors to remove from all pages. Examples: nav, .advertisement,
+                  [role="banner"]
                 </p>
               </div>
             </div>
@@ -201,7 +248,8 @@
                 <label for="siteSpecificSelectors">Site-specific selectors to remove (one per line):</label>
                 <textarea id="siteSpecificSelectors" rows="10"
                   placeholder="linkedin.com:[class*='premium'],[class*='upsell'],[class*='promoted'],.msg-overlay-bubble-header&#10;twitter.com:.trends,.recommendations,[data-testid='sidebarColumn']&#10;github.com:.footer,.signup-prompt&#10;stackoverflow.com:.s-topbar,.s-sidebarwidget"></textarea>
-                <p class="help-text">Format: <i>"domain.name:selector1,selector2,[class*='add']"</i> (one domain per line)
+                <p class="help-text">Format: <i>"domain.name:selector1,selector2,[class*='add']"</i> (one domain per
+                  line)
                 </p>
               </div>
             </div>
@@ -274,35 +322,36 @@
   <input type="file" id="fileInput" class="invisible" />
 
   <template id="promptTemplate">
-      <div class="prompt-item">
-          <div class="prompt-buttons">
-              <img src="img/undo.svg" data-action="undo" class="invisible">
-              <img src="img/copy.svg" data-action="copy">
-              <img src="img/edit2.svg" data-action="edit">
-              <img src="img/tick.svg" data-action="save" class="invisible">
-              <img src="img/remove-all.svg" data-action="delete">
-          </div>
-          <div class="prompt-title js-ptompt-card-item" contenteditable="false">Editable Title</div>
-          <div class="prompt-command js-ptompt-card-item" contenteditable="false">Non-editable Command</div>
-          <div class="prompt-description js-ptompt-card-item" contenteditable="false">Editable Title</div>
-          <div class="prompt-body js-ptompt-card-item" contenteditable="false">Editable Body</div>
+    <div class="prompt-item">
+      <div class="prompt-buttons">
+        <img src="img/undo.svg" data-action="undo" class="invisible">
+        <img src="img/copy.svg" data-action="copy">
+        <img src="img/edit2.svg" data-action="edit">
+        <img src="img/tick.svg" data-action="save" class="invisible">
+        <img src="img/remove-all.svg" data-action="delete">
       </div>
+      <div class="prompt-title js-ptompt-card-item" contenteditable="false">Editable Title</div>
+      <div class="prompt-command js-ptompt-card-item" contenteditable="false">Non-editable Command</div>
+      <div class="prompt-description js-ptompt-card-item" contenteditable="false">Editable Title</div>
+      <div class="prompt-body js-ptompt-card-item" contenteditable="false">Editable Body</div>
+    </div>
   </template>
 
   <template id="functionTemplate">
-      <div class="prompt-item">
-          <div class="prompt-buttons">
-              <img src="img/undo.svg" data-action="undo" class="invisible">
-              <img src="img/copy.svg" data-action="copy">
-              <img src="img/edit2.svg" data-action="edit">
-              <img src="img/tick.svg" data-action="save" class="invisible">
-              <img src="img/remove-all.svg" data-action="delete">
-          </div>
-          <pre class="prompt-body js-ptompt-card-item" contenteditable="false">{}</pre>
+    <div class="prompt-item">
+      <div class="prompt-buttons">
+        <img src="img/undo.svg" data-action="undo" class="invisible">
+        <img src="img/copy.svg" data-action="copy">
+        <img src="img/edit2.svg" data-action="edit">
+        <img src="img/tick.svg" data-action="save" class="invisible">
+        <img src="img/remove-all.svg" data-action="delete">
       </div>
+      <pre class="prompt-body js-ptompt-card-item" contenteditable="false">{}</pre>
+    </div>
   </template>
 
   <!-- <script src="jslib/log.js"></script> -->
   <script src="options.js"></script>
 </body>
+
 </html>

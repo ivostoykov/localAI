@@ -140,14 +140,11 @@ async function getAiModel() {
     return laiOptions?.aiModel;
 }
 
-async function modelCanThink(modelName = '', url = '') {
+async function modelCanThink(modelName = '') {
     if (!modelName) { return false; }
 
-    url = new URL(url);
-    url = `${url.protocol}//${url.host}/api/show`;
-
     try {
-        const response = await chrome.runtime.sendMessage({ action: 'modelCanThink', model: modelName, url });
+        const response = await chrome.runtime.sendMessage({ action: 'modelCanThink', model: modelName });
         if (response?.error) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response error`, response?.error);
             return false;

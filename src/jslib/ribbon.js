@@ -123,8 +123,7 @@ async function initRibbon() {
     ribbon?.querySelector('#modelThinking')?.addEventListener('click', async e => {
         const el = e.target;
         const model = await getAiModel();
-        const url = await getAiUrl()
-        const canThink = await modelCanThink(model, url);
+        const canThink = await modelCanThink(model);
         if(!canThink){
             showMessage(`The model ${model} does not support thinking mode.`);
             return;
@@ -297,6 +296,7 @@ async function modelChanged(e) {
     }
     laiOptions.aiModel = newModelName;
     await setOptions(laiOptions);
+    await chrome.runtime.sendMessage({ action: "getModelInfo", modelName: newModelName, forceRefresh: true });
     setModelNameLabel({ "model": laiOptions.aiModel });
 }
 
@@ -534,6 +534,7 @@ async function swapActiveModel(e, modelName) {
 
         laiOptions.aiModel = modelName;
         await setOptions(laiOptions);
+        await chrome.runtime.sendMessage({ action: "getModelInfo", modelName: modelName, forceRefresh: true });
         await adjustThinkingStatus();
         await adjustToolsStatus();
 
@@ -595,8 +596,6 @@ async function restoreHistorySessionClicked(e = null, sessionIdx = null) {
     sessionIdx = sessionIdx ?? await getActiveSessionId();
     if(!sessionIdx){  return;  }
 
-    const shadowRoot = getShadowRoot();
-    shadowRoot?.click();
     const session = await getActiveSessionById(sessionIdx);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Retrieved session:`, session);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - session.messages length:`, session?.messages?.length);
@@ -623,6 +622,7 @@ async function restoreHistorySessionClicked(e = null, sessionIdx = null) {
         await parseAndRender(msg.content, aiReplyTextElement, { streamReply: false });
     }
 
+    const shadowRoot = getShadowRoot();
     const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
 
@@ -706,8 +706,7 @@ async function adjustThinkingStatus(thinkingIconEl) {
         if (!thinkingIconEl) { return; }
     }
     const model = await getAiModel();
-    const url = await getAiUrl()
-    if (await modelCanThink(model, url)) {
+    if (await modelCanThink(model)) {
         thinkingIconEl.classList.remove('disabled');
     } else {
         thinkingIconEl.classList.add('disabled');

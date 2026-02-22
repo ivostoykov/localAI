@@ -83,6 +83,28 @@ chrome.action.onClicked.addListener(async (tab) => {
 
 chrome.runtime.onUpdateAvailable.addListener(tryReloadExtension);
 
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+    await removeActiveSessionPageData(tabId);
+
+    const allTabs = await chrome.tabs.query({});
+    const openTabIds = new Set(allTabs.map(tab => tab.id));
+
+    const allKeys = await chrome.storage.local.get(null);
+    const pageDataKeys = Object.keys(allKeys).filter(key =>
+        key.startsWith(`${activePageStorageKey}:`)
+    );
+
+    const orphanedKeys = pageDataKeys.filter(key => {
+        const keyTabId = parseInt(key.split(':')[1], 10);
+        return !openTabIds.has(keyTabId);
+    });
+
+    if (orphanedKeys.length > 0) {
+        await chrome.storage.local.remove(orphanedKeys);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cleaned up ${orphanedKeys.length} orphaned page data keys`);
+    }
+});
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
         try {
@@ -94,6 +116,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             }
 
             switch (request.action) {
+                case 'getTabId':
+                    response = { tabId: sender.tab?.id };
+                    sendResponse(response);
+                    break;
+
                 case 'getModels':
                     response = await getModels();
                     sendResponse(response);
@@ -136,7 +163,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     break;
 
                 case "modelCanThink":
-                    response = await modelCanThink(request?.model, request?.url);
+                    response = await modelCanThink(request?.model);
                     sendResponse({ canThink: response });
                     break;
 
@@ -147,6 +174,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 case "modelInfo":
                     response = await getModelInfo(request?.model);
+                    sendResponse(response);
+                    break;
+
+                case "getModelInfo":
+                    response = await getModelInfo(request?.modelName, request?.forceRefresh);
                     sendResponse(response);
                     break;
 
@@ -244,6 +276,9 @@ async function init() {
         if (typeof sessionRepository !== 'undefined') {
             sessionRepository.setIndexedDB(backgroundMemory);
         }
+
+        await cleanupOrphanedSessions();
+        await validateModelInfoCache();
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - Failed to initialise memory system:`, e);
     }
@@ -448,7 +483,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
     try {
         switch (funcType?.toLowerCase()) {
             case 'tool':
-                data = await execInternalTool(toolCall);
+                data = await execInternalTool(toolCall, tab?.id);
                 break;
             case 'function':
                 res = await fetchExtResponse(funcUrl, {
@@ -498,7 +533,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
     return data;
 }
 
-async function processCommandPlaceholders(userInputValue, existingAttachments = []) {
+async function processCommandPlaceholders(userInputValue, existingAttachments = [], tabId) {
     const userCommands = [...userInputValue.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
     const newAttachments = [];
 
@@ -514,7 +549,7 @@ async function processCommandPlaceholders(userInputValue, existingAttachments = 
         let attachment;
         switch (cmdText) {
             case 'page':
-                const pageData = await getActiveSessionPageData();
+                const pageData = await getActiveSessionPageData(tabId);
                 const pageContent = pageData?.pageContent ?? "";
                 if (!pageContent) {
                     console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content for @{{page}}`, pageData);
@@ -581,10 +616,10 @@ function replaceCommandPlaceholders(userInput) {
     return cleaned;
 }
 
-async function processCommandArguments(userInput, attachments) {
+async function processCommandArguments(userInput, attachments, tabId) {
     let pageContent = null;
     let pageHash = null;
-    const commandAttachments = await processCommandPlaceholders(userInput, attachments);
+    const commandAttachments = await processCommandPlaceholders(userInput, attachments, tabId);
     if (commandAttachments.length > 0) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Processed ${commandAttachments.length} command placeholder(s)`);
         attachments.push(...commandAttachments);
@@ -628,9 +663,10 @@ async function fetchDataAction(request, sender) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - userInput:`, userInput);
 
     let activeSession = await getActiveSession();
-    const turnNumber = (activeSession?.turnNumber || 0) + 1;
+    const userAssistantMessages = (activeSession?.messages || []).filter(m => m.role === 'user' || m.role === 'assistant');
+    const turnNumber = Math.floor(userAssistantMessages.length / 2) + 1;
     let attachments = [...(activeSession?.attachments || [])];
-    const { pageContent, pageHash } = await processCommandArguments(userInput, attachments);
+    const { pageContent, pageHash } = await processCommandArguments(userInput, attachments, sender?.tab?.id);
     const cleanedUserInput = replaceCommandPlaceholders(userInput);
     const systemInstructions = request.systemInstructions || laiOptions?.systemInstructions || '';
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to call buildOptimisedContext, backgroundMemory is:`, typeof backgroundMemory);
@@ -643,7 +679,8 @@ async function fetchDataAction(request, sender) {
         pageContent,
         attachments,
         pageHash,
-        toolsEnabled
+        toolsEnabled,
+        tabId
     );
 
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Turn ${turnNumber}: Built context with ${optimisedMessages.length} messages`);
@@ -670,7 +707,6 @@ async function fetchDataAction(request, sender) {
     }
 
     request.data.messages = optimisedMessages;
-    activeSession.turnNumber = turnNumber;
     activeSession.messages = structuredClone(request.data.messages);
     await setActiveSession(activeSession);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - updated request`, request.data);
@@ -724,6 +760,18 @@ async function fetchDataAction(request, sender) {
                 request.data.messages.push(newMessages);
                 activeSession.messages.push(newMessages);
                 sessionUpdatedWithTools = true;
+
+                try {
+                    await backgroundMemory.storeToolCallEmbedding(
+                        activeSession.id,
+                        sender?.tab?.id,
+                        turnNumber,
+                        toolNamesUsed,
+                        toolData
+                    );
+                } catch (embeddingError) {
+                    console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store tool call embedding:`, embeddingError);
+                }
             }
 
             if (sessionUpdatedWithTools) {
@@ -739,15 +787,16 @@ async function fetchDataAction(request, sender) {
         await checkResponseTextAndBody({sender, responseText, body});
 
         activeSession.messages.push(responseMessage);
-        activeSession.attachments = [];
+        delete activeSession.attachments;
         await setActiveSession(activeSession);
 
         const assistantResponse = responseMessage?.content || '';
 
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to store turn: sessionId=${activeSession.id}, turn=${turnNumber}, userInputLength=${userInput?.length}, responseLength=${assistantResponse?.length}`);
         try {
-            await backgroundMemory.storeTurn(
+            await backgroundMemory.storeTurnWithEmbeddings(
                 activeSession.id,
+                sender?.tab?.id,
                 turnNumber,
                 userInput,
                 assistantResponse
@@ -891,6 +940,8 @@ async function getLaiOptions() {
         "openPanelOnLoad": false,
         "aiUrl": "",
         "aiModel": "",
+        "embedUrl": "",
+        "embeddingModel": "",
         "closeOnClickOut": true,
         "closeOnCopy": false,
         "closeOnSendTo": true,
@@ -1052,8 +1103,16 @@ async function prepareModels(modelName, remove = false, tab) {
 
 /////////// other helpers ///////////
 
-async function getModelInfo(modelName) {
+async function getModelInfo(modelName, forceRefresh = false) {
     if (!modelName) { modelName = await getAiModel(); }
+
+    if (!forceRefresh) {
+        const cached = await chrome.storage.local.get(['activeModel']);
+        if (cached?.activeModel?.modelName === modelName) {
+            return cached.activeModel;
+        }
+    }
+
     let url = await getAiUrl();
     url = new URL(url);
     url = `${url.protocol}//${url.host}/api/show`;
@@ -1066,7 +1125,14 @@ async function getModelInfo(modelName) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        return await res.json();
+        const fullData = await res.json();
+
+        const { license, modelfile, template, tensors, ...cleanData } = fullData;
+        cleanData.modelName = modelName;
+
+        await chrome.storage.local.set({ activeModel: cleanData });
+
+        return cleanData;
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, res);
         return { model: modelName, error: err.message };
@@ -1127,11 +1193,6 @@ async function getAiModel() {
     return laiOptions?.aiModel;
 }
 
-async function getGenerativeModel() {
-    const laiOptions = await getOptions();
-    return laiOptions?.generativeHelper || laiOptions?.aiModel;
-}
-
 async function generateAndUpdateSessionTitle(text, tab) {
     const titleSeed = await generateSessionTitle(text, tab);
     if (!titleSeed) { return; }
@@ -1144,7 +1205,7 @@ async function generateAndUpdateSessionTitle(text, tab) {
 async function generateSessionTitle(text, tab) {
     if (!text || text === '') { return null; }
     let url = await getAiUrl();
-    let model = await getGenerativeModel();
+    let model = await getAiModel();
     if (!model) { return; }
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`);
     await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`, null, 'debug', tab?.id);
@@ -1169,7 +1230,7 @@ Text_to_describe:
 `
     };
 
-    if (await modelCanThink(model, url)) { jsonPrompt["think"] = false; }
+    if (await modelCanThink(model)) { jsonPrompt["think"] = false; }
 
     try {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - prompt`, {url, jsonPrompt});
@@ -1196,27 +1257,42 @@ Text_to_describe:
     }
 }
 
-async function modelCanThink(modelName = '', url = '') {
+async function modelCanThink(modelName = '') {
     if (!modelName) { return false; }
 
-    url = new URL(url);
-    url = `${url.protocol}//${url.host}/api/show`;
-
-    const data = { "model": modelName };
-    let modelData;
-
     try {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        modelData = await res.json();
+        const modelData = await getModelInfo(modelName);
+        if (modelData?.error) {
+            throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - ${modelData?.error ?? "Error!"}`);
+        }
         const canThink = (modelData?.capabilities || [])?.some(el => el?.toLowerCase() === 'thinking');
         return canThink;
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
+    }
+}
+
+async function validateModelInfoCache() {
+    try {
+        const laiOptions = await getOptions();
+        const currentModel = laiOptions?.aiModel;
+
+        if (!currentModel) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No active model configured`);
+            return;
+        }
+
+        const cached = await chrome.storage.local.get(['activeModel']);
+
+        if (cached?.activeModel?.modelName !== currentModel) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Model mismatch. Cached: ${cached?.activeModel?.modelName}, Current: ${currentModel}. Refreshing cache...`);
+            await getModelInfo(currentModel, true);
+        } else {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Model info cache is valid for ${currentModel}`);
+        }
+    } catch (err) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to validate model cache:`, err);
     }
 }
 

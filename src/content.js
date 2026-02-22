@@ -1,3 +1,11 @@
+async function getMyTabId() {
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'getTabId' }, (response) => {
+            resolve(response?.tabId);
+        });
+    });
+}
+
 const commandPlaceholders = {
   "@{{page}}": "Include page into the prompt",
   "@{{dump}}": "Dump LLM response into the console",
@@ -116,7 +124,8 @@ async function allDOMContentLoaded(e) {
   try {
     await removeLocalStorageObject('activeSessionIndex'); // TODO: for sync - to be removed
     await removeLocalStorageObject(activeSessionIdStorageKey);
-    await setActiveSessionPageData();
+    const tabId = await getMyTabId();
+    await setActiveSessionPageData(tabId);
     await getAiUserCommands(); //TODO: remove it as global
   } catch (err) {
     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
@@ -138,7 +147,8 @@ if ('navigation' in window) {
     window.addEventListener("pushstate", triggerUpdate);
     window.addEventListener("replacestate", triggerUpdate);
     navigation.addEventListener('navigate', async () => {
-        await setActiveSessionPageData();
+        const tabId = await getMyTabId();
+        await setActiveSessionPageData(tabId);
     });
 }
 
