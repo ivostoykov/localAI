@@ -377,11 +377,13 @@ class BackgroundMemory {
       const existing = await this.query(STORES.EMBEDDINGS, 'contentHash', embeddingData.contentHash);
       const duplicate = existing.find(e =>
         e.sessionId === embeddingData.sessionId &&
-        e.tabId === embeddingData.tabId
+        e.tabId === embeddingData.tabId &&
+        e.type === embeddingData.type &&
+        e.turnNumber === embeddingData.turnNumber
       );
 
       if (duplicate) {
-        console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Content already embedded for this session/tab, skipping:`, embeddingData.contentHash);
+        console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Content already embedded for this session/tab/type/turn, skipping:`, embeddingData.contentHash);
         return duplicate.id;
       }
 

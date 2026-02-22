@@ -760,6 +760,18 @@ async function fetchDataAction(request, sender) {
                 request.data.messages.push(newMessages);
                 activeSession.messages.push(newMessages);
                 sessionUpdatedWithTools = true;
+
+                try {
+                    await backgroundMemory.storeToolCallEmbedding(
+                        activeSession.id,
+                        sender?.tab?.id,
+                        turnNumber,
+                        toolNamesUsed,
+                        toolData
+                    );
+                } catch (embeddingError) {
+                    console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store tool call embedding:`, embeddingError);
+                }
             }
 
             if (sessionUpdatedWithTools) {

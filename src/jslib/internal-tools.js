@@ -127,14 +127,27 @@ async function listRecentSessions(limit = 10) {
         return "No sessions found.";
     }
 
-    const sorted = allSessions
-        .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
+    const validSessions = allSessions.filter(s => {
+        const timestamp = s.lastAccessedAt ?? s.createdAt;
+        return timestamp && !isNaN(new Date(timestamp).getTime());
+    });
+
+    if (validSessions.length === 0) {
+        return "No valid sessions found.";
+    }
+
+    const sorted = validSessions
+        .sort((a, b) => {
+            const timeA = a.lastAccessedAt ?? a.createdAt ?? 0;
+            const timeB = b.lastAccessedAt ?? b.createdAt ?? 0;
+            return timeB - timeA;
+        })
         .slice(0, limit);
 
     return JSON.stringify(sorted.map(s => ({
         sessionId: s.id,
         title: s.title || 'Untitled',
-        lastAccessed: new Date(s.lastAccessedAt).toISOString(),
+        lastAccessed: new Date(s.lastAccessedAt ?? s.createdAt).toISOString(),
         createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : 'Unknown'
     })), null, 2);
 }
