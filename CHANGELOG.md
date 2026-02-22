@@ -1,94 +1,24 @@
 # Local AI - Changelog
 
-## [VERSION_TBD] - 2026-02-22 - latest
+## [1.28.80] - 2026-02-22 - latest
 
-### Model Info Caching
 - **Implemented model metadata caching** to reduce redundant API calls
-- Added `getModelInfo()` with caching and `forceRefresh` parameter
-- Cache stores cleaned model info in `storage.local` under `activeModel` key
-- Strips bulky fields before storage: `license`, `modelfile`, `template`, `tensors`
-- Added `validateModelInfoCache()` called at extension startup to ensure cache matches current model
-- Cache automatically refreshes when user changes model via dropdown or model list
-- Updated `modelCanThink()` to use cached data instead of separate API calls
-- Updated `modelChanged()` and `swapActiveModel()` in ribbon.js to trigger cache refresh
-
-### Embedding Configuration
 - **Added dedicated embedding endpoint and model configuration**
-- Added `embedUrl` option for separate embedding endpoint configuration
-- Added `embeddingModel` option for dedicated embedding model selection
-- Embedding model dropdown populated from same model list as main model
-- Fallback logic: if `embedUrl` is empty, uses `aiUrl` with `/chat` replaced by `/embed`
-- Fallback logic: if `embeddingModel` is empty, uses active `aiModel`
-- Removed hardcoded `nomic-embed-text` fallback in `generateEmbedding()`
-- Updated default options in `sessions.js` and `background.js`
-- Updated test expectations in `sessions.test.js`
-
-### Options UI Reorganisation
 - **Reorganised options page into two-column grid layout**
-- Left column: Chat configuration (Endpoint, Model, Tools)
-- Right column: Embedding & Document configuration (Embedding Endpoint, Embedding Model, Document Converter)
-- Simplified "Tools/Functions" label to "Tools"
-- Removed redundant Generative Helper option (was for session title generation)
-- Replaced all `getGenerativeModel()` calls with `getAiModel()` and deleted the function
-- Main model now handles session title generation (model switching overhead eliminated)
-
-### Phase 3: Tab-Based Context Architecture
 - **Fixed cross-tab contamination**: Page content is now scoped by tab ID to prevent Tab A's content from appearing in Tab B's session
-- Tab-scoped storage keys: `activePage:${tabId}` replaces global `activePage`
-- Modified `getActiveSessionPageData()`, `setActiveSessionPageData()`, and `removeActiveSessionPageData()` to accept `tabId` parameter
-- Added `getMyTabId()` helper function in content script to retrieve tab ID from background
-- Added `getTabId` message handler in background script
-- Modified `storeContext()` and `buildOptimisedContext()` to track `tabId` in IndexedDB
-- Added `chrome.tabs.onRemoved` listener with automatic cleanup of orphaned page data keys
-- Enhanced cleanup to remove all `activePage:*` keys that don't correspond to open tabs
-- Updated `clearAllMemory()` to remove all tab-scoped page data keys from storage
-
-### Phase 4: Semantic Search with Embeddings
 - **IndexedDB schema upgraded** from version 1 to 2 with new EMBEDDINGS store
-- EMBEDDINGS store indices: `sessionId`, `tabId`, `sessionTurn`, `type`, `contentHash`
-- Added SHA-256 content hashing for deduplication (`hashContent()`)
-- Added `chunkPageContent()` for splitting page content into ~500 token segments
-- Added `cosineSimilarity()` for vector similarity calculations
-- Added `generateEmbedding()` using AI endpoint URL pattern: `aiUrl.replace(/chat$/i, 'embed')`
-- Added `storeEmbedding()` with automatic deduplication via content hash
-- Added `semanticSearch()` with filters: sessionId, tabId, type, limit, threshold
-- Added `storeTurnWithEmbeddings()` to store conversation turns with embeddings
-- Added `storeToolCallEmbedding()` to embed tool call results
-- Updated `clearAll()` to include EMBEDDINGS store
-- Enhanced debug helpers: `getEmbeddings()`, `getEmbeddingsByTab()`, `getEmbeddingsByType()`, `getEmbeddingsBySessionTurn()`, `searchEmbeddings()`, `countEmbeddings()`, `deleteEmbeddingsBySession()`
-
-### New Internal Tools
-- **`search_conversation_history`**: Semantic search across conversation history with scope (current_session/current_tab/all_sessions), type filtering (user/assistant/tool_call), and similarity threshold
+- **`search_conversation_history`**: Semantic search across conversation history with scope
 - **`get_conversation_turn`**: Retrieve specific conversation turn by number from current session
 - **`list_recent_sessions`**: List recent chat sessions sorted by last access time with titles and timestamps
 
 ### Bug Fixes
 - Fixed `Cannot read properties of null (reading 'pageContent')` error in internal tools
-- Modified `execInternalTool()` to accept `tabId` parameter and pass it to `getActiveSessionPageData()`
-- Added null-safety checks using optional chaining in `get_current_tab_url` and `get_current_tab_page_content` tools
-- Updated background.js to pass `tab?.id` when calling internal tools
-- Fixed tab close handler to use `removeActiveSessionPageData(tabId)` instead of direct storage manipulation
+- Modified internal tools to accept `tabId` parameter
+- Added null-safety checks using optional chaining in url and page content tools
 
-### Phase 1: Session Archiving and Cleanup
-- **Session timestamps**: Added `createdAt` and `lastAccessedAt` timestamps to all sessions
-- Sessions now track when they were created and last accessed for archiving purposes
-- Modified `createNewSession()` to set initial timestamps
-- Modified `getSession()` to automatically update `lastAccessedAt` when retrieving sessions
-- Modified `setActiveSession()` to update `lastAccessedAt` when saving sessions
+### Session Archiving and Cleanup
+- **Session timestamps**: Added timestamps to all sessions
 - **Archive system**: Implemented session archiving with 2-day retention policy
-- Added `archivedSessionsStorageKey` constant for storing archived sessions
-- Added `ARCHIVE_RETENTION_DAYS` constant (default: 2 days)
-- Added `archiveSession(sessionId)` to move sessions from active to archived storage
-- Added `pruneArchivedSessions()` to remove archived sessions older than retention period
-- Added `cleanupOrphanedSessions()` to prune old archives on extension startup
-- Archive cleanup runs automatically on every extension load
-- Archived sessions include `closedAt` timestamp marking when they were archived
-
-### Code Quality
-- Followed "no wrappers" principle: modified existing functions with optional parameters instead of creating duplicates
-- Added backward compatibility with `tabId = null` default parameters
-- All embedding functions include proper error handling and logging
-- Maintained British English throughout codebase
 
 ## [1.28.73] - 2026-02-18
 
