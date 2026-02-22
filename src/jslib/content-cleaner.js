@@ -1,3 +1,11 @@
+/**
+ * Content Cleaner Module
+ * Basic page content cleaning utilities
+ *
+ * NOTE: For enhanced content extraction with metadata, tables, lists, code blocks,
+ * and selective extraction tools, see: src/jslib/content-extractor.js
+ */
+
 async function cleanPageContent() {
     if (typeof getPageTextContent !== 'function') {
         console.error(`>>> ${manifest?.name ?? ''} - cleanPageContent: getPageTextContent function not available`);

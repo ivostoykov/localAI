@@ -239,6 +239,48 @@ async function execInternalTool(call = {}, tabId = null) {
 
         case "list_recent_sessions":
             return await listRecentSessions(call?.function?.arguments?.limit);
+
+        case "get_page_structure":
+            return await callContentScriptExtractor(tabId, 'getPageStructureSummary', null);
+
+        case "get_page_tables":
+            return await callContentScriptExtractor(tabId, 'getPageTables', call?.function?.arguments?.tableIndex);
+
+        case "get_page_lists":
+            return await callContentScriptExtractor(tabId, 'getPageLists', call?.function?.arguments?.listIndex);
+
+        case "get_page_code_blocks":
+            return await callContentScriptExtractor(tabId, 'getPageCodeBlocks', call?.function?.arguments?.blockIndex);
+
+        case "get_page_metadata":
+            return await callContentScriptExtractor(tabId, 'getPageMetadataFormatted', null);
+
+        case "get_main_content":
+            return await callContentScriptExtractor(tabId, 'getMainContentOnly', null);
+    }
+}
+
+async function callContentScriptExtractor(tabId, functionName, argument = null) {
+    if (!tabId) {
+        return 'Error: No tab ID provided for content extraction';
+    }
+
+    try {
+        const response = await chrome.tabs.sendMessage(tabId, {
+            action: 'callContentExtractor',
+            functionName: functionName,
+            argument: argument
+        });
+
+        if (response?.error) {
+            console.error(`>>> ${manifest?.name ?? ''} - [internal-tools.js] - Content extractor error:`, response.error);
+            return `Error calling ${functionName}: ${response.error}`;
+        }
+
+        return response?.result || `No result from ${functionName}`;
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [internal-tools.js] - Failed to call content extractor:`, error);
+        return `Error: Could not communicate with page. The page may not support content extraction.`;
     }
 }
 
@@ -451,6 +493,108 @@ const INTERNAL_TOOL_DEFINITIONS = [
         "strict": true,
         "type": "tool",
         "usage_cost": 1
+    },
+    {
+        "function": {
+            "description": "Get page structure overview with metadata and element counts. Call this FIRST before other content extraction tools to understand what content is available. Returns metadata (title, author, publish date, description) and counts of tables, lists, code blocks, images, and links. Use this to decide which specific extraction tools to call next.",
+            "name": "get_page_structure",
+            "parameters": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 2
+    },
+    {
+        "function": {
+            "description": "Extract tables from the current page in markdown format. Only call this if you need tabular data or the user asks about tables/data. Can extract all tables or a specific table by index. Use after get_page_structure confirms tables exist.",
+            "name": "get_page_tables",
+            "parameters": {
+                "properties": {
+                    "tableIndex": {
+                        "description": "Optional: specific table index (0-based). If omitted, returns all tables.",
+                        "minimum": 0,
+                        "type": "integer"
+                    }
+                },
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 2
+    },
+    {
+        "function": {
+            "description": "Extract lists from the current page with hierarchy preserved (nested lists). Only call this if you need list data or the user asks about lists/items/steps. Can extract all lists or a specific list by index. Works with both ordered (numbered) and unordered (bullet) lists.",
+            "name": "get_page_lists",
+            "parameters": {
+                "properties": {
+                    "listIndex": {
+                        "description": "Optional: specific list index (0-based). If omitted, returns all lists.",
+                        "minimum": 0,
+                        "type": "integer"
+                    }
+                },
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 2
+    },
+    {
+        "function": {
+            "description": "Extract code blocks from the current page with language detection. Only call this if the user asks about code, technical content, or examples. Returns code in properly formatted markdown code blocks. Can extract all code blocks or a specific one by index.",
+            "name": "get_page_code_blocks",
+            "parameters": {
+                "properties": {
+                    "blockIndex": {
+                        "description": "Optional: specific code block index (0-based). If omitted, returns all code blocks.",
+                        "minimum": 0,
+                        "type": "integer"
+                    }
+                },
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 2
+    },
+    {
+        "function": {
+            "description": "Extract page metadata from Open Graph tags, JSON-LD, and meta tags. Returns title, author, publish date, description, keywords, article type, and language. Use when you need to know about the page without reading full content, e.g., 'who wrote this', 'when was this published', 'what is this page about'.",
+            "name": "get_page_metadata",
+            "parameters": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 1
+    },
+    {
+        "function": {
+            "description": "Extract only the main content area (article/blog post) without navigation, sidebars, ads, or footer. Use when user asks to summarise, analyse, or understand the main article/post. Falls back to full content if main area cannot be detected. More focused than get_current_tab_page_content.",
+            "name": "get_main_content",
+            "parameters": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 2
     }
 ];
 

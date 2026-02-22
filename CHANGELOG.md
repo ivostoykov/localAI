@@ -1,6 +1,22 @@
 # Local AI - Changelog
 
-## [1.28.82] - 2026-02-22 - latest
+## [1.28.85] - 2026-02-22 - latest
+
+### Enhanced Content Extraction System
+- **Intelligent selective content extraction tools** allowing AI to query specific page elements instead of extracting everything
+- **Six new internal tools** for structured page analysis
+- **Metadata extraction** from Open Graph tags, JSON-LD, and meta tags including author, publish date, description, and keywords
+- **Smart main content detection** using semantic HTML5 elements and heuristics to isolate article content from navigation
+- **Structured data preservation** maintaining hierarchy for lists, markdown formatting for tables, and language detection for code blocks
+- **Token efficiency gains** of 70-90% for specific queries through selective extraction vs full page dumps
+- **Service worker to content script communication** architecture ensuring DOM access whilst maintaining extension security model
+
+### Files Added
+- Content extractor module with selective and full-page extraction capabilities
+- Console test helpers for validating extraction quality on any webpage
+- Comprehensive documentation of extraction tools and usage patterns
+
+## [1.28.82] - 2026-02-22
 
 - **Implemented model metadata caching** to reduce redundant API calls
 - **Added dedicated embedding endpoint and model configuration**

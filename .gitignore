@@ -14,7 +14,9 @@ CLAUDE.md
 Chrome.bak/
 Chrome_changes/
 .claude/
+.claude/**
 .docs/
+.docs/**
 
 # Test and dependencies
 node_modules/

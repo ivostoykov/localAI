@@ -1252,6 +1252,9 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             storeLastGeneratedPrompt(response.data);
             await checkAndSetSessionName();
             break;
+        case "callContentExtractor":
+            await handleContentExtractorCall(response, sendResponse);
+            return true;
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
             break;
@@ -1304,6 +1307,42 @@ function laiGetRecipient() {
     if (!recipient) { throw Error('No recipient found!'); }
 
     return recipient;
+}
+
+async function handleContentExtractorCall(response, sendResponse) {
+    try {
+        const { functionName, argument } = response;
+        let result;
+
+        switch (functionName) {
+            case 'getPageStructureSummary':
+                result = JSON.stringify(await getPageStructureSummary(), null, 2);
+                break;
+            case 'getPageTables':
+                result = await getPageTables(argument);
+                break;
+            case 'getPageLists':
+                result = await getPageLists(argument);
+                break;
+            case 'getPageCodeBlocks':
+                result = await getPageCodeBlocks(argument);
+                break;
+            case 'getPageMetadataFormatted':
+                result = getPageMetadataFormatted();
+                break;
+            case 'getMainContentOnly':
+                result = await getMainContentOnly();
+                break;
+            default:
+                sendResponse({ error: `Unknown content extractor function: ${functionName}` });
+                return;
+        }
+
+        sendResponse({ result });
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Content extractor error:`, error);
+        sendResponse({ error: error.message });
+    }
 }
 
 async function ask2ExplainSelection(response) {
