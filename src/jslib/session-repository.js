@@ -70,7 +70,7 @@ class SessionRepository {
                 this.db.extractAttachmentSummary(att)
             );
 
-            await this.db.storeContext(sessionId, context.pageContent, context.attachments);
+            await this.db.storeContext(sessionId, context.pageContent, context.attachments, context.pageHash, context.tabId);
         } catch (error) {
             console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.storeAttachment:`, error);
             throw error;
@@ -125,7 +125,7 @@ class SessionRepository {
                 this.db.extractAttachmentSummary(att)
             );
 
-            await this.db.storeContext(sessionId, context.pageContent, context.attachments);
+            await this.db.storeContext(sessionId, context.pageContent, context.attachments, context.pageHash, context.tabId);
         } catch (error) {
             console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.deleteAttachment:`, error);
             throw error;

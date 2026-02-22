@@ -173,6 +173,7 @@ h1#pageTitle {
   min-width: 300px;
   max-width: 600px;
   flex-wrap: nowrap;
+  padding: .5rem 0;
 }
 
 .el-holder label {

@@ -99,12 +99,77 @@ async function calculateRelativeDateTimeByOffset(offset) {
     return res;
 }
 
+async function getConversationTurn(turnNumber) {
+    const sessionId = await getActiveSessionId();
+    if (!sessionId) {
+        return "No active session yet.";
+    }
+
+    const conversations = await backgroundMemory.query('conversations', 'sessionId', sessionId);
+    const turn = conversations.find(c => c.turnNumber === turnNumber);
+
+    if (!turn) {
+        return `Turn ${turnNumber} not found in current session.`;
+    }
+
+    return JSON.stringify({
+        turnNumber: turn.turnNumber,
+        userMessage: turn.userMessage,
+        assistantResponse: turn.assistantResponse,
+        timestamp: new Date(turn.timestamp).toISOString()
+    }, null, 2);
+}
+
+async function listRecentSessions(limit = 10) {
+    const allSessions = await backgroundMemory.getAllFromStore('sessions');
+
+    if (allSessions.length === 0) {
+        return "No sessions found.";
+    }
+
+    const sorted = allSessions
+        .sort((a, b) => b.lastAccessed - a.lastAccessed)
+        .slice(0, limit);
+
+    return JSON.stringify(sorted.map(s => ({
+        sessionId: s.sessionId,
+        title: s.title || 'Untitled',
+        lastAccessed: new Date(s.lastAccessed).toISOString(),
+        createdAt: s.createdAt ? new Date(s.createdAt).toISOString() : 'Unknown'
+    })), null, 2);
+}
+
+async function searchConversationHistory(args, tabId) {
+    const sessionId = await getActiveSessionId();
+    const searchOptions = {
+        sessionId: args.scope === 'current_session' ? sessionId : null,
+        tabId: args.scope === 'current_tab' ? tabId : null,
+        type: args.type || null,
+        limit: args.limit || 10,
+        threshold: args.threshold || 0.6
+    };
+
+    const results = await backgroundMemory.semanticSearch(args.query, searchOptions);
+
+    if (results.length === 0) {
+        return "No relevant conversation history found for this query.";
+    }
+
+    return JSON.stringify(results.map(r => ({
+        similarity: r.similarity.toFixed(3),
+        type: r.type,
+        turnNumber: r.turnNumber,
+        sessionId: r.sessionId,
+        metadata: r.metadata
+    })), null, 2);
+}
+
 /**
  * Execute internal tool based on tool call
  * @param {Object} call - Tool call object from LLM
  * @returns {Object} Result object with status and content
  */
-async function execInternalTool(call = {}) {
+async function execInternalTool(call = {}, tabId = null) {
     const funcName = call?.function?.name.toLowerCase();
     if(!funcName || !isInternalTool(funcName)){
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Unrecognised tool: '${funcName}'. Available:`, getInternalToolNames());
@@ -114,8 +179,8 @@ async function execInternalTool(call = {}) {
 
     switch (funcName) {
         case "get_current_tab_url":
-            data = await getActiveSessionPageData();
-            return data.url;
+            data = await getActiveSessionPageData(tabId);
+            return data?.url || 'No URL available';
 
         case "get_current_date":
         case "get_current_time":
@@ -127,8 +192,8 @@ async function execInternalTool(call = {}) {
         case "get_tab_info":
         case "get_current_tab_info":
         case "get_current_tab_page_content":
-            data = await getActiveSessionPageData();
-            return data.pageContent || 'No page content available';
+            data = await getActiveSessionPageData(tabId);
+            return data?.pageContent || 'No page content available';
 
         case "get_all_session_pages":
             return await getAllSessionPages();
@@ -141,6 +206,15 @@ async function execInternalTool(call = {}) {
 
         case "calculate_date_time":
             return calculateRelativeDateTimeByOffset(call?.function?.arguments?.offset || call?.arguments?.offset);
+
+        case "search_conversation_history":
+            return await searchConversationHistory(call?.function?.arguments || {}, tabId);
+
+        case "get_conversation_turn":
+            return await getConversationTurn(call?.function?.arguments?.turn_number);
+
+        case "list_recent_sessions":
+            return await listRecentSessions(call?.function?.arguments?.limit);
     }
 }
 
@@ -271,6 +345,88 @@ const INTERNAL_TOOL_DEFINITIONS = [
         },
         "strict": true,
         "type": "tool"
+    },
+    {
+        "function": {
+            "description": "Searches conversation history using semantic similarity. Finds relevant past interactions based on meaning, not just keywords. Returns ranked results with similarity scores. Use when the user asks about past conversations, previous questions, or wants to recall earlier discussions.",
+            "name": "search_conversation_history",
+            "parameters": {
+                "properties": {
+                    "query": {
+                        "description": "Search query - what to look for in conversation history",
+                        "type": "string"
+                    },
+                    "scope": {
+                        "description": "Search scope: 'current_session' (default), 'current_tab', or 'all_sessions'",
+                        "enum": ["current_session", "current_tab", "all_sessions"],
+                        "type": "string"
+                    },
+                    "type": {
+                        "description": "Filter by message type: 'user', 'assistant', 'tool_call', or null for all types",
+                        "enum": ["user", "assistant", "tool_call"],
+                        "type": "string"
+                    },
+                    "limit": {
+                        "description": "Maximum number of results to return (default: 10)",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "type": "integer"
+                    },
+                    "threshold": {
+                        "description": "Minimum similarity score 0-1 (default: 0.6). Higher values = more strict matching",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "type": "number"
+                    }
+                },
+                "required": ["query"],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 3
+    },
+    {
+        "function": {
+            "description": "Retrieves a specific conversation turn by number from the current session. Returns the user message, assistant response, and timestamp for that turn. Use when the user asks about a specific question/answer pair, e.g., 'what did I ask in question 3' or 'show me turn 5'.",
+            "name": "get_conversation_turn",
+            "parameters": {
+                "properties": {
+                    "turn_number": {
+                        "description": "Turn number to retrieve (1-based index)",
+                        "minimum": 1,
+                        "type": "integer"
+                    }
+                },
+                "required": ["turn_number"],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 1
+    },
+    {
+        "function": {
+            "description": "Lists recent chat sessions sorted by last access time. Returns session IDs, titles, and timestamps. Use when the user wants to find previous conversations, e.g., 'show my recent chats', 'list my sessions', 'what did we talk about yesterday'.",
+            "name": "list_recent_sessions",
+            "parameters": {
+                "properties": {
+                    "limit": {
+                        "description": "Maximum number of sessions to return (default: 10)",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "type": "integer"
+                    }
+                },
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 1
     }
 ];
 

@@ -123,8 +123,7 @@ async function initRibbon() {
     ribbon?.querySelector('#modelThinking')?.addEventListener('click', async e => {
         const el = e.target;
         const model = await getAiModel();
-        const url = await getAiUrl()
-        const canThink = await modelCanThink(model, url);
+        const canThink = await modelCanThink(model);
         if(!canThink){
             showMessage(`The model ${model} does not support thinking mode.`);
             return;
@@ -297,6 +296,7 @@ async function modelChanged(e) {
     }
     laiOptions.aiModel = newModelName;
     await setOptions(laiOptions);
+    await chrome.runtime.sendMessage({ action: "getModelInfo", modelName: newModelName, forceRefresh: true });
     setModelNameLabel({ "model": laiOptions.aiModel });
 }
 
@@ -534,6 +534,7 @@ async function swapActiveModel(e, modelName) {
 
         laiOptions.aiModel = modelName;
         await setOptions(laiOptions);
+        await chrome.runtime.sendMessage({ action: "getModelInfo", modelName: modelName, forceRefresh: true });
         await adjustThinkingStatus();
         await adjustToolsStatus();
 
@@ -705,8 +706,7 @@ async function adjustThinkingStatus(thinkingIconEl) {
         if (!thinkingIconEl) { return; }
     }
     const model = await getAiModel();
-    const url = await getAiUrl()
-    if (await modelCanThink(model, url)) {
+    if (await modelCanThink(model)) {
         thinkingIconEl.classList.remove('disabled');
     } else {
         thinkingIconEl.classList.add('disabled');

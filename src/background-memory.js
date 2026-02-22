@@ -1,10 +1,11 @@
 const DB_NAME = 'LocalAIMemory';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const STORES = {
   CONVERSATIONS: 'conversations',
   CONTEXT: 'context',
-  SESSIONS: 'sessions'
+  SESSIONS: 'sessions',
+  EMBEDDINGS: 'embeddings'
 };
 
 class BackgroundMemory {
@@ -55,6 +56,18 @@ class BackgroundMemory {
           });
           sessionStore.createIndex('lastAccessed', 'lastAccessed', { unique: false });
         }
+
+        if (!db.objectStoreNames.contains(STORES.EMBEDDINGS)) {
+          const embeddingStore = db.createObjectStore(STORES.EMBEDDINGS, {
+            keyPath: 'id',
+            autoIncrement: true
+          });
+          embeddingStore.createIndex('sessionId', 'sessionId', { unique: false });
+          embeddingStore.createIndex('tabId', 'tabId', { unique: false });
+          embeddingStore.createIndex('sessionTurn', ['sessionId', 'turnNumber'], { unique: false });
+          embeddingStore.createIndex('type', 'type', { unique: false });
+          embeddingStore.createIndex('contentHash', 'contentHash', { unique: false });
+        }
       };
     });
 
@@ -78,7 +91,7 @@ class BackgroundMemory {
     return this.put(STORES.CONVERSATIONS, turn);
   }
 
-  async storeContext(sessionId, pageContent, attachments, pageHash) {
+  async storeContext(sessionId, pageContent, attachments, pageHash, tabId = null) {
     await this.init();
 
     if(!sessionId){  sessionId = await getActiveSessionId();  }
@@ -86,6 +99,7 @@ class BackgroundMemory {
     const currentContext = await this.getContext(sessionId);
     const context = {
       sessionId,
+      tabId,
       pageContent: pageContent || null,
       pageHash: pageHash || null,
       pageSummary: pageContent ? this.extractPageSummary(pageContent) : null,
@@ -124,7 +138,7 @@ class BackgroundMemory {
       .map(turn => turn.summary);
   }
 
-  async buildOptimisedContext(sessionId, newMessage, turnNumber, systemInstructions, pageContent, attachments, pageHash, toolsEnabled = false) {
+  async buildOptimisedContext(sessionId, newMessage, turnNumber, systemInstructions, pageContent, attachments, pageHash, toolsEnabled = false, tabId = null) {
     await this.init();
 
     const context = [];
@@ -139,7 +153,7 @@ class BackgroundMemory {
     let sessionContext = await this.getContext(sessionId);
 
     if (pageContent || attachments?.length > 0) {
-      await this.storeContext(sessionId, pageContent, attachments, pageHash);
+      await this.storeContext(sessionId, pageContent, attachments, pageHash, tabId);
       sessionContext = await this.getContext(sessionId);
     }
 
@@ -148,13 +162,14 @@ class BackgroundMemory {
         context.push({ role: 'user', content: `[PAGE CONTENT]:\n${pageContent}` });
         used += this.estimateTokens(pageContent);
       } else if (sessionContext?.pageContent) {
-        const currentPageData = await chrome.storage.local.get([activePageStorageKey]);
-        const currentHash = currentPageData[activePageStorageKey]?.pageHash;
+        const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
+        const currentPageData = await chrome.storage.local.get([key]);
+        const currentHash = currentPageData[key]?.pageHash;
 
         if (currentHash && currentHash !== sessionContext.pageHash) {
-          const freshPageContent = currentPageData[activePageStorageKey]?.pageContent;
+          const freshPageContent = currentPageData[key]?.pageContent;
           if (freshPageContent) {
-            await this.storeContext(sessionId, freshPageContent, attachments, currentHash);
+            await this.storeContext(sessionId, freshPageContent, attachments, currentHash, tabId);
             sessionContext = await this.getContext(sessionId);
             console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Page hash mismatch, updated context with fresh content`);
           }
@@ -244,7 +259,7 @@ class BackgroundMemory {
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction(
-        [STORES.CONVERSATIONS, STORES.CONTEXT, STORES.SESSIONS],
+        [STORES.CONVERSATIONS, STORES.CONTEXT, STORES.SESSIONS, STORES.EMBEDDINGS],
         'readwrite'
       );
 
@@ -260,7 +275,225 @@ class BackgroundMemory {
       transaction.objectStore(STORES.CONVERSATIONS).clear();
       transaction.objectStore(STORES.CONTEXT).clear();
       transaction.objectStore(STORES.SESSIONS).clear();
+      transaction.objectStore(STORES.EMBEDDINGS).clear();
     });
+  }
+
+  async hashContent(content) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(content);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  chunkPageContent(pageContent, maxTokens = 500) {
+    const chunks = [];
+    const paragraphs = pageContent.split('\n\n').filter(p => p.trim().length > 0);
+    let currentChunk = '';
+
+    for (const para of paragraphs) {
+      const combinedTokens = this.estimateTokens(currentChunk + '\n\n' + para);
+
+      if (combinedTokens > maxTokens && currentChunk.length > 0) {
+        chunks.push(currentChunk.trim());
+        currentChunk = para;
+      } else {
+        currentChunk = currentChunk ? currentChunk + '\n\n' + para : para;
+      }
+    }
+
+    if (currentChunk.trim().length > 0) {
+      chunks.push(currentChunk.trim());
+    }
+
+    return chunks;
+  }
+
+  cosineSimilarity(vecA, vecB) {
+    if (vecA.length !== vecB.length) {
+      throw new Error('Vectors must have same dimensions');
+    }
+
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < vecA.length; i++) {
+      dotProduct += vecA[i] * vecB[i];
+      normA += vecA[i] * vecA[i];
+      normB += vecB[i] * vecB[i];
+    }
+
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+
+  async generateEmbedding(text) {
+    try {
+      const laiOptions = await getOptions();
+
+      const embedUrl = laiOptions?.embedUrl || laiOptions?.aiUrl?.replace(/chat$/i, 'embed');
+
+      if (!embedUrl) {
+        throw new Error('Embedding URL not configured');
+      }
+
+      const model = laiOptions.embeddingModel || laiOptions.aiModel;
+
+      if (!model) {
+        throw new Error('Embedding model not configured');
+      }
+
+      const response = await fetch(embedUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: model,
+          prompt: text
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Embedding generation failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.embedding;
+    } catch (error) {
+      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js] - generateEmbedding error:`, error);
+      throw error;
+    }
+  }
+
+  async storeEmbedding(embeddingData) {
+    try {
+      await this.init();
+
+      const existing = await this.query(STORES.EMBEDDINGS, 'contentHash', embeddingData.contentHash);
+      if (existing && existing.length > 0) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Content already embedded, skipping:`, embeddingData.contentHash);
+        return existing[0].id;
+      }
+
+      return await this.put(STORES.EMBEDDINGS, embeddingData);
+    } catch (error) {
+      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js] - storeEmbedding error:`, error);
+      throw error;
+    }
+  }
+
+  async semanticSearch(query, options = {}) {
+    try {
+      await this.init();
+
+      const {
+        sessionId = null,
+        tabId = null,
+        type = null,
+        limit = 10,
+        threshold = 0.5
+      } = options;
+
+      const queryEmbedding = await this.generateEmbedding(query);
+
+      let embeddings;
+      if (sessionId) {
+        embeddings = await this.query(STORES.EMBEDDINGS, 'sessionId', sessionId);
+      } else {
+        embeddings = await this.getAllFromStore(STORES.EMBEDDINGS);
+      }
+
+      if (tabId) {
+        embeddings = embeddings.filter(emb => emb.tabId === tabId);
+      }
+      if (type) {
+        embeddings = embeddings.filter(emb => emb.type === type);
+      }
+
+      const results = embeddings.map(emb => ({
+        ...emb,
+        similarity: this.cosineSimilarity(queryEmbedding, emb.embedding)
+      }))
+      .filter(result => result.similarity >= threshold)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
+
+      console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Semantic search found ${results.length} results`);
+      return results;
+    } catch (error) {
+      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js] - semanticSearch error:`, error);
+      throw error;
+    }
+  }
+
+  async storeTurnWithEmbeddings(sessionId, tabId, turnNumber, userMessage, assistantResponse) {
+    try {
+      await this.storeTurn(sessionId, turnNumber, userMessage, assistantResponse);
+
+      const userHash = await this.hashContent(userMessage);
+      const assistantHash = await this.hashContent(assistantResponse);
+
+      const userEmbedding = await this.generateEmbedding(userMessage);
+      await this.storeEmbedding({
+        sessionId,
+        tabId,
+        turnNumber,
+        type: 'user',
+        contentHash: userHash,
+        embedding: userEmbedding,
+        metadata: { timestamp: Date.now() }
+      });
+
+      const assistantEmbedding = await this.generateEmbedding(assistantResponse);
+      await this.storeEmbedding({
+        sessionId,
+        tabId,
+        turnNumber,
+        type: 'assistant',
+        contentHash: assistantHash,
+        embedding: assistantEmbedding,
+        metadata: { timestamp: Date.now() }
+      });
+
+      console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Stored embeddings for turn ${turnNumber}`);
+    } catch (error) {
+      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js] - storeTurnWithEmbeddings error:`, error);
+      throw error;
+    }
+  }
+
+  async storeToolCallEmbedding(sessionId, tabId, turnNumber, toolName, toolResult) {
+    try {
+      const summary = `Tool: ${toolName} - ${this.extractToolResultSummary(toolResult)}`;
+      const hash = await this.hashContent(summary);
+      const embedding = await this.generateEmbedding(summary);
+
+      await this.storeEmbedding({
+        sessionId,
+        tabId,
+        turnNumber,
+        type: 'tool_call',
+        contentHash: hash,
+        embedding: embedding,
+        metadata: {
+          toolName,
+          toolResult: this.extractToolResultSummary(toolResult),
+          timestamp: Date.now()
+        }
+      });
+    } catch (error) {
+      console.warn(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Failed to store tool call embedding:`, error);
+    }
+  }
+
+  extractToolResultSummary(toolResult) {
+    if (typeof toolResult === 'string') {
+      return toolResult.substring(0, 200);
+    }
+    if (typeof toolResult === 'object') {
+      return JSON.stringify(toolResult).substring(0, 200);
+    }
+    return String(toolResult).substring(0, 200);
   }
 
   generateQuickSummary(userMessage, assistantResponse) {
@@ -455,12 +688,67 @@ globalThis.dbHelpers = {
   async dump() {
     await backgroundMemory.init();
     const result = {};
-    const stores = ['conversations', 'context', 'sessions'];
+    const stores = ['conversations', 'context', 'sessions', 'embeddings'];
     for (const store of stores) {
       result[store] = await backgroundMemory.getAllFromStore(store);
     }
     return result;
+  },
+
+  async getEmbeddings(sessionId = null) {
+    await backgroundMemory.init();
+    if (sessionId) {
+      return await backgroundMemory.query('embeddings', 'sessionId', sessionId);
+    }
+    return await backgroundMemory.getAllFromStore('embeddings');
+  },
+
+  async getEmbeddingsByTab(tabId) {
+    await backgroundMemory.init();
+    return await backgroundMemory.query('embeddings', 'tabId', tabId);
+  },
+
+  async getEmbeddingsByType(type) {
+    await backgroundMemory.init();
+    return await backgroundMemory.query('embeddings', 'type', type);
+  },
+
+  async getEmbeddingsBySessionTurn(sessionId, turnNumber) {
+    await backgroundMemory.init();
+    const embeddings = await backgroundMemory.getAllFromStore('embeddings');
+    return embeddings.filter(emb =>
+      emb.sessionId === sessionId && emb.turnNumber === turnNumber
+    );
+  },
+
+  async searchEmbeddings(query, options) {
+    await backgroundMemory.init();
+    return await backgroundMemory.semanticSearch(query, options);
+  },
+
+  async countEmbeddings(sessionId = null) {
+    await backgroundMemory.init();
+    const embeddings = sessionId
+      ? await backgroundMemory.query('embeddings', 'sessionId', sessionId)
+      : await backgroundMemory.getAllFromStore('embeddings');
+    return embeddings.length;
+  },
+
+  async deleteEmbeddingsBySession(sessionId) {
+    await backgroundMemory.init();
+    const embeddings = await backgroundMemory.query('embeddings', 'sessionId', sessionId);
+    const transaction = backgroundMemory.db.transaction(['embeddings'], 'readwrite');
+    const store = transaction.objectStore('embeddings');
+
+    for (const emb of embeddings) {
+      store.delete(emb.id);
+    }
+
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve(embeddings.length);
+      transaction.onerror = () => reject(transaction.error);
+    });
   }
 };
 
-console.log('🔍 DB helpers available: dbHelpers.listStores(), .getAll(store), .dump(), etc.');
+console.log('🔍 DB helpers available: dbHelpers.listStores(), .getAll(store), .dump(), .getEmbeddings(), .searchEmbeddings(), etc.');

@@ -13,19 +13,25 @@ async function createNewSession(text = `Session ${new Date().toISOString().repla
         sessions = await getAllSessions();
         const title = text.split(/\s+/).slice(0, 6).join(' ');
 
+        const now = Date.now();
         newSession = {
             id: sessionId,
             title: title,
             messages: [],
-            model: model
+            model: model,
+            createdAt: now,
+            lastAccessedAt: now
         };
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
+        const now = Date.now();
         newSession = {
             id: sessionId,
             title: text?.toString()?.split(/\s+/)?.slice(0, 6)?.join(' ') || '',
             messages: [],
-            model: model || 'unknown'
+            model: model || 'unknown',
+            createdAt: now,
+            lastAccessedAt: now
         };
     }
 
@@ -83,7 +89,7 @@ async function deleteActiveSessionId() {
     }
 }
 
-async function getSession(sessionId = null, createIfMissing = true) {
+async function getSession(sessionId = null, createIfMissing = true, updateAccess = true) {
     try {
         if (!sessionId) {
             sessionId = await getActiveSessionId();
@@ -100,6 +106,11 @@ async function getSession(sessionId = null, createIfMissing = true) {
 
         if (!session && createIfMissing && !sessionId) {
             return await createNewSession();
+        }
+
+        if (session && updateAccess) {
+            session.lastAccessedAt = Date.now();
+            await setAllSessions(sessions);
         }
 
         return session || null;
@@ -185,6 +196,7 @@ async function setActiveSession(session) {
 
         if (idx < 0) { throw new Error(`Session with id ${session?.id} not found!`); }
 
+        session.lastAccessedAt = Date.now();
         sessions[idx] = session;
         const filteredSessions = sessions.filter(s => (s?.messages?.length ?? 0) + (s?.attachments?.length ?? 0) > 0);
         await setAllSessions(filteredSessions);
@@ -192,6 +204,97 @@ async function setActiveSession(session) {
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - the session thrown the error`, session);
+    }
+}
+
+async function getArchivedSessions() {
+    try {
+        const result = await chrome.storage.local.get([archivedSessionsStorageKey]);
+        return result[archivedSessionsStorageKey] ?? [];
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
+        return [];
+    }
+}
+
+async function setArchivedSessions(sessions = []) {
+    try {
+        await chrome.storage.local.set({ [archivedSessionsStorageKey]: sessions });
+        return true;
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
+        return false;
+    }
+}
+
+async function archiveSession(sessionId) {
+    try {
+        if (!sessionId) {
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No session ID provided for archiving`);
+            return false;
+        }
+
+        const sessions = await getAllSessions();
+        const sessionIndex = sessions.findIndex(s => s?.id === sessionId);
+
+        if (sessionIndex < 0) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Session ${sessionId} not found in active sessions`);
+            return false;
+        }
+
+        const session = sessions[sessionIndex];
+        session.closedAt = Date.now();
+
+        const archivedSessions = await getArchivedSessions();
+        archivedSessions.push(session);
+        await setArchivedSessions(archivedSessions);
+
+        sessions.splice(sessionIndex, 1);
+        await setAllSessions(sessions);
+
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Archived session ${sessionId}`);
+        return true;
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
+        return false;
+    }
+}
+
+async function pruneArchivedSessions() {
+    try {
+        const retentionMs = ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+        const cutoffTime = Date.now() - retentionMs;
+
+        const archivedSessions = await getArchivedSessions();
+        const initialCount = archivedSessions.length;
+
+        const retained = archivedSessions.filter(s =>
+            s.closedAt && s.closedAt > cutoffTime
+        );
+
+        if (retained.length < initialCount) {
+            await setArchivedSessions(retained);
+            const prunedCount = initialCount - retained.length;
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Pruned ${prunedCount} archived sessions older than ${ARCHIVE_RETENTION_DAYS} days`);
+            return prunedCount;
+        }
+
+        return 0;
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
+        return 0;
+    }
+}
+
+async function cleanupOrphanedSessions() {
+    try {
+        await pruneArchivedSessions();
+
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cleanup completed`);
+        return true;
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
+        return false;
     }
 }
 
@@ -229,6 +332,8 @@ async function getOptions() {
         "openPanelOnLoad": false,
         "aiUrl": "",
         "aiModel": "",
+        "embedUrl": "",
+        "embeddingModel": "",
         "closeOnClickOut": true,
         "closeOnCopy": false,
         "closeOnSendTo": true,
@@ -245,7 +350,6 @@ async function getOptions() {
         const aiOptions = opt[key] || {};
         const laiOptions = Object.assign({}, aiOptions);
 
-        // Only apply defaults for missing fields
         for (const key in defaults) {
             if (!(key in laiOptions)) {
                 laiOptions[key] = defaults[key];
@@ -270,12 +374,13 @@ async function setOptions(options) {
     }
 }
 
-async function getActiveSessionPageData() {
-    const result = await chrome.storage.local.get([activePageStorageKey]);
-    return result[activePageStorageKey] || null;
+async function getActiveSessionPageData(tabId) {
+    const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
+    const result = await chrome.storage.local.get([key]);
+    return result[key] || null;
 }
 
-async function setActiveSessionPageData() {
+async function setActiveSessionPageData(tabId) {
     await waitForDOMToSettle(1000, 120000);
     const url = location.href;
     const pageContent = await getPageTextContent() ?? null;
@@ -285,11 +390,14 @@ async function setActiveSessionPageData() {
     }
     const pageHash = generatePageHash(url, pageContent.length);
     console.debug(`>>> ${manifest?.name} - [${getLineNumber()}] - current hash`, pageHash);
-    await chrome.storage.local.set({ [activePageStorageKey]: {url, pageContent, pageHash} });
+    const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
+    await chrome.storage.local.set({ [key]: {url, pageContent, pageHash} });
 }
 
-async function removeActiveSessionPageData() {
-    await chrome.storage.local.remove(activePageStorageKey);
+async function removeActiveSessionPageData(tabId) {
+    const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
+    await chrome.storage.local.remove(key);
+    await chrome.storage.local.remove(activePageStorageKey); // temp to remove old storage
 }
 
 async function deleteSessionMemory(sessionId) {
@@ -303,6 +411,16 @@ async function deleteSessionMemory(sessionId) {
 async function clearAllMemory() {
     try {
         await chrome.runtime.sendMessage({ action: 'clearAllMemory' });
+
+        const allKeys = await chrome.storage.local.get(null);
+        const pageDataKeys = Object.keys(allKeys).filter(key =>
+            key === activePageStorageKey || key.startsWith(`${activePageStorageKey}:`)
+        );
+
+        if (pageDataKeys.length > 0) {
+            await chrome.storage.local.remove(pageDataKeys);
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cleared ${pageDataKeys.length} page data keys`);
+        }
     } catch (e) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to clear all memory:`, e);
     }
