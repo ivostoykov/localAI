@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.28.80] - 2026-02-22 - latest
+## [1.28.82] - 2026-02-22 - latest
 
 - **Implemented model metadata caching** to reduce redundant API calls
 - **Added dedicated embedding endpoint and model configuration**
