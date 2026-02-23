@@ -353,10 +353,12 @@ class BackgroundMemory {
   }
 
   async generateEmbedding(text) {
+    let embedUrl;
+    let model;
     try {
       const laiOptions = await getOptions();
 
-      const embedUrl = laiOptions?.embedUrl || laiOptions?.aiUrl?.replace(/chat$/i, 'embed');
+      embedUrl = laiOptions?.embedUrl || laiOptions?.aiUrl?.replace(/chat$/i, 'embed');
 
       if (!embedUrl) {
         console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:generateEmbedding] - Embedding URL not configured:`, {
@@ -368,7 +370,7 @@ class BackgroundMemory {
         throw new Error('Embedding URL not configured');
       }
 
-      const model = laiOptions.embeddingModel || laiOptions.aiModel;
+      model = laiOptions.embeddingModel || laiOptions.aiModel;
 
       if (!model) {
         console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:generateEmbedding] - Embedding model not configured:`, {
