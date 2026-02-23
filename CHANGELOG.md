@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.28.85] - 2026-02-22 - latest
+## [1.28.87] - 2026-02-22 - latest
 
 ### Enhanced Content Extraction System
 - **Intelligent selective content extraction tools** allowing AI to query specific page elements instead of extracting everything
