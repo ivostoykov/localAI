@@ -1,6 +1,16 @@
 # Local AI - Changelog
 
-## [1.28.87] - 2026-02-22 - latest
+## [1.28.90] - 2026-02-24 - latest
+
+### Page Content Filtering Commands
+- Added page content filtering command
+- Added Page filter toggle button to status bar with text
+
+### Bug Fixes
+- Fixed page content extraction message passing
+- Added automatic page data refresh on tab activation
+
+## [1.28.87] - 2026-02-22
 
 ### Enhanced Content Extraction System
 - **Intelligent selective content extraction tools** allowing AI to query specific page elements instead of extracting everything

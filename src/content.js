@@ -35,6 +35,8 @@ var userPredefinedCmd = [
   { "commandName": "notools", "commandDescription": "Switch tools off (temporary)" },
   { "commandName": "debug", "commandDescription": "Enable debug logging (temporary)" },
   { "commandName": "nodebug", "commandDescription": "Disable debug logging (temporary)" },
+  { "commandName": "pagetext", "commandDescription": "Enable page content filtering (show text only)" },
+  { "commandName": "rawpage", "commandDescription": "Disable page content filtering (show raw HTML)" },
   { "commandName": "pin", "commandDescription": "Toggle panel pin" }
 ];
 
@@ -122,13 +124,19 @@ async function allDOMContentLoaded(e) {
   document.addEventListener('mouseout', clearElementOverDecoration, true);
 
   try {
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Starting page data initialization`);
     await removeLocalStorageObject('activeSessionIndex'); // TODO: for sync - to be removed
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Removed activeSessionIndex`);
     await removeLocalStorageObject(activeSessionIdStorageKey);
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Removed activeSessionIdStorageKey`);
     const tabId = await getMyTabId();
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Got tabId:`, tabId);
     await setActiveSessionPageData(tabId);
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Called setActiveSessionPageData`);
     await getAiUserCommands(); //TODO: remove it as global
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Got AI user commands`);
   } catch (err) {
-    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error in allDOMContentLoaded:`, err);
     return;
   }
 
@@ -242,17 +250,18 @@ async function init() {
 }
 
 // Main orchestrator - coordinates the page content workflow
+// REPLACED WITH ENHANCED EXTRACTOR - see content-extractor.js
 async function getPageTextContent() {
-  const cleanedDOM = await getDocumentContentFiltered();
-  return await getExtractedFilteredContent(cleanedDOM);
+  return await getEnhancedPageContent();
 }
 
-async function getExtractedFilteredContent(cleanedDOM) {
-  const structure = extractTextStructure(cleanedDOM);
-  const result = formatPageContent(structure);
-  // console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - page:\n ${result}`);
-  return result;
-}
+// COMMENTED OUT - Replaced by enhanced extractor
+// async function getExtractedFilteredContent(cleanedDOM) {
+//   const structure = extractTextStructure(cleanedDOM);
+//   const result = formatPageContent(structure);
+//   // console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - page:\n ${result}`);
+//   return result;
+// }
 
 async function getDocumentContentFiltered() {
   const domClone = await removeElementsBySelectors();
@@ -347,44 +356,45 @@ function getARIAContext(element, rootElement) {
   return parts.length > 0 ? `[${parts.join('; ')}] ` : '';
 }
 
+// COMMENTED OUT - Replaced by enhanced extractor functions
 // Extract text with hierarchical structure
-function extractTextStructure(domClone) {
-  const structure = [];
-  const headings = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
-  let currentSection = { title: '', content: [] };
+// function extractTextStructure(domClone) {
+//   const structure = [];
+//   const headings = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+//   let currentSection = { title: '', content: [] };
 
-  const walker = document.createTreeWalker(
-    domClone,
-    NodeFilter.SHOW_TEXT
-  );
+//   const walker = document.createTreeWalker(
+//     domClone,
+//     NodeFilter.SHOW_TEXT
+//   );
 
-  while (walker.nextNode()) {
-    const node = walker.currentNode;
-    if (!hasVisibleText(node)) continue;
+//   while (walker.nextNode()) {
+//     const node = walker.currentNode;
+//     if (!hasVisibleText(node)) continue;
 
-    const parent = node.parentElement;
-    const parentTag = parent?.tagName || '';
-    let text = node.nodeValue.trim();
+//     const parent = node.parentElement;
+//     const parentTag = parent?.tagName || '';
+//     let text = node.nodeValue.trim();
 
-    text = text.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
-    if (!text) continue;
+//     text = text.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+//     if (!text) continue;
 
-    const ariaContext = getARIAContext(parent, domClone);
-    if (ariaContext === null) continue; // Skip aria-hidden elements
+//     const ariaContext = getARIAContext(parent, domClone);
+//     if (ariaContext === null) continue; // Skip aria-hidden elements
 
-    if (ariaContext) {  text = ariaContext + text;  }
+//     if (ariaContext) {  text = ariaContext + text;  }
 
-    if (headings.includes(parentTag)) {
-      if (currentSection.content.length) structure.push(currentSection);
-      currentSection = { title: text, content: [] };
-    } else {
-      currentSection.content.push(text);
-    }
-  }
+//     if (headings.includes(parentTag)) {
+//       if (currentSection.content.length) structure.push(currentSection);
+//       currentSection = { title: text, content: [] };
+//     } else {
+//       currentSection.content.push(text);
+//     }
+//   }
 
-  if (currentSection.content.length) structure.push(currentSection);
-  return structure;
-}
+//   if (currentSection.content.length) structure.push(currentSection);
+//   return structure;
+// }
 
 function hasVisibleText(node) {
   if (!node?.nodeValue || !/[^\n\r\t ]/.test(node.nodeValue)) {
@@ -415,14 +425,15 @@ function hasVisibleText(node) {
   return true;
 }
 
-function formatPageContent(structure) {
-  const formattedSections = structure.map(section => {
-    const title = section.title ? `\n\n## ${section.title}\n` : '';
-    return `${title}${section.content.join('\n')}`;
-  }).join('\n');
+// COMMENTED OUT - Replaced by enhanced extractor
+// function formatPageContent(structure) {
+//   const formattedSections = structure.map(section => {
+//     const title = section.title ? `\n\n## ${section.title}\n` : '';
+//     return `${title}${section.content.join('\n')}`;
+//   }).join('\n');
 
-  return `PAGE URL: ${document.location.href}\nPAGE CONTENT START:${formattedSections}\nPAGE CONTENT END`;
-}
+//   return `PAGE URL: ${document.location.href}\nPAGE CONTENT START:${formattedSections}\nPAGE CONTENT END`;
+// }
 
 async function loadFilteringConfig() {
   try {
@@ -504,9 +515,8 @@ async function getSelectedClickedElement(event) {
   if (isImg) {
     showMessage('Right-click the image and select "Copy image", then paste it into the input field (Ctrl+V).', 'info');
   } else {
-    const filters = await loadFilteringConfig();
-    // const content = el.innerText?.trim() || '';
-    const content = await getExtractedFilteredContent(el, filters);
+    // Extract text from selected element
+    const content = el.innerText?.trim() || '';
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selected element content:\n${content}`);
     if (!content) {
       showMessage('Selected element has no visible text.', 'warn');

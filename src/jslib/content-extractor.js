@@ -692,15 +692,15 @@ async function getMainContentOnly() {
 // Global debug helpers for console testing
 globalThis.contentExtractorHelpers = {
   /**
-   * Test basic extraction (current method)
+   * Test basic extraction (now uses enhanced extractor)
    * Usage: await contentExtractorHelpers.testBasic()
    */
   async testBasic() {
     if (typeof getPageTextContent !== 'function') {
       return 'Error: getPageTextContent() not available. Are you on a valid page?';
     }
-    const result = await getPageTextContent();
-    console.log('=== BASIC EXTRACTION ===');
+    const result = await getPageTextContent(); // Now calls enhanced extractor
+    console.log('=== BASIC EXTRACTION (using enhanced) ===');
     console.log(result);
     return result;
   },
@@ -717,27 +717,27 @@ globalThis.contentExtractorHelpers = {
   },
 
   /**
-   * Compare both methods side by side
+   * Compare both methods side by side (Note: both now use enhanced extractor)
    * Usage: await contentExtractorHelpers.compare()
    */
   async compare() {
-    console.log('\n🔍 Extracting with both methods...\n');
+    console.log('\n🔍 Note: Both methods now use enhanced extractor\n');
 
     const basic = typeof getPageTextContent === 'function'
-      ? await getPageTextContent()
+      ? await getPageTextContent() // Now calls enhanced
       : 'Basic extraction not available';
     const enhanced = await getEnhancedPageContent();
 
     console.log('📊 COMPARISON RESULTS:');
-    console.log(`Basic length: ${basic.length} chars`);
-    console.log(`Enhanced length: ${enhanced.length} chars`);
-    console.log(`Difference: ${enhanced.length - basic.length} chars (${((enhanced.length / basic.length - 1) * 100).toFixed(1)}%)`);
+    console.log(`Via getPageTextContent(): ${basic.length} chars`);
+    console.log(`Via getEnhancedPageContent(): ${enhanced.length} chars`);
+    console.log(`Note: Both should be identical as they use the same extractor`);
 
-    console.group('=== BASIC OUTPUT ===');
+    console.group('=== OUTPUT VIA getPageTextContent() ===');
     console.log(basic.substring(0, 2000) + (basic.length > 2000 ? '\n... (truncated)' : ''));
     console.groupEnd();
 
-    console.group('=== ENHANCED OUTPUT ===');
+    console.group('=== OUTPUT VIA getEnhancedPageContent() ===');
     console.log(enhanced.substring(0, 2000) + (enhanced.length > 2000 ? '\n... (truncated)' : ''));
     console.groupEnd();
 
@@ -891,36 +891,36 @@ globalThis.contentExtractorHelpers = {
 ╠════════════════════════════════════════════════════════════╣
 ║                                                            ║
 ║  Quick Testing:                                            ║
-║  • await contentExtractorHelpers.testBasic()              ║
+║  • await contentExtractorHelpers.testBasic()               ║
 ║    → Test current extraction method                        ║
 ║                                                            ║
-║  • await contentExtractorHelpers.testEnhanced()           ║
+║  • await contentExtractorHelpers.testEnhanced()            ║
 ║    → Test new enhanced extraction                          ║
 ║                                                            ║
-║  • await contentExtractorHelpers.compare()                ║
+║  • await contentExtractorHelpers.compare()                 ║
 ║    → Compare both methods side-by-side                     ║
 ║                                                            ║
 ║  Page Analysis:                                            ║
-║  • contentExtractorHelpers.metadata()                     ║
+║  • contentExtractorHelpers.metadata()                      ║
 ║    → Show page metadata (Open Graph, meta tags, etc.)      ║
 ║                                                            ║
-║  • await contentExtractorHelpers.mainContent()            ║
+║  • await contentExtractorHelpers.mainContent()             ║
 ║    → Detect main content area (highlighted for 3s)         ║
 ║                                                            ║
-║  • await contentExtractorHelpers.stats()                  ║
+║  • await contentExtractorHelpers.stats()                   ║
 ║    → Show page structure statistics                        ║
 ║                                                            ║
 ║  Element Testing:                                          ║
-║  • contentExtractorHelpers.testLists()                    ║
+║  • contentExtractorHelpers.testLists()                     ║
 ║    → Test list extraction (ul, ol)                         ║
 ║                                                            ║
-║  • contentExtractorHelpers.testTables()                   ║
+║  • contentExtractorHelpers.testTables()                    ║
 ║    → Test table extraction                                 ║
 ║                                                            ║
-║  • contentExtractorHelpers.testCodeBlocks()               ║
+║  • contentExtractorHelpers.testCodeBlocks()                ║
 ║    → Test code block extraction (pre, code)                ║
 ║                                                            ║
-║  • contentExtractorHelpers.testImages()                   ║
+║  • contentExtractorHelpers.testImages()                    ║
 ║    → Test image alt text extraction                        ║
 ║                                                            ║
 ╚════════════════════════════════════════════════════════════╝

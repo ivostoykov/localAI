@@ -103,7 +103,8 @@ async function loadSettings(e) {
             const op0 = el.options[0] || null;
             el.replaceChildren();
             if (op0) { el.appendChild(op0); }
-            formData[list]?.forEach(value => addSelectOptions(el, { "val": value, "isSelected": (value === formData.aiUrl ?? '') }));
+            const selectedValue = formData[el.id] ?? '';
+            formData[list]?.forEach(value => addSelectOptions(el, { "val": value, "isSelected": (value === selectedValue) }));
             if (el.options.length === 1) { el.selectedIndex = 0; }
         }
 
@@ -313,7 +314,7 @@ async function attachDataListListeners(e) {
             switch (action) {
                 case 'add':
                 case 'edit':
-                    b.addEventListener('click', e => extenddList(e));
+                    b.addEventListener('click', e => extendList(e));
                     break;
                 case 'copy':
                     b.addEventListener('click', e => copyValue(e));
@@ -589,19 +590,21 @@ function refreshTarget(gldValues) {
     if (Object.keys(gldValues).length < 1) { return; }
     const target = document.querySelector(`#${gldValues.targetId || ''}`);
     if (!target || !gldValues?.newValue) { return; }
-    if (gldValues?.selectedIndex >= 0 && target.options[gldValues.selectedIndex]) {
+
+    if (gldValues?.selectedIndex > 0 && target.options[gldValues.selectedIndex]) {
         target.options[gldValues.selectedIndex].value = gldValues.newValue;
         if (gldValues.dlgIsSelected || false) {
+            Array.from(target.options).forEach(opt => opt.removeAttribute('selected'));
             target.options[gldValues.selectedIndex].setAttribute('selected', 'selected');
         }
     } else {
         const op = document.createElement('option');
         op.text = op.value = gldValues.newValue;
         if (gldValues.dlgIsSelected || false) {
+            Array.from(target.options).forEach(opt => opt.removeAttribute('selected'));
             op.setAttribute('selected', 'selected');
         }
         target.appendChild(op);
-        // target.selectedIndex = target.options.lenght - 1;
     }
 }
 
@@ -638,7 +641,7 @@ async function fillModelList(models = [], selector = '') {
     }
 }
 
-function extenddList(e) {
+function extendList(e) {
     let datalist = e.target.closest('div.el-holder');
     datalist = datalist?.querySelector('select');
     if (!datalist) { return; }
@@ -650,6 +653,7 @@ function extenddList(e) {
         options.selectedIndex = datalist.selectedIndex;
         options.selectedValue = datalist.selectedIndex >= 0 && datalist.options[datalist.selectedIndex] ? datalist.options[datalist.selectedIndex].value : '';
     } else {
+        options.selectedIndex = -1;
         options.selectedValue = '';
     }
 

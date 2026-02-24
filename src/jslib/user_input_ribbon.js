@@ -139,6 +139,48 @@ async function debugBtnClicked(e){
     await debugBtnInit(el);
 }
 
+async function pageFilterBtnInit() {
+    const shadowRoot = getShadowRoot();
+    const el = shadowRoot?.querySelector('#pageFilterBtn');
+    if (!el) {
+        console.error(`${manifest?.name ?? ""} - [${getLineNumber()}]: Page filter button not found!`);
+        return;
+    }
+    const options = await getOptions();
+    el.textContent = (options.contentFilteringEnabled ?? true) ? 'text' : 'html';
+}
+
+async function pageFilterBtnClicked(e) {
+    let el;
+    try {
+        if(e){  el = e?.composedPath()?.[0];  }
+        else {
+            const shadowRoot = getShadowRoot();
+            el = shadowRoot?.querySelector('#pageFilterBtn');
+        }
+        if (!el) {
+            console.error(`${manifest?.name ?? ""} - [${getLineNumber()}]: Page filter button not found!`, e?.composedPath());
+            return;
+        }
+
+        const label = el?.textContent?.trim()?.toLowerCase();
+        el.textContent = label === 'html' ? 'text' : 'html';
+        const options = await getOptions();
+        options["contentFilteringEnabled"] = el?.textContent?.trim()?.toLowerCase() === 'text';
+        await setOptions(options);
+    } catch (err) {
+        console.error(`${manifest?.name ?? ""} - [${getLineNumber()}]: Page filter button error - ${err.message}!`, err);
+    }
+}
+
+async function handlePageFilterCommand(cmd = ''){
+    const options = await getOptions();
+    const isContentFilteringEnabled = options.contentFilteringEnabled ?? true;
+    if(isContentFilteringEnabled && cmd === "pagetext"){  return;  }
+    if(!isContentFilteringEnabled && cmd === "rawpage"){  return;  }
+    await pageFilterBtnClicked(null);
+}
+
 async function debugBtnInit(btn){
     const options = await getOptions();
     const debug = options?.debug ?? false;

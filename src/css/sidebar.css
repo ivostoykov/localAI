@@ -432,6 +432,18 @@ local-ai *,
     opacity: 1;
 }
 
+.user-input-ribbon .filter{
+    text-transform: uppercase;
+    font-size: 1rem;
+    margin-bottom: .15rem;
+    background-color: #666;
+    padding: .3rem .5rem;
+    color: #fff;
+}
+
+.user-input-ribbon .filter:hover{
+    font-weight: bold;
+}
 
 /* drop zone */
 .dropzone {

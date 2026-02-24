@@ -7,13 +7,13 @@
  */
 
 async function cleanPageContent() {
-    if (typeof getPageTextContent !== 'function') {
-        console.error(`>>> ${manifest?.name ?? ''} - cleanPageContent: getPageTextContent function not available`);
+    if (typeof getEnhancedPageContent !== 'function') {
+        console.error(`>>> ${manifest?.name ?? ''} - cleanPageContent: getEnhancedPageContent function not available`);
         return '';
     }
 
     try {
-        return await getPageTextContent();
+        return await getEnhancedPageContent();
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - cleanPageContent: Error extracting page content`, e);
         return '';

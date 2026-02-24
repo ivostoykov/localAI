@@ -105,6 +105,25 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     }
 });
 
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+    const tabId = activeInfo.tabId;
+    const key = `${activePageStorageKey}:${tabId}`;
+
+    try {
+        const result = await chrome.storage.local.get([key]);
+        const pageData = result[key];
+
+        if (!pageData) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${tabId} activated but no page data found, requesting refresh`);
+            // Send message to content script to refresh page data
+            await chrome.tabs.sendMessage(tabId, { action: 'refreshPageData' });
+        }
+    } catch (error) {
+        // Tab might not have content script loaded yet (e.g., chrome:// pages)
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not check/refresh page data for tab ${tabId}:`, error.message);
+    }
+});
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
         try {
@@ -345,8 +364,8 @@ function composeContextMenu() {
     });
 }
 
-function extractEnhancedContent() {
-    return getPageTextContent();
+async function extractEnhancedContent() {
+    return await getPageTextContent();
 }
 
 // Ollama returns several json object in a single response which invalidates the JSON
@@ -462,6 +481,7 @@ async function validateToolCall(call = {}, availableTools) {
 }
 
 async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolveToolCalls tab:`, tab, 'tab?.id:', tab?.id);
     // const availableTools = await getPromptTools();
 
     let data;

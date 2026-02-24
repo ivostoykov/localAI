@@ -48,9 +48,11 @@ async function initSidebar() {
     userAreaContainer.querySelector('#quickPromptBtn')?.addEventListener('mousedown', async e => await quickPromptClicked(e), { capture: false });
     userAreaContainer.querySelector('#eraserBtn')?.addEventListener('mousedown', e => eraseUserInputArea(e));
     userAreaContainer.querySelector('#debugBtn')?.addEventListener('mousedown', async e => await debugBtnClicked(e));
+    userAreaContainer.querySelector('#pageFilterBtn')?.addEventListener('mousedown', async e => await pageFilterBtnClicked(e));
     userAreaContainer?.addEventListener('mouseenter', showUserInputRibbon);
     userAreaContainer?.addEventListener('mouseleave', hideUserInputRibbon);
     initDebugBtn(Date.now() + 180000, userAreaContainer.querySelector('#debugBtn'));
+    initPageFilterBtn(Date.now() + 180000);
 
     if (root) {
         root.addEventListener('dragenter', onUserInputDragEnter);
@@ -130,6 +132,17 @@ function initDebugBtn(timeout, el){
         return;
     }
     debugBtnInit(el);
+}
+
+function initPageFilterBtn(timeout){
+    if(!chrome.runtime?.id) { return;  }
+    if(timeout < Date.now()) {  return; }
+    if(typeof pageFilterBtnInit !== 'function') {
+        setTimeout(() => pageFilterBtnInit(timeout), 1000);
+        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - debug btn init pending`, {remain: (Math.abs(timeout - Date.now())), fun: (typeof pageFilterBtnInit)});
+        return;
+    }
+    pageFilterBtnInit();
 }
 
 function getCurrentSystemInstructions() {
@@ -1253,8 +1266,14 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             await checkAndSetSessionName();
             break;
         case "callContentExtractor":
-            await handleContentExtractorCall(response, sendResponse);
+            handleContentExtractorCall(response, sendResponse);
             return true;
+        case "refreshPageData":
+            (async () => {
+                const tabId = await getMyTabId();
+                await setActiveSessionPageData(tabId);
+            })();
+            break;
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
             break;
@@ -1316,7 +1335,10 @@ async function handleContentExtractorCall(response, sendResponse) {
 
         switch (functionName) {
             case 'getPageStructureSummary':
-                result = JSON.stringify(await getPageStructureSummary(), null, 2);
+                const summaryObj = await getPageStructureSummary();
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getPageStructureSummary returned:`, summaryObj);
+                result = JSON.stringify(summaryObj, null, 2);
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - JSON.stringify result:`, result);
                 break;
             case 'getPageTables':
                 result = await getPageTables(argument);
@@ -1330,6 +1352,9 @@ async function handleContentExtractorCall(response, sendResponse) {
             case 'getPageMetadataFormatted':
                 result = getPageMetadataFormatted();
                 break;
+            case 'getEnhancedPageContent':
+                result = await getEnhancedPageContent();
+                break;
             case 'getMainContentOnly':
                 result = await getMainContentOnly();
                 break;
@@ -1338,7 +1363,9 @@ async function handleContentExtractorCall(response, sendResponse) {
                 return;
         }
 
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to send response, result type:`, typeof result, 'result length:', result?.length);
         sendResponse({ result });
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Response sent`);
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Content extractor error:`, error);
         sendResponse({ error: error.message });
@@ -1542,6 +1569,11 @@ async function checkCommandHandler(userInput) {
             case 'notool':
             case 'notools':
                 shadowRoot?.querySelector('#toolFunctions')?.classList.add('disabled');
+                res = true;
+                break;
+            case 'rawpage':
+            case 'pagetext':
+                await handlePageFilterCommand(cmd);
                 res = true;
                 break;
             case 'pin':

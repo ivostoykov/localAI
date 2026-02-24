@@ -22,7 +22,7 @@ class BackgroundMemory {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js] - IndexedDB error:`, request.error);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - IndexedDB error:`, request.error);
         reject(request.error);
       };
 
@@ -96,7 +96,7 @@ class BackgroundMemory {
 
     if(!sessionId){  sessionId = await getActiveSessionId();  }
     if(!sessionId){
-      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:storeContext] - No session ID available:`, {
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No session ID available:`, {
         providedSessionId: sessionId,
         activeSessionId: await getActiveSessionId(),
         tabId,
@@ -179,7 +179,7 @@ class BackgroundMemory {
           if (freshPageContent) {
             await this.storeContext(sessionId, freshPageContent, attachments, currentHash, tabId);
             sessionContext = await this.getContext(sessionId);
-            console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Page hash mismatch, updated context with fresh content`);
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page hash mismatch, updated context with fresh content`);
           }
         }
 
@@ -281,7 +281,7 @@ class BackgroundMemory {
       };
 
       transaction.onerror = () => {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Error clearing stores:`, transaction.error);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error clearing stores:`, transaction.error);
         reject(transaction.error);
       };
 
@@ -325,14 +325,14 @@ class BackgroundMemory {
 
   cosineSimilarity(vecA, vecB) {
     if (!vecA || !vecB || !Array.isArray(vecA) || !Array.isArray(vecB)) {
-      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:cosineSimilarity] - Invalid vector parameters:`, {
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid vector parameters:`, {
         vecA: { type: typeof vecA, isArray: Array.isArray(vecA), value: vecA },
         vecB: { type: typeof vecB, isArray: Array.isArray(vecB), value: vecB }
       });
       throw new Error('Both vectors must be valid arrays');
     }
     if (vecA.length !== vecB.length) {
-      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:cosineSimilarity] - Vector dimension mismatch:`, {
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Vector dimension mismatch:`, {
         vecA: { length: vecA.length, sample: vecA.slice(0, 5) },
         vecB: { length: vecB.length, sample: vecB.slice(0, 5) }
       });
@@ -361,7 +361,7 @@ class BackgroundMemory {
       embedUrl = laiOptions?.embedUrl || laiOptions?.aiUrl?.replace(/chat$/i, 'embed');
 
       if (!embedUrl) {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:generateEmbedding] - Embedding URL not configured:`, {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Embedding URL not configured:`, {
           laiOptions,
           embedUrl,
           aiUrl: laiOptions?.aiUrl,
@@ -373,7 +373,7 @@ class BackgroundMemory {
       model = laiOptions.embeddingModel || laiOptions.aiModel;
 
       if (!model) {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:generateEmbedding] - Embedding model not configured:`, {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Embedding model not configured:`, {
           laiOptions,
           embeddingModel: laiOptions?.embeddingModel,
           aiModel: laiOptions?.aiModel,
@@ -382,19 +382,23 @@ class BackgroundMemory {
         throw new Error('Embedding model not configured');
       }
 
+      const requestBody = {
+        model: model,
+        input: [text]
+      };
+      console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] request body`, requestBody);
       const response = await fetch(embedUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: model,
-          prompt: text
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:generateEmbedding] - Embedding generation failed:`, {
+        const errorText = await response.text();
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Embedding generation failed:`, {
           status: response.status,
           statusText: response.statusText,
+          errorText,
           embedUrl,
           model,
           text: text?.substring(0, 100)
@@ -402,11 +406,29 @@ class BackgroundMemory {
         throw new Error(`Embedding generation failed: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data;
+      let embeddings;
 
-      if (!data?.embedding || !Array.isArray(data.embedding) || data.embedding.length === 0) {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:generateEmbedding] - Invalid embedding returned from API:`, {
+      try {
+        data = JSON.parse(responseText);
+        embeddings = data.embeddings;
+      } catch (parseError) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to parse response as JSON:`, {
+          parseError,
+          responseText,
+          embedUrl,
+          model,
+          text: text?.substring(0, 100)
+        });
+        throw new Error('Failed to parse embedding response as JSON');
+      }
+
+      if (!embeddings || !Array.isArray(embeddings) || embeddings.length === 0) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid embedding returned from API:`, {
           data,
+          embeddings,
+          responseText,
           embeddingType: typeof data?.embedding,
           embeddingIsArray: Array.isArray(data?.embedding),
           embeddingLength: data?.embedding?.length,
@@ -417,10 +439,13 @@ class BackgroundMemory {
         throw new Error('Invalid embedding returned from API');
       }
 
-      return data.embedding;
+      return embeddings;
     } catch (error) {
-      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:generateEmbedding] - generateEmbedding error:`, {
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - generateEmbedding error:`, {
         error,
+        responseText,
+        data,
+        embeddings,
         embedUrl,
         model,
         text: text?.substring(0, 100)
@@ -434,7 +459,7 @@ class BackgroundMemory {
       await this.init();
 
       if (!embeddingData?.embedding || !Array.isArray(embeddingData.embedding) || embeddingData.embedding.length === 0) {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:storeEmbedding] - Invalid embedding data:`, {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid embedding data:`, {
           embeddingData,
           embeddingType: typeof embeddingData?.embedding,
           embeddingIsArray: Array.isArray(embeddingData?.embedding),
@@ -456,13 +481,13 @@ class BackgroundMemory {
       );
 
       if (duplicate) {
-        console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Content already embedded for this session/tab/type/turn, skipping:`, embeddingData.contentHash);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Content already embedded for this session/tab/type/turn, skipping:`, embeddingData.contentHash);
         return duplicate.id;
       }
 
       return await this.put(STORES.EMBEDDINGS, embeddingData);
     } catch (error) {
-      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:storeEmbedding] - storeEmbedding error:`, {
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - storeEmbedding error:`, {
         error,
         embeddingData: {
           sessionId: embeddingData?.sessionId,
@@ -516,10 +541,10 @@ class BackgroundMemory {
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, limit);
 
-      console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Semantic search found ${results.length} results`);
+      console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Semantic search found ${results.length} results`);
       return results;
     } catch (error) {
-      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js] - semanticSearch error:`, error);
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - semanticSearch error:`, error);
       throw error;
     }
   }
@@ -533,7 +558,7 @@ class BackgroundMemory {
 
       const userEmbedding = await this.generateEmbedding(userMessage);
       if (!userEmbedding || !Array.isArray(userEmbedding) || userEmbedding.length === 0) {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:storeTurnWithEmbeddings] - Failed to generate user embedding:`, {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to generate user embedding:`, {
           sessionId,
           tabId,
           turnNumber,
@@ -556,7 +581,7 @@ class BackgroundMemory {
 
       const assistantEmbedding = await this.generateEmbedding(assistantResponse);
       if (!assistantEmbedding || !Array.isArray(assistantEmbedding) || assistantEmbedding.length === 0) {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:storeTurnWithEmbeddings] - Failed to generate assistant embedding:`, {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to generate assistant embedding:`, {
           sessionId,
           tabId,
           turnNumber,
@@ -577,9 +602,9 @@ class BackgroundMemory {
         metadata: { timestamp: Date.now() }
       });
 
-      console.debug(`>>> ${manifest?.name ?? ''} - [background-memory.js] - Stored embeddings for turn ${turnNumber}`);
+      console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Stored embeddings for turn ${turnNumber}`);
     } catch (error) {
-      console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:storeTurnWithEmbeddings] - storeTurnWithEmbeddings error:`, {
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - storeTurnWithEmbeddings error:`, {
         error,
         sessionId,
         tabId,
@@ -598,7 +623,7 @@ class BackgroundMemory {
       const embedding = await this.generateEmbedding(summary);
 
       if (!embedding || !Array.isArray(embedding) || embedding.length === 0) {
-        console.error(`>>> ${manifest?.name ?? ''} - [background-memory.js:storeToolCallEmbedding] - Failed to generate tool call embedding:`, {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to generate tool call embedding:`, {
           sessionId,
           tabId,
           turnNumber,
@@ -624,7 +649,7 @@ class BackgroundMemory {
         }
       });
     } catch (error) {
-      console.warn(`>>> ${manifest?.name ?? ''} - [background-memory.js:storeToolCallEmbedding] - Failed to store tool call embedding:`, {
+      console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store tool call embedding:`, {
         error,
         sessionId,
         tabId,

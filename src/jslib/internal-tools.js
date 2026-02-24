@@ -255,6 +255,9 @@ async function execInternalTool(call = {}, tabId = null) {
         case "get_page_metadata":
             return await callContentScriptExtractor(tabId, 'getPageMetadataFormatted', null);
 
+        case "get_enhanced_page_content":
+            return await callContentScriptExtractor(tabId, 'getEnhancedPageContent', null);
+
         case "get_main_content":
             return await callContentScriptExtractor(tabId, 'getMainContentOnly', null);
     }
@@ -271,6 +274,9 @@ async function callContentScriptExtractor(tabId, functionName, argument = null) 
             functionName: functionName,
             argument: argument
         });
+
+        console.debug(`>>> ${manifest?.name ?? ''} - [internal-tools.js] - Received response:`, response);
+        console.debug(`>>> ${manifest?.name ?? ''} - [internal-tools.js] - response?.result type:`, typeof response?.result, 'length:', response?.result?.length);
 
         if (response?.error) {
             console.error(`>>> ${manifest?.name ?? ''} - [internal-tools.js] - Content extractor error:`, response.error);
@@ -368,7 +374,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Call this FIRST when user asks about 'current page', 'this page', 'the page', or wants to analyse/summarise/understand page content. Returns visible text content from the active browser tab. Use to answer questions like 'what is this page about', 'summarise this', 'what problem is outlined here'. Do NOT use web_search for current page - use this instead.",
+            "description": "ALWAYS call this FIRST when user references 'current page', 'current tab', 'this page', 'this tab', 'the page', 'the tab', or any variation, including phrases like 'using the current page', 'extract from this page', 'what does this page say about'. In browser context, 'page' and 'tab' are interchangeable. Returns clean visible text content from the active browser tab including all text, data, and information visible on the page. This should satisfy most extraction requests. Only if specific data is still missing after using this tool should you call get_enhanced_page_content next. NEVER call get_page_metadata before calling this first. Do NOT use web_search for current page - use this instead.",
             "name": "get_current_tab_page_content",
             "parameters": {
                 "properties": {},
@@ -379,6 +385,20 @@ const INTERNAL_TOOL_DEFINITIONS = [
         "strict": true,
         "type": "tool",
         "usage_cost": 1
+    },
+    {
+        "function": {
+            "description": "Call this ONLY if get_current_tab_page_content left gaps in required information. Returns enhanced page content with preserved structure, links in [text](url) format, tables, lists, code blocks, and semantic HTML. More comprehensive than basic text extraction. If this still doesn't satisfy all requirements, call get_page_metadata as last resort.",
+            "name": "get_enhanced_page_content",
+            "parameters": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 2
     },
     {
         "function": {
@@ -570,7 +590,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Extract page metadata from Open Graph tags, JSON-LD, and meta tags. Returns title, author, publish date, description, keywords, article type, and language. Use when you need to know about the page without reading full content, e.g., 'who wrote this', 'when was this published', 'what is this page about'.",
+            "description": "**NEVER call this first!** Only call as LAST resort if `get_current_tab_page_content` and `get_enhanced_page_content` both failed to provide required information. Use ONLY when previous tools don't provide required metadata and complimentary with `get_current_tab_page_content` first or `get_enhanced_page_content`.",
             "name": "get_page_metadata",
             "parameters": {
                 "properties": {},
@@ -580,7 +600,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
         },
         "strict": true,
         "type": "tool",
-        "usage_cost": 1
+        "usage_cost": 3
     },
     {
         "function": {

@@ -377,21 +377,69 @@ async function setOptions(options) {
 async function getActiveSessionPageData(tabId) {
     const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
     const result = await chrome.storage.local.get([key]);
-    return result[key] || null;
+    const pageData = result[key] || null;
+    if(!pageData){
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing page data`, {pageData, key, result});
+    }
+    return pageData;
 }
 
 async function setActiveSessionPageData(tabId) {
-    await waitForDOMToSettle(1000, 120000);
-    const url = location.href;
-    const pageContent = await getPageTextContent() ?? null;
-    if(!pageContent) {
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content!`, url);
-        return;
+    try {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Called setActiveSessionPageData`, {
+            tabId,
+            url: location.href,
+            readyState: document.readyState,
+            bodyExists: !!document.body,
+            bodyLength: document.body?.innerText?.length ?? 0
+        });
+
+        await waitForDOMToSettle(1000, 120000);
+
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - After waitForDOMToSettle`, {
+            readyState: document.readyState,
+            bodyLength: document.body?.innerText?.length ?? 0
+        });
+
+        const url = location.href;
+        const pageContent = await getPageTextContent() ?? null;
+
+        if(!pageContent) {
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content!`, {
+                url,
+                readyState: document.readyState,
+                bodyExists: !!document.body,
+                bodyLength: document.body?.innerText?.length ?? 0,
+                bodyFirstChars: document.body?.innerText?.substring(0, 100) ?? ''
+            });
+            return;
+        }
+
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Successfully extracted page content`, {
+            url,
+            contentLength: pageContent.length,
+            contentFirstChars: pageContent.substring(0, 100)
+        });
+
+        const pageHash = generatePageHash(url, pageContent.length);
+        console.debug(`>>> ${manifest?.name} - [${getLineNumber()}] - current hash`, pageHash);
+        const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
+        await chrome.storage.local.set({ [key]: {url, pageContent, pageHash} });
+
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Successfully stored page data`, {
+            key,
+            url,
+            contentLength: pageContent.length
+        });
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error in setActiveSessionPageData:`, {
+            error: error.message,
+            stack: error.stack,
+            tabId,
+            url: location.href,
+            readyState: document.readyState
+        });
     }
-    const pageHash = generatePageHash(url, pageContent.length);
-    console.debug(`>>> ${manifest?.name} - [${getLineNumber()}] - current hash`, pageHash);
-    const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
-    await chrome.storage.local.set({ [key]: {url, pageContent, pageHash} });
 }
 
 async function removeActiveSessionPageData(tabId) {
