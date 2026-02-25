@@ -40,26 +40,68 @@ try {
 
 init();
 
-globalThis.debugShowMemory = async function() {
-    console.debug('=== INDEXEDDB MEMORY DEBUG ===');
-    try {
-        const activeSession = await getActiveSession();
-        console.debug('Active session ID:', activeSession?.id);
+async function cleanOrphanedPageData(phase) {
+    console.debug(`>>> ${manifest?.name ?? ''} - [${phase}] Cleaning orphaned data`);
 
-        const conversations = await backgroundMemory.query('conversations', 'sessionId', activeSession?.id);
-        console.debug('📝 Conversations (' + conversations.length + ' turns):');
-        console.table(conversations);
+    const allTabs = await chrome.tabs.query({});
+    const validTabIds = new Set(allTabs.map(tab => tab.id));
 
-        const context = await backgroundMemory.get('context', activeSession?.id);
-        console.debug('📄 Context:');
-        console.debug(context);
+    const allStorage = await chrome.storage.local.get(null);
+    const orphanedKeys = [];
 
-        const dbs = await indexedDB.databases();
-        console.debug('💾 All databases:', dbs);
-    } catch (e) {
-        console.error('Error fetching memory:', e);
+    for (const key of Object.keys(allStorage)) {
+        if (key.startsWith('activePage:')) {
+            const tabId = parseInt(key.split(':')[1]);
+            if (!validTabIds.has(tabId)) {
+                orphanedKeys.push(key);
+            }
+        }
     }
-};
+
+    if (orphanedKeys.length > 0) {
+        await chrome.storage.local.remove(orphanedKeys);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${phase}] Cleaned up ${orphanedKeys.length} orphaned page records:`, orphanedKeys);
+    } else {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${phase}] No orphaned page records found`);
+    }
+
+    try {
+        await backgroundMemory.init();
+
+        const allEmbeddings = await backgroundMemory.getAllFromStore('embeddings');
+        const orphanedEmbeddings = allEmbeddings.filter(emb =>
+            emb.tabId && !validTabIds.has(emb.tabId)
+        );
+
+        if (orphanedEmbeddings.length > 0) {
+            for (const emb of orphanedEmbeddings) {
+                await backgroundMemory.delete('embeddings', emb.id);
+            }
+            console.debug(`>>> ${manifest?.name ?? ''} - [${phase}] Cleaned up ${orphanedEmbeddings.length} orphaned embeddings`);
+        } else {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${phase}] No orphaned embeddings found`);
+        }
+
+        const allSessions = await backgroundMemory.getAllFromStore('sessions');
+        const orphanedSessions = allSessions.filter(session =>
+            session.tabId && !validTabIds.has(session.tabId)
+        );
+
+        if (orphanedSessions.length > 0) {
+            for (const session of orphanedSessions) {
+                await backgroundMemory.deleteSession(session.sessionId);
+            }
+            console.debug(`>>> ${manifest?.name ?? ''} - [${phase}] Cleaned up ${orphanedSessions.length} orphaned sessions`);
+        } else {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${phase}] No orphaned sessions found`);
+        }
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${phase}] Error cleaning orphaned IndexedDB data:`, error);
+    }
+}
+
+chrome.runtime.onStartup.addListener(() => cleanOrphanedPageData('onStartup'));
+chrome.runtime.onInstalled.addListener(() => cleanOrphanedPageData('onInstalled'));
 
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
     if (areaName !== 'sync') { return; }
@@ -115,7 +157,6 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 
         if (!pageData) {
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${tabId} activated but no page data found, requesting refresh`);
-            // Send message to content script to refresh page data
             await chrome.tabs.sendMessage(tabId, { action: 'refreshPageData' });
         }
     } catch (error) {

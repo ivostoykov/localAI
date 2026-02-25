@@ -831,6 +831,27 @@ class BackgroundMemory {
 
 const backgroundMemory = new BackgroundMemory();
 
+globalThis.debugShowMemory = async function() {
+    console.debug('=== INDEXEDDB MEMORY DEBUG ===');
+    try {
+        const activeSession = await getActiveSession();
+        console.debug('Active session ID:', activeSession?.id);
+
+        const conversations = await backgroundMemory.query('conversations', 'sessionId', activeSession?.id);
+        console.debug('📝 Conversations (' + conversations.length + ' turns):');
+        console.table(conversations);
+
+        const context = await backgroundMemory.get('context', activeSession?.id);
+        console.debug('📄 Context:');
+        console.debug(context);
+
+        const dbs = await indexedDB.databases();
+        console.debug('💾 All databases:', dbs);
+    } catch (e) {
+        console.error('Error fetching memory:', e);
+    }
+};
+
 // Global debug helpers for console access
 globalThis.dbHelpers = {
   async listStores() {
@@ -924,4 +945,5 @@ globalThis.dbHelpers = {
   }
 };
 
-console.log('🔍 DB helpers available: dbHelpers.listStores(), .getAll(store), .dump(), .getEmbeddings(), .searchEmbeddings(), etc.');
+console.log(`🔍 DB helpers available: dbHelpers.${dbHelpers.listStores.name}(), .${dbHelpers.getAll.name}(store), .${dbHelpers.dump.name}(), .${dbHelpers.getEmbeddings.name}(), .${dbHelpers.searchEmbeddings.name}(), etc.`);
+console.log(`🔍 Memory helper available: debugShowMemory()`);

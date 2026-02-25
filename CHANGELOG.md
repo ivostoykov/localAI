@@ -1,6 +1,11 @@
 # Local AI - Changelog
 
-## [1.28.90] - 2026-02-24 - latest
+## [1.28.92] - 2026-02-25 - latest
+
+### Bug Fixes
+- Added automatic cleanup of orphaned page data, embeddings, and sessions on browser startup and extension reload
+
+## [1.28.90] - 2026-02-24
 
 ### Page Content Filtering Commands
 - Added page content filtering command
