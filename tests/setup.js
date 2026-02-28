@@ -14,7 +14,7 @@ global.getLineNumber = () => 'test';
 
 // Storage keys used in sessions.js
 global.allSessionsStorageKey = 'LAI_SESSIONS';
-global.activeSessionIdStorageKey = 'LAI_ACTIVE_SESSION_ID';
+global.activeSessionIdKey = 'LAI_ACTIVE_SESSION_ID';
 global.storageUserCommandsKey = 'LAI_USER_COMMANDS';
 global.storageOptionKey = 'LAI_OPTIONS';
 global.activePageStorageKey = 'LAI_ACTIVE_PAGE';

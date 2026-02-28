@@ -82,7 +82,7 @@ async function deleteSessionById(sessionId) {
 
 async function deleteActiveSessionId() {
     try {
-        await chrome.storage.local.remove(activeSessionIdStorageKey);
+        await chrome.storage.local.remove(activeSessionIdKey);
 
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
@@ -140,8 +140,8 @@ async function getAllSessions() {
 
 async function getActiveSessionId() {
     try {
-        const result = await chrome.storage.local.get(activeSessionIdStorageKey);
-        const sessionId = result[activeSessionIdStorageKey];
+        const result = await chrome.storage.local.get(activeSessionIdKey);
+        const sessionId = result[activeSessionIdKey];
 
         if (sessionId && typeof sessionId === 'string' && sessionId.trim()) {
             return sessionId;
@@ -185,7 +185,7 @@ async function setActiveSessionId(sessionId) {
         if (!sessionId || typeof sessionId !== 'string') {
             throw new Error(`Invalid session ID provided: ${sessionId}`);
         }
-        await chrome.storage.local.set({ [activeSessionIdStorageKey]: sessionId });
+        await chrome.storage.local.set({ [activeSessionIdKey]: sessionId });
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - setActiveSessionId error: ${error.message}`, error);
     }
@@ -416,7 +416,7 @@ async function setActiveSessionPageData(tabId) {
         });
 
         const url = location.href;
-        const pageContent = await getPageTextContent() ?? null;
+        const pageContent = await getEnhancedPageContent() ?? null;
 
         if(!pageContent) {
             console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content!`, {

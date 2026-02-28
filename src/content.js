@@ -129,8 +129,8 @@ async function allDOMContentLoaded(e) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Starting page data initialization`);
     await removeLocalStorageObject('activeSessionIndex'); // TODO: for sync - to be removed
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Removed activeSessionIndex`);
-    await removeLocalStorageObject(activeSessionIdStorageKey);
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Removed activeSessionIdStorageKey`);
+    await removeLocalStorageObject(activeSessionIdKey);
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Removed activeSessionIdKey`);
     const tabId = await getMyTabId();
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Got tabId:`, tabId);
     await setActiveSessionPageData(tabId);
@@ -250,20 +250,6 @@ async function init() {
     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);
   }
 }
-
-// Main orchestrator - coordinates the page content workflow
-// REPLACED WITH ENHANCED EXTRACTOR - see content-extractor.js
-async function getPageTextContent() {
-  return await getEnhancedPageContent();
-}
-
-// COMMENTED OUT - Replaced by enhanced extractor
-// async function getExtractedFilteredContent(cleanedDOM) {
-//   const structure = extractTextStructure(cleanedDOM);
-//   const result = formatPageContent(structure);
-//   // console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - page:\n ${result}`);
-//   return result;
-// }
 
 async function getDocumentContentFiltered() {
   const domClone = await removeElementsBySelectors();
