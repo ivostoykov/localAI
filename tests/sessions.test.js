@@ -11,7 +11,7 @@ const sessionsCode = fs.readFileSync(
 );
 
 // Execute sessions.js code in global scope
-const executeSessionsCode = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdStorageKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', sessionsCode + '; return { createNewSession, deleteSession, deleteActiveSession, deleteSessionById, deleteActiveSessionId, getSession, getActiveSession, getActiveSessionById, getAllSessions, setAllSessions, setActiveSessionId, getActiveSessionId, setActiveSession, getAiUserCommands, setAiUserCommands, getOptions, setOptions, deleteSessionMemory, clearAllMemory };');
+const executeSessionsCode = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', sessionsCode + '; return { createNewSession, deleteSession, deleteActiveSession, deleteSessionById, deleteActiveSessionId, getSession, getActiveSession, getActiveSessionById, getAllSessions, setAllSessions, setActiveSessionId, getActiveSessionId, setActiveSession, getAiUserCommands, setAiUserCommands, getOptions, setOptions, deleteSessionMemory, clearAllMemory };');
 
 let funcs;
 
@@ -29,7 +29,7 @@ describe('sessions.js', () => {
             global.manifest,
             global.getLineNumber,
             global.allSessionsStorageKey,
-            global.activeSessionIdStorageKey,
+            global.activeSessionIdKey,
             global.storageUserCommandsKey,
             global.storageOptionKey,
             global.activePageStorageKey,
@@ -63,9 +63,9 @@ describe('sessions.js', () => {
 
         it('sets created session as active', async () => {
             const session = await funcs.createNewSession();
-            const result = await fakeBrowser.storage.local.get(activeSessionIdStorageKey);
+            const result = await fakeBrowser.storage.local.get(activeSessionIdKey);
 
-            expect(result[activeSessionIdStorageKey]).toBe(session.id);
+            expect(result[activeSessionIdKey]).toBe(session.id);
         });
 
         it('handles errors gracefully', async () => {
@@ -152,18 +152,18 @@ describe('sessions.js', () => {
         it('clears active session ID if deleted session was active', async () => {
             const session = await funcs.createNewSession('Active');
             await funcs.deleteSession(session.id);
-            const result = await fakeBrowser.storage.local.get(activeSessionIdStorageKey);
+            const result = await fakeBrowser.storage.local.get(activeSessionIdKey);
 
-            expect(result[activeSessionIdStorageKey]).toBeUndefined();
+            expect(result[activeSessionIdKey]).toBeUndefined();
         });
 
         it('preserves active session ID if different session deleted', async () => {
             const session1 = await funcs.createNewSession('Session 1');
             const session2 = await funcs.createNewSession('Session 2');
             await funcs.deleteSession(session1.id);
-            const result = await fakeBrowser.storage.local.get(activeSessionIdStorageKey);
+            const result = await fakeBrowser.storage.local.get(activeSessionIdKey);
 
-            expect(result[activeSessionIdStorageKey]).toBe(session2.id);
+            expect(result[activeSessionIdKey]).toBe(session2.id);
         });
 
         it('calls deleteSessionMemory', async () => {

@@ -706,10 +706,10 @@ globalThis.contentExtractorHelpers = {
    * Usage: await contentExtractorHelpers.testBasic()
    */
   async testBasic() {
-    if (typeof getPageTextContent !== 'function') {
-      return 'Error: getPageTextContent() not available. Are you on a valid page?';
+    if (typeof getEnhancedPageContent !== 'function') {
+      return 'Error: getEnhancedPageContent() not available. Are you on a valid page?';
     }
-    const result = await getPageTextContent(); // Now calls enhanced extractor
+    const result = await getEnhancedPageContent();
     console.log('=== BASIC EXTRACTION (using enhanced) ===');
     console.log(result);
     return result;
@@ -733,17 +733,17 @@ globalThis.contentExtractorHelpers = {
   async compare() {
     console.log('\n🔍 Note: Both methods now use enhanced extractor\n');
 
-    const basic = typeof getPageTextContent === 'function'
-      ? await getPageTextContent() // Now calls enhanced
+    const basic = typeof getEnhancedPageContent === 'function'
+      ? await getEnhancedPageContent()
       : 'Basic extraction not available';
     const enhanced = await getEnhancedPageContent();
 
     console.log('📊 COMPARISON RESULTS:');
-    console.log(`Via getPageTextContent(): ${basic.length} chars`);
+    console.log(`Via getEnhancedPageContent(): ${basic.length} chars`);
     console.log(`Via getEnhancedPageContent(): ${enhanced.length} chars`);
     console.log(`Note: Both should be identical as they use the same extractor`);
 
-    console.group('=== OUTPUT VIA getPageTextContent() ===');
+    console.group('=== OUTPUT VIA getEnhancedPageContent() ===');
     console.log(basic.substring(0, 2000) + (basic.length > 2000 ? '\n... (truncated)' : ''));
     console.groupEnd();
 

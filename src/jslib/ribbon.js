@@ -201,7 +201,7 @@ async function createNewSessionClicked(e, shadowRoot) {
     } else {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
-    removeLocalStorageObject(activeSessionIdStorageKey);
+    removeLocalStorageObject(activeSessionIdKey);
     showMessage('New session created.', 'success');
 }
 

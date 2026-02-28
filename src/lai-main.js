@@ -182,7 +182,7 @@ async function createNewSessionClicked(e, shadowRoot) {
     } else {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
-    removeLocalStorageObject(activeSessionIdStorageKey);
+    removeLocalStorageObject(activeSessionIdKey);
     showMessage('New session created.', 'success');
 }
 
@@ -1413,7 +1413,7 @@ async function ask2ExplainSelection(response) {
     if (!userInput) { return; }
 
     const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
-    const cleanPageText = await getPageTextContent()
+    const cleanPageText = await getEnhancedPageContent()
     const theAttachment = {
       id: crypto.randomUUID(),
       type: "snippet",

@@ -111,6 +111,9 @@ describe('utils.js', () => {
 
         it('returns false when runtime.id missing', () => {
             const originalId = fakeBrowser.runtime.id;
+            const reloadMock = vi.fn();
+            fakeBrowser.runtime.reload = reloadMock;
+
             delete fakeBrowser.runtime.id;
 
             const result = checkExtensionState();
@@ -118,6 +121,7 @@ describe('utils.js', () => {
             expect(result).toBe(false);
 
             fakeBrowser.runtime.id = originalId;
+            delete fakeBrowser.runtime.reload;
         });
     });
 });
