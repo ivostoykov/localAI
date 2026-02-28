@@ -1,6 +1,5 @@
 var debugEnabled = false;
 var manifest = chrome.runtime.getManifest();
-var EXT_NAME = manifest?.name ?? 'Unknown';
 
 var storageOptionKey = 'laiOptions';
 var storageUserCommandsKey = 'aiUserCommands';
@@ -9,7 +8,6 @@ var activeSessionIdKey = 'activeSessionId';
 var allSessionsStorageKey = 'aiSessions';
 var archivedSessionsStorageKey = 'archivedSessions';
 var storageToolsKey = 'aiTools';
-var activeSessionIdStorageKey = 'activeSessionId';
 var activePageStorageKey = 'activePage';
 var MAX_SESSION_PAGES = 5; // Maximum pages to keep per session
 var ARCHIVE_RETENTION_DAYS = 2; // Keep archived sessions for 2 days

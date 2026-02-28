@@ -6,6 +6,13 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
     const defaults = { codeCopy: true, streamReply: true, abortSignal: null, onAbort: null, onRenderStarted: null, onRendering: null, onRenderComplete: null };
     const config = Object.assign({}, defaults, options);
     const { abortSignal } = config;
+
+    if (abortSignal?.aborted) {
+        cleanup();
+        config.onAbort?.();
+        return;
+    }
+
     if (abortSignal) {
         abortSignal.addEventListener('abort', handleAbort, { once: true });
     }
@@ -20,7 +27,11 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
 
     rootEl.dataset.status = 'rendering';
     for (const bl of blocks) {
-        if (abortSignal?.aborted) { return; }
+        if (abortSignal?.aborted) {
+            cleanup();
+            config.onAbort?.();
+            return;
+        }
 
         const el = renderBlock(bl);
         if (!el) { continue; }
@@ -97,9 +108,8 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
                 if (htmlContent.length > 0) {
                     result.push({ type: 'html', content: htmlContent.join('') });
                     htmlContent = [];
-                } else {
-                    result.push(block);
                 }
+                result.push(block);
             }
         });
 
@@ -167,7 +177,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
                     if (i < text.length) {
                         span.textContent += text[i++];
                         if (i % 10 === 0 || text[i - 1] === '\n' || i >= text.length) {
-                            rootEl.dispatchEvent(new CustomEvent('rendering', { newElement: srcNode }, { bubbles: true }));
+                            rootEl.dispatchEvent(new CustomEvent('rendering', { detail: { newElement: srcNode }, bubbles: true }));
                             config.onRendering?.(bl);
                         }
                         await new Promise(resolve => setTimeout(resolve));
@@ -349,7 +359,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         const tbody = document.createElement('tbody');
 
         const headerCells = lines[0].split('|').map(c => c.trim()).filter(Boolean);
-        const alignInfo = lines[1].split('|').map(c => c.trim());
+        const alignInfo = lines[1].split('|').map(c => c.trim()).filter(Boolean);
 
         const headerRow = document.createElement('tr');
         headerCells.forEach((cell, i) => {
@@ -408,12 +418,19 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
 
     function renderInline(content) {
         const span = document.createElement('span');
-        span.innerHTML = content
+        const escaped = content
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        span.innerHTML = escaped
             .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/<(https?:\/\/[^>]+?)>/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+            .replace(/&lt;(https?:\/\/[^&]+?)&gt;/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
             .replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
             .replace(/\[(https?:\/\/[^\]]+?)\]/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-            .replace(/(?<!\])\b(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+            .replace(/(?<!\])\b(https?:\/\/[^\s&]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/__(.*?)__/g, '<strong>$1</strong>')
             .replace(/\s\*(.*?)\*\s/g, '<em>$1</em>')

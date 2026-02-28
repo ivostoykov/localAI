@@ -3,17 +3,37 @@ async function quickPromptClicked(e) {
     e.stopPropagation();
 
     const shadowRoot = getShadowRoot();
-    shadowRoot?.querySelector('.prompt-menu')?.remove();
+    if (!shadowRoot) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: Shadow root not found!`);
+        return;
+    }
 
-    const tmpl = shadowRoot?.querySelector('#promptMenuTemplate');
+    shadowRoot.querySelector('.prompt-menu')?.remove();
+
+    const tmpl = shadowRoot.querySelector('#promptMenuTemplate');
+    if (!tmpl) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: Prompt menu template not found!`);
+        return;
+    }
+
     const clone = tmpl.content.cloneNode(true);
     shadowRoot.appendChild(clone);
 
-    const menu = shadowRoot?.querySelector('.prompt-menu');
-    await buildPromptList(menu?.querySelector('.dynamic-prompt-list'));
+    const menu = shadowRoot.querySelector('.prompt-menu');
+    if (!menu) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: Prompt menu not found!`);
+        return;
+    }
+
+    await buildPromptList(menu.querySelector('.dynamic-prompt-list'));
 
     const searchInput = menu.querySelector('.search-input')
-    searchInput?.addEventListener('input', quickPromptFilterChanged);
+    if (!searchInput) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: Search input not found!`);
+        return;
+    }
+
+    searchInput.addEventListener('input', quickPromptFilterChanged);
     searchInput.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
             e.stopPropagation();
@@ -28,7 +48,7 @@ async function quickPromptClicked(e) {
     menu.style.zIndex = getHighestZIndex();
 
     menu.classList.remove('invisible');
-    searchInput?.focus();
+    searchInput.focus();
 
 }
 
@@ -39,9 +59,10 @@ async function buildPromptList(list) {
     }
 
     const cmd = await getAiUserCommands();
-    cmd?.forEach(c => {
+    cmd?.forEach((c, index) => {
         const promptDiv = document.createElement('div')
         promptDiv.textContent = c.commandName ?? 'Unknown';
+        promptDiv.dataset.index = index;
         promptDiv.addEventListener('click', async e => await insertClickedPrompt(e, promptDiv));
         list.appendChild(promptDiv);
     });
@@ -49,10 +70,20 @@ async function buildPromptList(list) {
 
 async function insertClickedPrompt(e, promptDiv) {
     const cmd = await getAiUserCommands();
-    let prompt = cmd.find(el => el.commandName === promptDiv?.textContent?.trim());
-    prompt = prompt?.commandBody ?? 'Unknown';
+    const index = parseInt(promptDiv?.dataset?.index, 10);
+    let prompt = cmd?.[index]?.commandBody ?? 'Unknown';
     const shadowRoot = getShadowRoot();
-    const userInput = shadowRoot?.querySelector('#laiUserInput')
+    if (!shadowRoot) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: Shadow root not found!`);
+        return;
+    }
+
+    const userInput = shadowRoot.querySelector('#laiUserInput')
+    if (!userInput) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: User input not found!`);
+        return;
+    }
+
     userInput.value = prompt;
     userInput.focus();
     removeQuickPromptMenu(e);
@@ -107,13 +138,32 @@ function quickPromptBtnClicked(e) {
 
 function removeQuickPromptMenu(e) {
     const shadowRoot = getShadowRoot();
-    const menu = shadowRoot?.querySelector('.prompt-menu');
+    if (!shadowRoot) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: Shadow root not found!`);
+        return;
+    }
+
+    const menu = shadowRoot.querySelector('.prompt-menu');
+    if (!menu) {
+        return;
+    }
+
     menu.remove();
 }
 
 function eraseUserInputArea(e) {
     const shadowRoot = getShadowRoot();
-    const userInput = shadowRoot?.querySelector('#laiUserInput')
+    if (!shadowRoot) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: Shadow root not found!`);
+        return;
+    }
+
+    const userInput = shadowRoot.querySelector('#laiUserInput')
+    if (!userInput) {
+        console.error(`${manifest?.name ?? "Extension"} - [${getLineNumber()}]: User input not found!`);
+        return;
+    }
+
     userInput.value = '';
     updateStatusBar("User input area updated.");
     setTimeout(resetStatusbar, 2000);

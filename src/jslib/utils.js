@@ -11,6 +11,12 @@ function userImport(e) {
 function importFromFile(e) {
     const fileInput = e.target;
     const file = e.target.files[0];
+
+    if (!file) {
+        fileInput.remove();
+        return;
+    }
+
     var reader = new FileReader();
     reader.onloadend = function () {
         try {
@@ -41,6 +47,8 @@ async function exportAsFile(e) {
     link.href = url;
     link.download = `${fileName}.json`;
     link.click();
+
+    setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function getHighestZIndex() {
@@ -71,16 +79,16 @@ function getLineNumber() {
 
 function showSpinner() {
     const sideBar = getSideBar();
-    const spinner = sideBar.querySelector('#spinner');
+    const spinner = sideBar?.querySelector('#spinner');
     if (!spinner) { return; }
-    spinner.classList.remove('invisible');
+    spinner?.classList.remove('invisible');
 }
 
 function hideSpinner() {
     const sideBar = getSideBar();
-    const spinner = sideBar.querySelector('#spinner');
+    const spinner = sideBar?.querySelector('#spinner');
     if (!spinner) { return; }
-    spinner.classList.add('invisible');
+    spinner?.classList.add('invisible');
 }
 
 function checkExtensionState() {
@@ -218,8 +226,14 @@ async function onImagePaste(e) {
     }
 }
 
-function generatePageHash(url, contentLength) {
-    return `${url}:${contentLength}`;
+async function generatePageHash(url, content) {
+    const textToHash = `${url}:${content}`;
+    const encoder = new TextEncoder();
+    const data = encoder.encode(textToHash);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
 }
 
 function waitForDOMToSettle(settleTime = 1000, maxWait = 10000) {

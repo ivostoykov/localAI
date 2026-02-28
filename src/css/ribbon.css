@@ -119,7 +119,8 @@
     background-color: #ffe;
     z-index: 100;
     overflow-y: auto;
-    height: 75vh;
+    height: min-content;
+    max-height: 70vh;
 }
 
 .available-model-list div {

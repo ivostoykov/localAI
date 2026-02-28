@@ -15,7 +15,8 @@ const commandPlaceholders = {
   "@{{debug}}": "Enable debug logging",
   "@{{nodebug}}": "Disable debug logging",
   "@{{tools}}": "Switch tools on",
-  "@{{notools}}": "Switch tools off"
+  "@{{notools}}": "Switch tools off",
+  "@{{help}}": "Show the help and stop"
 };
 var aiUserCommands = [];
 var userCmdItemBtns = { 'edit': null, 'execute': null, 'paste': null, 'delete': null };
@@ -37,7 +38,8 @@ var userPredefinedCmd = [
   { "commandName": "nodebug", "commandDescription": "Disable debug logging (temporary)" },
   { "commandName": "pagetext", "commandDescription": "Enable page content filtering (show text only)" },
   { "commandName": "rawpage", "commandDescription": "Disable page content filtering (show raw HTML)" },
-  { "commandName": "pin", "commandDescription": "Toggle panel pin" }
+  { "commandName": "pin", "commandDescription": "Toggle panel pin" },
+  { "commandName": "help", "commandDescription": "Show the help and stop" }
 ];
 
 function getRootElement() { return document.documentElement.querySelector('localAI') || document.getElementById('localAI'); }
@@ -190,7 +192,7 @@ function attachElementSelectionListenersToFrames() {
         }, true);
 
       } catch (e) {
-        console.log('Access denied to frame!', e);
+        console.warn('Access denied to frame!', e);
       }
     });
   });
@@ -242,7 +244,7 @@ async function init() {
     localAI.attachShadow({ "mode": 'open' });
     await buildMainButton();
     await laiFetchAndBuildSidebarContent();
-    await initSidebar();
+    await initSidebar(Date.now() + 3000);
     await laiUpdateMainButtonStyles();
   } catch (err) {
     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);
@@ -569,7 +571,7 @@ async function createMainButtonElement() {
   var theMainButton = Object.assign(document.createElement('div'), {
     id: "laiMainButton",
     className: `lai-semi-sphere-button ${laiOptions.showEmbeddedButton ? '' : 'invisible'}`,
-    title: "Click to open the panel.",
+    title: `Click to open the panel. ${manifest?.version}`,
   });
 
   theMainButton.style.zIndex = getHighestZIndex();

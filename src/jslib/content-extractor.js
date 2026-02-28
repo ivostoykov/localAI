@@ -165,10 +165,7 @@ function extractEnhancedTextStructure(domClone) {
     NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT
   );
 
-  let inList = false;
-  let inTable = false;
-  let currentList = [];
-  let currentTable = [];
+  const processedElements = new WeakSet();
 
   while (walker.nextNode()) {
     const node = walker.currentNode;
@@ -178,23 +175,17 @@ function extractEnhancedTextStructure(domClone) {
 
       // Handle lists
       if (tag === 'UL' || tag === 'OL') {
-        if (!inList) {
-          inList = true;
-          currentList = extractList(node);
-          currentSection.lists.push({ type: tag, items: currentList });
-          inList = false;
-        }
+        const currentList = extractList(node);
+        currentSection.lists.push({ type: tag, items: currentList });
+        processedElements.add(node);
         continue;
       }
 
       // Handle tables
       if (tag === 'TABLE') {
-        if (!inTable) {
-          inTable = true;
-          currentTable = extractTable(node);
-          currentSection.tables.push(currentTable);
-          inTable = false;
-        }
+        const currentTable = extractTable(node);
+        currentSection.tables.push(currentTable);
+        processedElements.add(node);
         continue;
       }
 
@@ -206,6 +197,7 @@ function extractEnhancedTextStructure(domClone) {
             language: node.className?.replace('language-', '') || 'plaintext',
             code: code
           });
+          processedElements.add(node);
         }
         continue;
       }
@@ -225,6 +217,7 @@ function extractEnhancedTextStructure(domClone) {
         const caption = node.textContent?.trim();
         if (caption) {
           currentSection.content.push(`[Figure: ${caption}]`);
+          processedElements.add(node);
         }
         continue;
       }
@@ -237,6 +230,19 @@ function extractEnhancedTextStructure(domClone) {
       if (!hasVisibleText(node)) continue;
 
       const parent = node.parentElement;
+
+      // Skip text nodes inside already-processed structured elements
+      let ancestor = parent;
+      let skipNode = false;
+      while (ancestor && ancestor !== domClone) {
+        if (processedElements.has(ancestor)) {
+          skipNode = true;
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+      if (skipNode) continue;
+
       const parentTag = parent?.tagName || '';
       let text = node.nodeValue.trim();
 
@@ -260,7 +266,8 @@ function extractEnhancedTextStructure(domClone) {
       // Handle headings
       if (headings.includes(parentTag)) {
         if (currentSection.content.length > 0 || currentSection.lists.length > 0 ||
-            currentSection.tables.length > 0 || currentSection.codeBlocks.length > 0) {
+            currentSection.tables.length > 0 || currentSection.codeBlocks.length > 0 ||
+            currentSection.images.length > 0) {
           structure.push(currentSection);
         }
         const level = parseInt(parentTag.charAt(1));
@@ -280,7 +287,8 @@ function extractEnhancedTextStructure(domClone) {
   }
 
   if (currentSection.content.length > 0 || currentSection.lists.length > 0 ||
-      currentSection.tables.length > 0 || currentSection.codeBlocks.length > 0) {
+      currentSection.tables.length > 0 || currentSection.codeBlocks.length > 0 ||
+      currentSection.images.length > 0) {
     structure.push(currentSection);
   }
 
@@ -295,13 +303,13 @@ function extractList(listElement) {
   const listItems = listElement.querySelectorAll(':scope > li');
 
   listItems.forEach(li => {
-    const text = Array.from(li.childNodes)
-      .filter(node => node.nodeType === Node.TEXT_NODE)
-      .map(node => node.textContent.trim())
-      .filter(Boolean)
-      .join(' ');
+    const clone = li.cloneNode(true);
+    const nestedLists = clone.querySelectorAll('ul, ol');
+    nestedLists.forEach(nl => nl.remove());
 
-    const nestedList = li.querySelector('ul, ol');
+    const text = clone.textContent?.trim() || '';
+
+    const nestedList = li.querySelector(':scope > ul, :scope > ol');
     const item = { text };
 
     if (nestedList) {
@@ -323,9 +331,11 @@ function extractTable(tableElement) {
   const rows = [];
 
   const headerRows = tableElement.querySelectorAll('thead tr');
-  const bodyRows = tableElement.querySelectorAll('tbody tr, tr');
+  const bodyRows = tableElement.querySelectorAll('tbody tr');
+  const hasTbody = tableElement.querySelector('tbody') !== null;
+  const orphanRows = hasTbody ? [] : tableElement.querySelectorAll(':scope > tr');
 
-  const allRows = [...headerRows, ...bodyRows];
+  const allRows = [...headerRows, ...bodyRows, ...orphanRows];
 
   allRows.forEach(tr => {
     const cells = tr.querySelectorAll('th, td');
@@ -680,7 +690,7 @@ async function getMainContentOnly() {
   const mainContent = detectMainContent(cleanedDOM);
 
   if (!mainContent) {
-    return 'Could not detect main content area. The page may not have semantic HTML structure. Use get_full_page_content to get all content.';
+    return 'Could not detect main content area. The page may not have semantic HTML structure. Use get_enhanced_page_content to get all content.';
   }
 
   const structure = extractEnhancedTextStructure(mainContent);

@@ -3,10 +3,28 @@ class SessionRepository {
         this.storageKey = 'activeSession';
         this.sessionsKey = 'sessions';
         this.db = null;
+        this.writeQueues = new Map();
     }
 
     setIndexedDB(backgroundMemoryInstance) {
         this.db = backgroundMemoryInstance;
+    }
+
+    async _queueContextUpdate(sessionId, updateFn) {
+        if (!this.writeQueues.has(sessionId)) {
+            this.writeQueues.set(sessionId, Promise.resolve());
+        }
+
+        const promise = this.writeQueues.get(sessionId).then(async () => {
+            try {
+                return await updateFn();
+            } catch (error) {
+                throw error;
+            }
+        });
+
+        this.writeQueues.set(sessionId, promise.catch(() => {}));
+        return promise;
     }
 
     // ============================================================
@@ -45,36 +63,38 @@ class SessionRepository {
             throw new Error('IndexedDB not initialised. Call setIndexedDB() first');
         }
 
-        try {
-            let context = await this.db.getContext(sessionId);
-            if (!context) {
-                context = {
-                    sessionId,
-                    attachments: [],
-                    timestamp: Date.now()
-                };
+        return this._queueContextUpdate(sessionId, async () => {
+            try {
+                let context = await this.db.getContext(sessionId);
+                if (!context) {
+                    context = {
+                        sessionId,
+                        attachments: [],
+                        timestamp: Date.now()
+                    };
+                }
+
+                if (!context.attachments) {
+                    context.attachments = [];
+                }
+
+                const existingIndex = context.attachments.findIndex(att => att.id === attachment.id);
+                if (existingIndex >= 0) {
+                    context.attachments[existingIndex] = attachment;
+                } else {
+                    context.attachments.push(attachment);
+                }
+
+                context.attachmentSummaries = context.attachments.map(att =>
+                    this.db.extractAttachmentSummary(att)
+                );
+
+                await this.db.storeContext(sessionId, context.pageContent, context.attachments, context.pageHash, context.tabId);
+            } catch (error) {
+                console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.storeAttachment:`, error);
+                throw error;
             }
-
-            if (!context.attachments) {
-                context.attachments = [];
-            }
-
-            const existingIndex = context.attachments.findIndex(att => att.id === attachment.id);
-            if (existingIndex >= 0) {
-                context.attachments[existingIndex] = attachment;
-            } else {
-                context.attachments.push(attachment);
-            }
-
-            context.attachmentSummaries = context.attachments.map(att =>
-                this.db.extractAttachmentSummary(att)
-            );
-
-            await this.db.storeContext(sessionId, context.pageContent, context.attachments, context.pageHash, context.tabId);
-        } catch (error) {
-            console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.storeAttachment:`, error);
-            throw error;
-        }
+        });
     }
 
     async getAttachment(sessionId, attachmentId) {
@@ -91,7 +111,7 @@ class SessionRepository {
             return context.attachments.find(att => att.id === attachmentId) || null;
         } catch (error) {
             console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.getAttachment:`, error);
-            return null;
+            throw error;
         }
     }
 
@@ -105,7 +125,7 @@ class SessionRepository {
             return context?.attachments || [];
         } catch (error) {
             console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.getAttachments:`, error);
-            return [];
+            throw error;
         }
     }
 
@@ -114,22 +134,24 @@ class SessionRepository {
             throw new Error('IndexedDB not initialised');
         }
 
-        try {
-            const context = await this.db.getContext(sessionId);
-            if (!context || !context.attachments) {
-                return;
+        return this._queueContextUpdate(sessionId, async () => {
+            try {
+                const context = await this.db.getContext(sessionId);
+                if (!context || !context.attachments) {
+                    return;
+                }
+
+                context.attachments = context.attachments.filter(att => att.id !== attachmentId);
+                context.attachmentSummaries = context.attachments.map(att =>
+                    this.db.extractAttachmentSummary(att)
+                );
+
+                await this.db.storeContext(sessionId, context.pageContent, context.attachments, context.pageHash, context.tabId);
+            } catch (error) {
+                console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.deleteAttachment:`, error);
+                throw error;
             }
-
-            context.attachments = context.attachments.filter(att => att.id !== attachmentId);
-            context.attachmentSummaries = context.attachments.map(att =>
-                this.db.extractAttachmentSummary(att)
-            );
-
-            await this.db.storeContext(sessionId, context.pageContent, context.attachments, context.pageHash, context.tabId);
-        } catch (error) {
-            console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.deleteAttachment:`, error);
-            throw error;
-        }
+        });
     }
 
     // ============================================================
@@ -143,38 +165,40 @@ class SessionRepository {
             throw new Error('IndexedDB not initialised');
         }
 
-        try {
-            let context = await this.db.getContext(sessionId);
-            if (!context) {
-                context = {
-                    sessionId,
-                    images: [],
-                    timestamp: Date.now()
-                };
-            }
+        return this._queueContextUpdate(sessionId, async () => {
+            try {
+                let context = await this.db.getContext(sessionId);
+                if (!context) {
+                    context = {
+                        sessionId,
+                        images: [],
+                        timestamp: Date.now()
+                    };
+                }
 
-            if (!context.images) {
-                context.images = [];
-            }
+                if (!context.images) {
+                    context.images = [];
+                }
 
-            const existingIndex = context.images.findIndex(img => img.id === imageData.id);
-            if (existingIndex >= 0) {
-                context.images[existingIndex] = imageData;
-            } else {
-                context.images.push(imageData);
-            }
+                const existingIndex = context.images.findIndex(img => img.id === imageData.id);
+                if (existingIndex >= 0) {
+                    context.images[existingIndex] = imageData;
+                } else {
+                    context.images.push(imageData);
+                }
 
-            await this.db.put('context', context);
-        } catch (error) {
-            console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.storeImage:`, error);
-            throw error;
-        }
+                await this.db.put('context', context);
+            } catch (error) {
+                console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.storeImage:`, error);
+                throw error;
+            }
+        });
     }
 
     async getImage(sessionId, imageId) {
         if (!this.db) {
             throw new Error('IndexedDB not initialised');
-        }
+        }1
 
         try {
             const context = await this.db.getContext(sessionId);
@@ -236,20 +260,27 @@ class SessionRepository {
             throw new Error('IndexedDB not initialised');
         }
 
-        try {
-            // Store in context for now
-            // TODO: Create dedicated TOOL_CALLS store
-            const context = await this.db.getContext(sessionId);
-            if (context) {
+        return this._queueContextUpdate(sessionId, async () => {
+            try {
+                let context = await this.db.getContext(sessionId);
+                if (!context) {
+                    context = {
+                        sessionId,
+                        toolCalls: {},
+                        timestamp: Date.now()
+                    };
+                }
+
                 if (!context.toolCalls) {
                     context.toolCalls = {};
                 }
                 context.toolCalls[turnNumber] = calls;
                 await this.db.put('context', context);
+            } catch (error) {
+                console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.storeToolCalls:`, error);
+                throw error;
             }
-        } catch (error) {
-            console.error(`>>> ${manifest?.name ?? ''} - sessionRepository.storeToolCalls:`, error);
-        }
+        });
     }
 
     // ============================================================

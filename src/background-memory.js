@@ -23,6 +23,7 @@ class BackgroundMemory {
 
       request.onerror = () => {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - IndexedDB error:`, request.error);
+        this.initPromise = null;
         reject(request.error);
       };
 
@@ -355,6 +356,9 @@ class BackgroundMemory {
   async generateEmbedding(text) {
     let embedUrl;
     let model;
+    let responseText;
+    let data;
+    let embeddings;
     try {
       const laiOptions = await getOptions();
 
@@ -406,13 +410,18 @@ class BackgroundMemory {
         throw new Error(`Embedding generation failed: ${response.statusText}`);
       }
 
-      const responseText = await response.text();
-      let data;
-      let embeddings;
+      responseText = await response.text();
 
       try {
         data = JSON.parse(responseText);
-        embeddings = data.embeddings;
+
+        if (data.data && Array.isArray(data.data) && data.data.length > 0 && data.data[0].embedding) {
+          embeddings = data.data[0].embedding;
+        } else if (data.embeddings && Array.isArray(data.embeddings) && data.embeddings.length > 0) {
+          embeddings = data.embeddings[0];
+        } else if (data.embedding && Array.isArray(data.embedding)) {
+          embeddings = data.embedding;
+        }
       } catch (parseError) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to parse response as JSON:`, {
           parseError,
@@ -429,9 +438,14 @@ class BackgroundMemory {
           data,
           embeddings,
           responseText,
-          embeddingType: typeof data?.embedding,
-          embeddingIsArray: Array.isArray(data?.embedding),
-          embeddingLength: data?.embedding?.length,
+          dataStructure: {
+            hasData: !!data?.data,
+            hasEmbeddings: !!data?.embeddings,
+            hasEmbedding: !!data?.embedding,
+            dataIsArray: Array.isArray(data?.data),
+            embeddingsIsArray: Array.isArray(data?.embeddings),
+            embeddingIsArray: Array.isArray(data?.embedding)
+          },
           embedUrl,
           model,
           text: text?.substring(0, 100)
@@ -829,6 +843,29 @@ class BackgroundMemory {
   }
 }
 
+globalThis.debugShowMemory = async function() {
+    console.debug('=== INDEXEDDB MEMORY DEBUG ===');
+    try {
+        await backgroundMemory.init();
+
+        const activeSession = await getActiveSession();
+        console.debug('Active session ID:', activeSession?.id);
+
+        const conversations = await backgroundMemory.query('conversations', 'sessionId', activeSession?.id);
+        console.debug('📝 Conversations (' + conversations.length + ' turns):');
+        console.table(conversations);
+
+        const context = await backgroundMemory.get('context', activeSession?.id);
+        console.debug('📄 Context:');
+        console.debug(context);
+
+        const dbs = await indexedDB.databases();
+        console.debug('💾 All databases:', dbs);
+    } catch (e) {
+        console.error('Error fetching memory:', e);
+    }
+};
+
 const backgroundMemory = new BackgroundMemory();
 
 // Global debug helpers for console access
@@ -925,3 +962,4 @@ globalThis.dbHelpers = {
 };
 
 console.log('🔍 DB helpers available: dbHelpers.listStores(), .getAll(store), .dump(), .getEmbeddings(), .searchEmbeddings(), etc.');
+console.log('🔍 Memory helper available: debugShowMemory()');

@@ -9,8 +9,12 @@ class ImageRepository {
 
     async storeImage(sessionId, file) {
         try {
+            if (!this.isValidImageFile(file)) {
+                throw new Error('Invalid image file');
+            }
+
             const base64 = await this.fileToBase64(file);
-            const thumbnail = await this.generateThumbnail(base64);
+            const thumbnail = await this.generateThumbnail(base64, file.type);
             const imageId = crypto.randomUUID();
 
             const imageData = {
@@ -70,8 +74,9 @@ class ImageRepository {
     async fileToBase64(file) {
         // Check if file type is supported (PNG or JPEG only)
         const supportedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
-        if (!supportedTypes.includes(file.type.toLowerCase())) {
-            throw new Error(`Image format not supported. Please use PNG or JPEG format. (Received: ${file.type})`);
+        const fileType = file.type?.toLowerCase() || '';
+        if (!supportedTypes.includes(fileType)) {
+            throw new Error(`Image format not supported. Please use PNG or JPEG format. (Received: ${file.type || 'unknown'})`);
         }
 
         return new Promise((resolve, reject) => {
@@ -90,7 +95,7 @@ class ImageRepository {
         });
     }
 
-    async generateThumbnail(base64, maxSize = 100) {
+    async generateThumbnail(base64, mimeType, maxSize = 100) {
         return new Promise((resolve, reject) => {
             const img = new Image();
 
@@ -133,7 +138,8 @@ class ImageRepository {
                 resolve(base64);
             };
 
-            img.src = `data:image/jpeg;base64,${base64}`;
+            const imageFormat = mimeType || 'image/jpeg';
+            img.src = `data:${imageFormat};base64,${base64}`;
         });
     }
 
@@ -142,18 +148,20 @@ class ImageRepository {
             throw new Error('Session repository not initialised');
         }
 
-        try {
-            const context = await this.sessionRepo.db.getContext(sessionId);
-            if (!context || !context.images) {
-                return;
-            }
+        return this.sessionRepo._queueContextUpdate(sessionId, async () => {
+            try {
+                const context = await this.sessionRepo.db.getContext(sessionId);
+                if (!context || !context.images) {
+                    return;
+                }
 
-            context.images = context.images.filter(img => img.id !== imageId);
-            await this.sessionRepo.db.put('context', context);
-        } catch (error) {
-            console.error(`>>> ${manifest?.name ?? ''} - imageRepository.deleteImage:`, error);
-            throw error;
-        }
+                context.images = context.images.filter(img => img.id !== imageId);
+                await this.sessionRepo.db.put('context', context);
+            } catch (error) {
+                console.error(`>>> ${manifest?.name ?? ''} - imageRepository.deleteImage:`, error);
+                throw error;
+            }
+        });
     }
 
     async getSessionImages(sessionId) {
@@ -171,11 +179,12 @@ class ImageRepository {
     }
 
     isValidImageFile(file) {
-        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
         const maxSize = 10 * 1024 * 1024; // 10MB
 
-        if (!validTypes.includes(file.type)) {
-            console.warn(`>>> ${manifest?.name ?? ''} - imageRepository: Invalid image type: ${file.type}`);
+        const fileType = file.type?.toLowerCase() || '';
+        if (!validTypes.includes(fileType)) {
+            console.warn(`>>> ${manifest?.name ?? ''} - imageRepository: Invalid image type: ${file.type || 'unknown'}`);
             return false;
         }
 

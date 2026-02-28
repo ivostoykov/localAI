@@ -91,11 +91,11 @@ async function loadSettings(e) {
             return;
         }
 
-        console.log(`[${getLineNumber()}]: Stored form data`, formData);
+        console.debug(`[${getLineNumber()}]: Stored form data`, formData);
         const dataLists = ['modelList', 'urlList', 'toolFuncList', 'embeddingModelList', 'embedUrlList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
-            console.log(`[${getLineNumber()}]: Stored form data`, { i, list, dataLists: dataLists[i] });
+            console.debug(`[${getLineNumber()}]: Stored form data`, { i, list, dataLists: dataLists[i] });
             if (!formData[list]) { continue; }
 
             const el = document.querySelector(`select[data-list="${list}"]`);
@@ -110,7 +110,7 @@ async function loadSettings(e) {
 
         Object.keys(formData)?.forEach(key => {
             const element = document.getElementById(key);
-            console.log(`[${getLineNumber()}]: ${key}: ${element?.id} is ${element?.type}; formData: ${formData?.[key]} is ${typeof formData?.[key]}`);
+            console.debug(`[${getLineNumber()}]: ${key}: ${element?.id} is ${element?.type}; formData: ${formData?.[key]} is ${typeof formData?.[key]}`);
             if (!element) {  return;  }
             if (element.type === 'checkbox') {
                 element.checked = formData[key];
@@ -141,7 +141,7 @@ async function saveSettings(e) {
 
         for (let i = 0; i < elements.length; i++) {
             const element = elements[i];
-            console.log(`[${getLineNumber()}]: ${element?.id} is ${element?.type}`);
+            console.debug(`[${getLineNumber()}]: ${element?.id} is ${element?.type}`);
             if (['select', 'checkbox', 'text', 'textarea', 'number', 'range', 'url'].indexOf(element.type) < 0) {
                 continue;
             }
@@ -174,7 +174,7 @@ async function saveSettings(e) {
             optionsData[list] = attributeValues ?? [];
         }
 
-        console.log(`>>> [${getLineNumber()}] - Options Data:`, optionsData);
+        console.debug(`>>> [${getLineNumber()}] - Options Data:`, optionsData);
         await chrome.storage.sync.set({ 'laiOptions': optionsData });
         showMessage('Settings saved', 'success');
         document.dispatchEvent(new CustomEvent('changesSaved'));
@@ -215,16 +215,16 @@ function attachListeners(e) {
     document.getElementById('showEmbeddedButton').addEventListener('change', onshowEmbeddedButtonClicked);
 
     document.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
-    document.querySelector('#newPromptBtn')?.addEventListener('click', async e => { await createNewPrompt(e); });
+    document.querySelector('#newPromptBtn')?.addEventListener('click', async e => { e.preventDefault(); await createNewPrompt(e); });
     document.querySelectorAll('#exportPromptBtn, #exportFuncBtn')?.forEach(btn => {
-        btn.addEventListener('click', async e => { await exportAsFile(e); });
+        btn.addEventListener('click', async e => { e.preventDefault(); await exportAsFile(e); });
     });
-    document.querySelectorAll('#importPromptBtn, #importFuncBtn')?.forEach(btn => btn.addEventListener('click', importUserCommand));
-    document.querySelectorAll('#deletePromptBtn, #deleteFuncBtn')?.forEach(btn => btn.addEventListener('click', async e => await deleteStorageCollection(e)));
+    document.querySelectorAll('#importPromptBtn, #importFuncBtn')?.forEach(btn => btn.addEventListener('click', e => { e.preventDefault(); importUserCommand(e); }));
+    document.querySelectorAll('#deletePromptBtn, #deleteFuncBtn')?.forEach(btn => btn.addEventListener('click', async e => { e.preventDefault(); await deleteStorageCollection(e); }));
 
-    document.querySelector('#newFuncBtn')?.addEventListener('click', async e => await createNewToolFunc(e));
-    document.getElementById("dlgBtnOK").addEventListener('click', closeDialog);
-    document.getElementById("dlgBtnCancel").addEventListener('click', closeDialog);
+    document.querySelector('#newFuncBtn')?.addEventListener('click', async e => { e.preventDefault(); await createNewToolFunc(e); });
+    document.getElementById("dlgBtnOK").addEventListener('click', e => { e.preventDefault(); closeDialog(e); });
+    document.getElementById("dlgBtnCancel").addEventListener('click', e => { e.preventDefault(); closeDialog(e); });
 
     document.getElementById('fileInput').addEventListener('change', importFromFile);
 }
@@ -291,10 +291,12 @@ async function getAiUserCommands() {
     for (let x = 0, l = aiUserCommands.length; x < l; x++) {
         const cmd = aiUserCommands[x];
         const clone = document.importNode(promptTemplate, true);
-        clone.querySelector('.prompt-title').textContent = cmd.commandName;
-        clone.querySelector('.prompt-command').textContent = `/${cmd.commandName.toLowerCase().replace(/\s+/g, '-')}`;
-        clone.querySelector('.prompt-description').textContent = cmd.commandDescription || 'No description';
-        clone.querySelector('.prompt-body').textContent = cmd.commandBody;
+        const commandName = String(cmd?.commandName || '');
+        const commandSlug = commandName.toLowerCase().replace(/\s+/g, '-');
+        clone.querySelector('.prompt-title').textContent = commandName;
+        clone.querySelector('.prompt-command').textContent = commandSlug ? `/${commandSlug}` : '';
+        clone.querySelector('.prompt-description').textContent = cmd?.commandDescription || 'No description';
+        clone.querySelector('.prompt-body').textContent = cmd?.commandBody || '';
         clone.querySelectorAll('.prompt-buttons img')?.forEach(btn => btn.addEventListener('click', async (e) => { await applyPromptCardAction(e); }));
         promptContainer.appendChild(clone);
     }
@@ -678,7 +680,7 @@ function showMessage(message, type) {
         console.error(`[${getLineNumber()}]: message-box not found!`);
         return;
     }
-    msg.innerHTML = message;
+    msg.textContent = message;
     msg.classList.remove('invisible', 'success', 'error', 'warning', 'info');
     msg.classList.add(type || 'info');
     setTimeout(() => msg.classList.add('invisible'), 5000);
@@ -704,7 +706,7 @@ async function testConnection(e) {
         url = (new URL(url)).origin;
 
         response = await fetch(url);
-        if (isNaN(response.status)) { throw new Error(`Server returned status code ${response.status}`); }
+        if (!response.ok) { throw new Error(`Server returned status code ${response.status}`); }
         showMessage(`Connection to ${url} successfull.`, "success");
     } catch (e) {
         showMessage(`Connection to ${url} failed! - ${e.message}`, "error");
@@ -867,7 +869,7 @@ async function sortDatalist(e) {
 
     const laiOptions = await getOptions();
     datalist.replaceChildren();
-    datalist.appendChild(op0);
+    if (op0) datalist.appendChild(op0);
     options.forEach(option => datalist.appendChild(option));
     const idx = options.findIndex(e => e.value === laiOptions[optionId]);
     datalist.selectedIndex = idx < 0 ? idx : idx + 1;
@@ -897,7 +899,10 @@ async function loadModels(e) {
 
     const idx = aiUrl.selectedIndex >= 0 ? aiUrl.selectedIndex : 0;
     let urlVal = aiUrl.options[idx]?.value?.trim() || '';
-    if (!urlVal) { return; }
+    if (!urlVal) {
+        hideSpinner();
+        return;
+    }
     if (!urlVal.startsWith('http')) {
         showMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
         hideSpinner();
@@ -912,6 +917,7 @@ async function loadModels(e) {
     urlVal = urlVal.replace(/\/api\/.+/i, '/api/tags');
     let response;
     let models;
+    let success = false;
     try {
         response = await fetch(urlVal, {
             headers: {
@@ -924,13 +930,17 @@ async function loadModels(e) {
             models.models.sort((a, b) => a.name.localeCompare(b.name));
             await fillModelList(models.models, '#aiModel');
             await fillModelList(models.models, '#embeddingModel');
+            success = true;
         }
     } catch (e) {
         console.error(`>>> [${getLineNumber()}] - ${e.message}`, e);
         console.error(`>>> [${getLineNumber()}] - response`, response);
+        showMessage(`Failed to load models - ${e.message}`, 'error');
     } finally {
         hideSpinner();
-        showMessage("Model list successfully updated.", "success");
+        if (success) {
+            showMessage("Model list successfully updated.", "success");
+        }
     }
 }
 

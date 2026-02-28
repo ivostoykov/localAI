@@ -6,16 +6,16 @@ console.debug = function(...args) {
 };
 
 function setDebugFlag(enabled) {
-    console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Debugging is now ${enabled ? 'ON' : 'OFF'}.`);
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Debugging is now ${enabled ? 'ON' : 'OFF'}.`);
     debugEnabled = enabled;
 }
 
 async function toggleDebug(enabled) {
     try {
         const options = await getOptions();
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - options`, options);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - options`, options);
         if(typeof(enabled) === 'undefined') {  enabled = !options.debug;  }
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Debugging is now ${enabled ? 'ON' : 'OFF'}.`);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Debugging is now ${enabled ? 'ON' : 'OFF'}.`);
         options.debug = enabled;
         await setOptions(options);
     } catch (e) {
@@ -33,7 +33,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 });
 
 async function init_log(timeout){
-    if (Date.now() > timeout) {
+if (Date.now() > timeout) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - init_log timed out`);
         return;
     }

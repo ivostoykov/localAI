@@ -1,16 +1,26 @@
 function createSpeechRecognizer(resultArea) {
+    if (!resultArea) {
+        if (typeof(showMessage) === 'function') {
+            showMessage('Invalid result area for speech recognition', 'error');
+        }
+        return false;
+    }
+
     let recognition;
     try {
         if(typeof(SpeechRecognition) !== 'undefined') {  recognition = new SpeechRecognition();  }
         else if(typeof(window.SpeechRecognition) !== 'undefined') {  recognition = new window.SpeechRecognition();  }
         else if(typeof(window.webkitSpeechRecognition) !== 'undefined') {  recognition = new window.webkitSpeechRecognition();  }
         if(!recognition){
-            showMessage('Failed to attach SpeechRecognition', 'error');
+            if (typeof(showMessage) === 'function') {
+                showMessage('Failed to attach SpeechRecognition', 'error');
+            }
             return false;
         }
     } catch (err) {
-        showMessage(`SpeechRecognition error: ${err.message}`, 'error');
-
+        if (typeof(showMessage) === 'function') {
+            showMessage(`SpeechRecognition error: ${err.message}`, 'error');
+        }
         return false;
     }
 
@@ -26,6 +36,18 @@ function createSpeechRecognizer(resultArea) {
     };
 
     recognition.onerror = function (event) {
+        // Non-recoverable errors that should stop the recognition
+        const fatalErrors = [
+            'not-allowed',         // User denied permission
+            'service-not-allowed', // Browser doesn't allow speech recognition
+            'audio-capture',       // No microphone available
+            'no-speech'            // Optional: might want to keep trying
+        ];
+
+        if (fatalErrors.includes(event.error)) {
+            isRunning = false;  // Prevent automatic restart
+        }
+
         if(typeof(showMessage) === 'function'){
             showMessage(`Error occurred in recognition: ${event.error}`, 'error');
         }

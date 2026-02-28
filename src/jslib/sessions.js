@@ -104,7 +104,7 @@ async function getSession(sessionId = null, createIfMissing = true, updateAccess
         const sessions = await getAllSessions();
         const session = sessions.find(sess => sess?.id === sessionId);
 
-        if (!session && createIfMissing && !sessionId) {
+        if (!session && createIfMissing) {
             return await createNewSession();
         }
 
@@ -149,7 +149,11 @@ async function getActiveSessionId() {
         return null;
     } catch (error) {
         if(error.message.indexOf("context invalidated") > -1){
-            showMessage(`${error.message}. Please reload the page.`, "error");
+            try {
+                showMessage(`${error.message}. Please reload the page.`, "error");
+            } catch (e) {
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - showMessage unavailable: ${e.message}`);
+            }
             return null;
         }
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getActiveSessionId error: ${error.message}`, error);
@@ -160,7 +164,12 @@ async function getActiveSessionId() {
 async function setAllSessions(obj = []) {
     try {
         if (obj && typeof obj === 'object' && allSessionsStorageKey in obj) {
-            obj = obj[allSessionsStorageKey]; // unwrap if needed
+            obj = obj[allSessionsStorageKey];
+        }
+
+        if (!Array.isArray(obj)) {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - setAllSessions requires an array, got ${typeof obj}`);
+            return false;
         }
 
         await chrome.storage.local.set({ [allSessionsStorageKey]: obj });
@@ -251,6 +260,11 @@ async function archiveSession(sessionId) {
 
         sessions.splice(sessionIndex, 1);
         await setAllSessions(sessions);
+
+        const activeSessionId = await getActiveSessionId();
+        if (activeSessionId === sessionId) {
+            await deleteActiveSessionId();
+        }
 
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Archived session ${sessionId}`);
         return true;
@@ -367,7 +381,7 @@ async function setOptions(options) {
     try {
         const key = storageOptionKey || 'laiOptions';
         const e = new Error();
-        console.log(`>>> ${manifest?.name ?? ''} - ${setOptions?.name}`, options, e, )
+        console.debug(`>>> ${manifest?.name ?? ''} - ${setOptions?.name}`, options, e, )
         await chrome.storage.sync.set({ [key]: options });
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error, options);
@@ -421,10 +435,11 @@ async function setActiveSessionPageData(tabId) {
             contentFirstChars: pageContent.substring(0, 100)
         });
 
-        const pageHash = generatePageHash(url, pageContent.length);
+        const pageHash = await generatePageHash(url, pageContent);
         console.debug(`>>> ${manifest?.name} - [${getLineNumber()}] - current hash`, pageHash);
         const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
-        await chrome.storage.local.set({ [key]: {url, pageContent, pageHash} });
+        const title = document?.title || 'Untitled';
+        await chrome.storage.local.set({ [key]: {url, title, pageContent, pageHash} });
 
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Successfully stored page data`, {
             key,

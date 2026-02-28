@@ -40,27 +40,6 @@ try {
 
 init();
 
-globalThis.debugShowMemory = async function() {
-    console.debug('=== INDEXEDDB MEMORY DEBUG ===');
-    try {
-        const activeSession = await getActiveSession();
-        console.debug('Active session ID:', activeSession?.id);
-
-        const conversations = await backgroundMemory.query('conversations', 'sessionId', activeSession?.id);
-        console.debug('📝 Conversations (' + conversations.length + ' turns):');
-        console.table(conversations);
-
-        const context = await backgroundMemory.get('context', activeSession?.id);
-        console.debug('📄 Context:');
-        console.debug(context);
-
-        const dbs = await indexedDB.databases();
-        console.debug('💾 All databases:', dbs);
-    } catch (e) {
-        console.error('Error fetching memory:', e);
-    }
-};
-
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
     if (areaName !== 'sync') { return; }
     for (let [key, { oldValue, newValue }] of Object.entries(changes)) {
@@ -203,7 +182,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 case "prepareModels":
                     response = await prepareModels(request.modelName, request.unload, sender.tab);
-                    sendResponse({ status: response.status, text: response.statusText });
+                    sendResponse({ status: response?.status ?? 500, text: response?.statusText ?? 'Unknown error' });
                     break;
 
                 case "storeImage":
@@ -302,70 +281,66 @@ async function init() {
         console.error(`>>> ${manifest?.name ?? ''} - Failed to initialise memory system:`, e);
     }
 
-    composeContextMenu();
+    await composeContextMenu();
 }
 
-function composeContextMenu() {
-    chrome.contextMenus.removeAll();
+async function composeContextMenu() {
+    await chrome.contextMenus.removeAll();
 
-    chrome.contextMenus.create({
+    await chrome.contextMenus.create({
         id: "sendToLocalAi",
         title: "Local AI",
         contexts: ["all"]
     });
 
-    chrome.contextMenus.create({
+    await chrome.contextMenus.create({
         id: "selectAndSendElement",
         title: "Select And Attach Element",
         parentId: "sendToLocalAi",
         contexts: ["all"]
     });
 
-    chrome.contextMenus.create({
+    await chrome.contextMenus.create({
         id: "askAiExplanation",
         title: "Ask AI to Explain Selected",
         parentId: "sendToLocalAi",
         contexts: ["selection"]
     });
 
-    chrome.contextMenus.create({
+    await chrome.contextMenus.create({
         id: "sendSelectedText",
         title: "Attach Selected",
         parentId: "sendToLocalAi",
         contexts: ["selection"]
     });
 
-    chrome.contextMenus.create({
+    await chrome.contextMenus.create({
         id: "inserSelectedInPrompt",
-        title: "Inser Selected into Prompt",
+        title: "Insert Selected into Prompt",
         parentId: "sendToLocalAi",
         contexts: ["selection"]
     });
 
-    chrome.contextMenus.create({
+    await chrome.contextMenus.create({
         id: "sendPageContent",
         title: "Attach Entire Page",
         parentId: "sendToLocalAi",
         contexts: ["all"]
     });
 
-    chrome.contextMenus.create({
+    await chrome.contextMenus.create({
         id: "separatorBeforeOptions",
         type: "separator",
         parentId: "sendToLocalAi",
         contexts: ["all"]
     });
 
-    chrome.contextMenus.create({
+    await chrome.contextMenus.create({
         id: "openOptions",
         title: "Options",
         parentId: "sendToLocalAi",
         contexts: ["all"]
     });
-}
-
-async function extractEnhancedContent() {
-    return await getPageTextContent();
 }
 
 // Ollama returns several json object in a single response which invalidates the JSON
@@ -510,7 +485,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(toolCall.function.arguments),
-                }, tab);
+                }, true, tab);
                 data = await res?.json();
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${funcType} ${toolCall.function.name} response`, data);
                 await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${funcType} ${toolCall.function.name} response`, data, 'debug', tab?.id);
@@ -544,10 +519,10 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
 
     } catch (err) {
 
-        await updateUIStatusBar(`Error occured while calling ${toolCall.function.name}...`, tab);
+        await updateUIStatusBar(`Error occurred while calling ${toolCall.function.name}...`, tab);
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error calling ${toolCall.function.name}`, err, toolCall, res);
         if (err.name === 'TypeError' && err.message.includes('fetch')) {
-            showUIMessage(`External tools endpoint (${funcUrl}) seems missing to be down!`, "error");
+            await showUIMessage(`External tools endpoint (${funcUrl}) seems missing to be down!`, "error");
             data = "Tool execution failed — endpoint unavailable.";
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${funcType} ${toolCall.function.name} response`, data);
             await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${funcType} ${toolCall.function.name} response`, data, 'debug', tab?.id);
@@ -669,7 +644,7 @@ async function fetchDataAction(request, sender) {
 
     let url = request?.url ?? await getAiUrl();
     if (!url) {
-        let msg = `Faild to compose the request URL - ${url}`;
+        let msg = `Failed to compose the request URL - ${url}`;
         await showUIMessage(msg, 'error', sender.tab);
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
         return { "status": "error", "message": msg };
@@ -857,6 +832,7 @@ async function fetchDataAction(request, sender) {
         }
     }
     finally {
+        if (tabId != null) {  controllers.delete(tabId);  }
         try {
             await chrome.tabs.sendMessage(sender?.tab?.id, { action: "userPrompt", data: JSON.stringify(request.data) });
             if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
@@ -939,7 +915,8 @@ async function convertFileToText(fileAsB64) {
     }
 
     let urlStr = laiOptions.tika?.trim();
-    let url = URL.canParse(urlStr) ? URL.parse(urlStr) : null;
+    let url = null;
+    if(urlStr && URL.canParse(urlStr)) {  url = URL.parse(urlStr);  }
     if (!url) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing file conversion endpoint`, laiOptions);
         await showUIMessage('Missing document converter endpoint!', 'error');
@@ -1084,7 +1061,7 @@ async function getModels() {
 
 function tryReloadExtension() {
     try {
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - trying to reload`);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - trying to reload`);
         chrome.runtime.reload();
     } catch (err) {
         if (chrome.runtime.lastError) { console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error:`, chrome.runtime.lastError); }
@@ -1130,10 +1107,13 @@ async function prepareModels(modelName, remove = false, tab) {
     } catch (err) {
         await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, "error", tab?.id);
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
+        return { status: 500, statusText: err.message || 'Failed to prepare model' };
     }
 
-    await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab?.id);
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, response);
+    if (response) {
+        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab?.id);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, response);
+    }
     return response;
 }
 
@@ -1213,15 +1193,7 @@ async function getAiUrl() {
         return null;
     }
 
-    let url = laiOptions?.aiUrl;
-    if (!url) {
-        let msg = `Faild to compose the request URL - ${url}`;
-        await showUIMessage(msg, 'error', sender.tab);
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
-        return null;
-    }
-
-    return url;
+    return laiOptions.aiUrl;
 }
 
 async function getAiModel() {
@@ -1259,7 +1231,7 @@ async function generateSessionTitle(text, tab) {
             "presence_penalty": 0.0,
             "max_tokens": 5
         },
-        "prompt": `Describe in max 5 short words the text below. Ouput only those 5 words - **nothing else**.
+        "prompt": `Describe in max 5 short words the text below. Output only those 5 words - **nothing else**.
 
 Text_to_describe:
 “{{${text}}}”

@@ -1,13 +1,22 @@
 async function initRibbon() {
 
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tempInput not found!`, shadowRoot); }
+    if (!shadowRoot) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - shadowRoot not found!`, shadowRoot);
+        return;
+    }
 
     const ribbon = getRibbon();
-    if (!ribbon) { console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tempInput not found!`, ribbon); }
+    if (!ribbon) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ribbon not found!`, ribbon);
+        return;
+    }
 
     const laiOptions = await getOptions();
-    if (!laiOptions) { console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tempInput not found!`, laiOptions); }
+    if (!laiOptions) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - laiOptions not found!`, laiOptions);
+        return;
+    }
 
     ribbon?.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
 
@@ -28,32 +37,32 @@ async function initRibbon() {
         laiSetImg(modelLabel.querySelector('img'));
     }
 
-    shadowRoot?.querySelector('#addUsrCmdMenu').addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn').click();
+    shadowRoot?.querySelector('#addUsrCmdMenu')?.addEventListener('click', e => {
+        shadowRoot?.querySelector('#cogBtn')?.click();
         popUserCommandEditor();
     });
 
-    shadowRoot?.querySelector('#listUsrCmdMenu').addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn').click();
+    shadowRoot?.querySelector('#listUsrCmdMenu')?.addEventListener('click', e => {
+        shadowRoot?.querySelector('#cogBtn')?.click();
         popUserCommandList(e);
     });
-    shadowRoot?.querySelector('#listSysCmdMenu').addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn').click();
+    shadowRoot?.querySelector('#listSysCmdMenu')?.addEventListener('click', e => {
+        shadowRoot?.querySelector('#cogBtn')?.click();
         showHelp();
     });
-    shadowRoot?.querySelector('#createSessionCmdMenu').addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn').click();
+    shadowRoot?.querySelector('#createSessionCmdMenu')?.addEventListener('click', e => {
+        shadowRoot?.querySelector('#cogBtn')?.click();
         ribbon?.querySelector('#newSession')?.click();
     });
-    shadowRoot?.querySelector('#delSessionsCmdMenu').addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn').click();
+    shadowRoot?.querySelector('#delSessionsCmdMenu')?.addEventListener('click', e => {
+        shadowRoot?.querySelector('#cogBtn')?.click();
         const element = shadowRoot?.getElementById('recycleCurrentSessionBtn');
         if (!element) { return; }
         const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
         element.dispatchEvent(event);
     });
 
-    shadowRoot?.querySelector('#mainHelpMenu').addEventListener('click', async (e) => {
+    shadowRoot?.querySelector('#mainHelpMenu')?.addEventListener('click', async (e) => {
         try {
             await chrome.runtime.sendMessage({ action: "openMainHelpMenu" })
             if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
@@ -65,7 +74,7 @@ async function initRibbon() {
         }
     });
 
-    shadowRoot?.querySelector('#modifiersHelp').addEventListener('click', async (e) => {
+    shadowRoot?.querySelector('#modifiersHelp')?.addEventListener('click', async (e) => {
         try {
             await chrome.runtime.sendMessage({ action: "openModifiersHelpMenu" })
             if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
@@ -102,12 +111,12 @@ async function initRibbon() {
 
     const toolFunctions = ribbon?.querySelector('#toolFunctions');
     toolFunctions?.addEventListener('click', async e => onToolFunctionsBtnClick(e), false);
-    ribbon?.querySelector('#systemIntructions').addEventListener('click', laiShowSystemInstructions, false);
-    ribbon?.querySelector('#newSession').addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot), false);
-    ribbon?.querySelector('#sessionHistory').addEventListener('click', async e => await openCloseSessionHistoryMenu(e), false);
-    ribbon?.querySelector('#apiUrlList').addEventListener('change', async e => await selectMenuChanged(e));
-    ribbon?.querySelector('#modelList').addEventListener('change', async e => await modelChanged(e), false);
-    ribbon?.querySelector('#hookList').addEventListener('change', async e => await selectMenuChanged(e), false);
+    ribbon?.querySelector('#systemIntructions')?.addEventListener('click', laiShowSystemInstructions, false);
+    ribbon?.querySelector('#newSession')?.addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot), false);
+    ribbon?.querySelector('#sessionHistory')?.addEventListener('click', async e => await openCloseSessionHistoryMenu(e), false);
+    ribbon?.querySelector('#apiUrlList')?.addEventListener('change', async e => await selectMenuChanged(e));
+    // ribbon?.querySelector('#modelList')?.addEventListener('change', async e => await modelChanged(e), false);
+    ribbon?.querySelector('#hookList')?.addEventListener('change', async e => await selectMenuChanged(e), false);
     ribbon?.querySelector('#laiModelName').addEventListener('mouseenter', e => {
         updateStatusBar('Click to toggle the list with available models.');
         setTimeout(resetStatusbar, 10000);
@@ -135,15 +144,15 @@ async function initRibbon() {
     await adjustThinkingStatus(ribbon?.querySelector('#modelThinking'));
     await adjustToolsStatus(ribbon?.querySelector('#toolFunctions'));
 
-    shadowRoot?.getElementById('recycleCurrentSessionBtn').addEventListener('click', async e => await recycleActiveSession(e, shadowRoot), false);
+    shadowRoot?.getElementById('recycleCurrentSessionBtn')?.addEventListener('click', async e => await recycleActiveSession(e, shadowRoot), false);
     shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
 
-    shadowRoot?.getElementById('laiAbort').addEventListener('click', async e => await laiAbortRequest(e), false);
+    shadowRoot?.getElementById('laiAbort')?.addEventListener('click', async e => await laiAbortRequest(e), false);
     if (laiOptions && laiOptions.openPanelOnLoad) {
         await laiSwapSidebarWithButton();
     }
 
-    shadowRoot?.getElementById('laiSessionHistoryMenu').querySelectorAll('img').forEach(el => laiSetImg(el));
+    shadowRoot?.getElementById('laiSessionHistoryMenu')?.querySelectorAll('img').forEach(el => laiSetImg(el));
 
     const sysIntructInput = shadowRoot?.querySelector('#laiSysIntructInput');
     sysIntructInput.value = laiOptions.systemInstructions || '';
@@ -280,25 +289,27 @@ async function openCloseSessionHistoryMenu(e) {
     sessionHistMenu.style.cssText = `top: ${e.clientY + 10}px;; left: ${e.clientX - (sessionHistMenu.offsetWidth / 4)}px;`;
 }
 
-async function modelChanged(e) {
-    const laiOptions = await getOptions();
-    const oldModelName = laiOptions.aiModel;
-    const newModelName = e.target.options[e.target.selectedIndex].value;
-    try {
-        await chrome.runtime.sendMessage({ action: "prepareModels", modelName: oldModelName, unload: true });
-        if (chrome.runtime.lastError) {
-            console.error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
-        }
-        await chrome.runtime.sendMessage({ action: "prepareModels", modelName: newModelName, unload: false });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-    } catch (err) {
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, err);
-    }
-    laiOptions.aiModel = newModelName;
-    await setOptions(laiOptions);
-    await chrome.runtime.sendMessage({ action: "getModelInfo", modelName: newModelName, forceRefresh: true });
-    setModelNameLabel({ "model": laiOptions.aiModel });
-}
+// duplicated functionality by `swapActiveModel`
+// TODO: To be removed ? awaiting confirmation
+// async function modelChanged(e) {
+//     const laiOptions = await getOptions();
+//     const oldModelName = laiOptions.aiModel;
+//     const newModelName = e.target.options[e.target.selectedIndex].value;
+//     try {
+//         await chrome.runtime.sendMessage({ action: "prepareModels", modelName: oldModelName, unload: true });
+//         if (chrome.runtime.lastError) {
+//             console.error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
+//         }
+//         await chrome.runtime.sendMessage({ action: "prepareModels", modelName: newModelName, unload: false });
+//         if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+//     } catch (err) {
+//         console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, err);
+//     }
+//     laiOptions.aiModel = newModelName;
+//     await setOptions(laiOptions);
+//     await chrome.runtime.sendMessage({ action: "getModelInfo", modelName: newModelName, forceRefresh: true });
+//     setModelNameLabel({ "model": laiOptions.aiModel });
+// }
 
 async function selectMenuChanged(e) {
     const laiOptions = await getOptions();
@@ -306,6 +317,7 @@ async function selectMenuChanged(e) {
     switch (id) {
         case 'apiUrlList':
             laiOptions.aiUrl = e.target.options[e.target.selectedIndex].value;
+            await setOptions(laiOptions);
             break;
         case 'hookList':
             break;
@@ -320,23 +332,37 @@ function popUserCommandList(el) {
     if (!shadowRoot) { return; }
     const cmdList = shadowRoot.querySelector('#commandListContainer');
     cmdList.querySelectorAll('img').forEach(img => { laiSetImg(img); });
-    const closeBtn = cmdList.querySelector('#cmdListClose')
-    closeBtn.addEventListener('click', e => cmdList.classList.add('invisible'));
+
+    const closeBtn = cmdList.querySelector('#cmdListClose');
     const addNewBtn = cmdList.querySelector('#cmdListNew');
-    addNewBtn.addEventListener('click', e => {
-        closeBtn.click();
-        popUserCommandEditor()
+    const importBtn = cmdList.querySelector('#cmdImport');
+    const exportBtn = cmdList.querySelector('#cmdExport');
+    const container = cmdList.querySelector('div.user-command-block');
+
+    closeBtn.replaceWith(closeBtn.cloneNode(true));
+    addNewBtn.replaceWith(addNewBtn.cloneNode(true));
+    importBtn.replaceWith(importBtn.cloneNode(true));
+    exportBtn.replaceWith(exportBtn.cloneNode(true));
+
+    const newCloseBtn = cmdList.querySelector('#cmdListClose');
+    const newAddNewBtn = cmdList.querySelector('#cmdListNew');
+    const newImportBtn = cmdList.querySelector('#cmdImport');
+    const newExportBtn = cmdList.querySelector('#cmdExport');
+
+    newCloseBtn.addEventListener('click', () => cmdList.classList.add('invisible'));
+    newAddNewBtn.addEventListener('click', () => {
+        newCloseBtn.click();
+        popUserCommandEditor();
     });
-
-    cmdList.querySelector('#cmdImport').addEventListener('click', e => userImport(e));
-    cmdList.querySelector('#cmdExport').addEventListener('click', async (e) => await exportAsFile(e));
-
-    const container = cmdList.querySelector('div.user-command-block')
+    newImportBtn.addEventListener('click', e => userImport(e));
+    newExportBtn.addEventListener('click', async (e) => await exportAsFile(e));
 
     container.replaceChildren();
 
-    const clickHandler = e => closeBtn.click();
-    container.addEventListener('click', clickHandler);
+    const newContainer = container.cloneNode(false);
+    container.replaceWith(newContainer);
+    const finalContainer = cmdList.querySelector('div.user-command-block');
+    finalContainer.addEventListener('click', () => newCloseBtn.click());
 
     const allCmds = [...userPredefinedCmd, ...aiUserCommands];
 
@@ -353,7 +379,7 @@ function popUserCommandList(el) {
         el.appendChild(cmdItemButtons);
         el.appendChild(cmdItem);
 
-        container.appendChild(el);
+        finalContainer.appendChild(el);
         el.classList.add('user-command-item');
     }
 
@@ -478,7 +504,7 @@ async function fillAndShowModelList(models) {
     const modelsDropDown = shadowRoot.querySelector('#modelList');
     let opt = modelsDropDown.options[0];
     if (!modelList) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: Failed to find model list!`, e, modelList);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: Failed to find model list!`, modelList);
         showMessage('Failed to find model list!', 'error');
         return;
     }
@@ -515,20 +541,27 @@ async function swapActiveModel(e, modelName) {
     const laiOptions = await getOptions();
     const oldModel = laiOptions.aiModel;
     if (!activatedModel) { return; }
+
     try {
         showSpinner();
+
         updateStatusBar(`Trying to remove ${oldModel} from the memory...`);
         let response = await chrome.runtime.sendMessage({ action: "prepareModels", modelName: oldModel, unload: true });
         if (chrome.runtime.lastError) {
             console.error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
+            showMessage(`Problem occurred when unloading the ${oldModel} model!`, 'warning');
         }
-        if (response.status !== 200) { showMessage(`Problem occured when unloading the ${oldModel} model!`, 'warning'); }
+        if (response?.status !== 200) {
+            showMessage(`Problem occurred when unloading the ${oldModel} model!`, 'warning');
+        }
 
         updateStatusBar(`Trying to load ${modelName} into the memory...`);
         response = await chrome.runtime.sendMessage({ action: "prepareModels", modelName: modelName, unload: false });
-        if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        if (response.status !== 200) {
-            showMessage(`Failed to load ${modelName} model!`, 'error');
+        if (chrome.runtime.lastError) {
+            throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
+        }
+        if (response?.status !== 200) {
+            showMessage(`Failed to load ${modelName} model! Please choose another model.`, 'error');
             return;
         }
 
@@ -546,8 +579,11 @@ async function swapActiveModel(e, modelName) {
         sideBar.querySelector('div#modelNameContainer')?.classList.remove('open')
         showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
     } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error occured while changing the model`);
-    } finally { hideSpinner(); }
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error occurred whilst changing the model`, error);
+        showMessage(`Failed to load ${modelName} model! Please choose another model.`, 'error');
+    } finally {
+        hideSpinner();
+    }
 }
 
 async function onToolFunctionsBtnClick(e) {

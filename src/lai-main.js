@@ -1,16 +1,36 @@
 let restartCounter = 0;
-const RESTART_LIMIT = 5;
+const RESTART_LIMIT = 5; //TODO add the limit as in param and remove these 2 vars
 
-async function initSidebar() {
+function initRibbonWithRetry(deadline) {
+    if (deadline < Date.now()) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - initRibbon timed out`);
+        return;
+    }
+
+    if (typeof initRibbon !== 'function') {
+        setTimeout(() => initRibbonWithRetry(deadline), 1000);
+        return;
+    }
+
+    initRibbon();
+}
+
+async function initSidebar(deadline) {
     const laiOptions = await getOptions();
     if (!chrome.runtime.id) { chrome.runtime.reload(); }
     const root = getRootElement();
-    const shadowRoot = getShadowRoot();
+
+    const retryInterval = 1000;
+    let shadowRoot = getShadowRoot();
+
+    while (!shadowRoot && Date.now() < deadline) {
+        const timeLeft = deadline - Date.now();
+        await new Promise(resolve => setTimeout(resolve, Math.min(retryInterval, timeLeft)));
+        shadowRoot = getShadowRoot();
+    }
+
     if (!shadowRoot) {
-        if (restartCounter < RESTART_LIMIT) {
-            restartCounter++;
-            start();
-        }
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - shadowRoot not available after timeout`);
         return;
     }
 
@@ -28,13 +48,13 @@ async function initSidebar() {
     });
 
     const ribbon = getRibbon();
-    if (!ribbon) { console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, ribbon); }
+    if (!ribbon) { console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, ribbon); }
     ribbon?.querySelector('#errorMsgBtn')?.addEventListener('click', showLastErrorMessage);
     ribbon?.querySelector('.temp-range-wrapper')?.addEventListener('click', modifiersClicked, true);
 
 
     const userInput = shadowRoot.getElementById('laiUserInput');
-    if (!userInput) { console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, userInput); }
+    if (!userInput) { console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, userInput); }
     userInput?.addEventListener('keydown', async e => await onPromptTextAreaKeyDown(e), false);
     userInput?.addEventListener('input', e => laiUpdateSuggestions(e.target));
     userInput?.addEventListener('click', userInputClicked);
@@ -64,7 +84,7 @@ async function initSidebar() {
         root.addEventListener('drop', async e => await onUserInputFileDropped(e));
     }
 
-    await initRibbon();
+    initRibbonWithRetry(Date.now() + 30000);
 
     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
     laiChatMessageList.dataset.watermark = `${manifest?.name ?? ''} - ${manifest.version}`;
@@ -128,7 +148,7 @@ function initDebugBtn(timeout, el){
     if(timeout < Date.now()) {  return; }
     if(typeof debugBtnInit !== 'function') {
         setTimeout(() => initDebugBtn(timeout, el), 1000);
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - debug btn init pending`, {remain: (Math.abs(timeout - Date.now())), fun: (typeof debugBtnInit), el});
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - debug btn init pending`, {remain: (Math.abs(timeout - Date.now())), fun: (typeof debugBtnInit), el});
         return;
     }
     debugBtnInit(el);
@@ -139,7 +159,7 @@ function initPageFilterBtn(timeout){
     if(timeout < Date.now()) {  return; }
     if(typeof pageFilterBtnInit !== 'function') {
         setTimeout(() => pageFilterBtnInit(timeout), 1000);
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - debug btn init pending`, {remain: (Math.abs(timeout - Date.now())), fun: (typeof pageFilterBtnInit)});
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - debug btn init pending`, {remain: (Math.abs(timeout - Date.now())), fun: (typeof pageFilterBtnInit)});
         return;
     }
     pageFilterBtnInit();
@@ -568,7 +588,8 @@ async function onPromptTextAreaKeyDown(e) {
 
         if (isAskingForHelp(e) || await checkCommandHandler(elTarget)) {
             e.preventDefault();
-            if (elTarget?.value?.trim() === '') {  return false;  }
+            return false;
+            // if (elTarget?.value?.trim() === '') {  return false;  }
         }
 
         e.preventDefault();
@@ -1170,7 +1191,7 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             }
         }
     } catch (error) {
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - restarting: ${restartCounter}`, error, response);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - restarting: ${restartCounter}`, error, response);
     }
 
     switch (response.action) {
@@ -1525,7 +1546,7 @@ async function checkCommandHandler(userInput) {
                     lastMsg = `${hist[hist.length - 1] ?? 'Unknown'}`;
                 } catch (err) {
                     lastMsg = "Error getting message history!";
-                    console.log(`${manifest?.name} - [${getLineNumber()}] Error getting message history!`, err)
+                    console.debug(`${manifest?.name} - [${getLineNumber()}] Error getting message history!`, err)
                 }
                 showMessage(lastMsg, 'info', 10000);
                 res = true;
@@ -1815,11 +1836,11 @@ function dumpRawContent(type = 'ai', i) {
     let content;
     if (i && i >= 0 && i < aiInputs.length) {
         content = aiInputs[i]?.rawContent.messages ? aiInputs[i]?.rawContent.messages.map(e => e.content).join('') : aiInputs[i]?.rawContent || '';
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - raw content:}`, content);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - raw content:}`, content);
     } else {
         aiInputs.forEach((el, idx) => {
             content = el.rawContent.messages ? el.rawContent?.messages.map(e => e.content).join('') : el.rawContent || '';
-            console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - raw content: ${idx}`, content);
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - raw content: ${idx}`, content);
         });
     }
 }

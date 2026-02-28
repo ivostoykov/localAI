@@ -10,12 +10,14 @@
  */
 function relativeDate(str) {
     const units = {s:1e3,m:6e4,h:36e5,d:864e5,w:6048e5,mo:2592e6,y:31536e6};
-    const matches = str.trim().match(/\d+|[a-z]+/gi);
+    const normalized = str.trim().replace(/^in\s+/i, '');
+    const matches = normalized.match(/\d+|[a-z]+/gi);
     if (!matches || matches.length < 2) {
         console.error(`>>> ${manifest?.name ?? ''} - [internal-tools.js:relativeDate] - Invalid time offset format:`, {
             input: str,
+            normalized,
             matches,
-            expectedFormat: 'Examples: "3d ago", "2w from now", "1mo ago"'
+            expectedFormat: 'Examples: "3d ago", "2w from now", "in 1 week", "in 2 days"'
         });
         throw new Error("Invalid time offset format");
     }
@@ -48,7 +50,7 @@ async function getAllSessionPages(tabId) {
     if (data?.pageContent && data?.pageHash) {
         const currentPage = {
             url: data.url || location.href,
-            // title: document?.title || 'Untitled',
+            title: data.title || 'Untitled',
             content: data.pageContent,
             hash: data.pageHash,
             timestamp: Date.now()
@@ -70,7 +72,7 @@ async function getLastSessionPages(count = 1, tabId) {
     if (data?.pageContent && data?.pageHash) {
         const currentPage = {
             url: data.url || location.href,
-            // title: document?.title || 'Untitled',
+            title: data.title || 'Untitled',
             content: data.pageContent,
             hash: data.pageHash,
             timestamp: Date.now()
@@ -165,12 +167,13 @@ async function listRecentSessions(limit = 10) {
 
 async function searchConversationHistory(args, tabId) {
     const sessionId = await getActiveSessionId();
+    const scope = args.scope ?? 'current_session';
     const searchOptions = {
-        sessionId: args.scope === 'current_session' ? sessionId : null,
-        tabId: args.scope === 'current_tab' ? tabId : null,
+        sessionId: scope === 'current_session' ? sessionId : null,
+        tabId: scope === 'current_tab' ? tabId : null,
         type: args.type || null,
         limit: args.limit || 10,
-        threshold: args.threshold || 0.6
+        threshold: args.threshold ?? 0.6
     };
 
     const results = await backgroundMemory.semanticSearch(args.query, searchOptions);
@@ -206,15 +209,16 @@ async function execInternalTool(call = {}, tabId = null) {
             data = await getActiveSessionPageData(tabId);
             return data?.url || 'No URL available';
 
-        case "get_current_date":
-        case "get_current_time":
-        case "get_date_time":
         case "get_date":
-        case "get_time":
-            return new Date().toISOString();
+            return new Date().toISOString().split('T')[0];
 
         case "get_tab_info":
-        case "get_current_tab_info":
+            data = await getActiveSessionPageData(tabId);
+            return JSON.stringify({
+                url: data?.url || 'No URL available',
+                content: data?.pageContent || 'No page content available'
+            }, null, 2);
+
         case "get_current_tab_page_content":
             data = await getActiveSessionPageData(tabId);
             return data?.pageContent || 'No page content available';
@@ -374,7 +378,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "ALWAYS call this FIRST when user references 'current page', 'current tab', 'this page', 'this tab', 'the page', 'the tab', or any variation, including phrases like 'using the current page', 'extract from this page', 'what does this page say about'. In browser context, 'page' and 'tab' are interchangeable. Returns clean visible text content from the active browser tab including all text, data, and information visible on the page. This should satisfy most extraction requests. Only if specific data is still missing after using this tool should you call get_enhanced_page_content next. NEVER call get_page_metadata before calling this first. Do NOT use web_search for current page - use this instead.",
+            "description": "Call this when user references 'current page', 'current tab', 'this page', 'this tab', 'the page', 'the tab', or any variation, including phrases like 'using the current page', 'extract from this page', 'what does this page say about'. In browser context, 'page' and 'tab' are interchangeable. Returns clean visible text content from the active browser tab including all text, data, and information visible on the page. This should satisfy most extraction requests. Only if specific data is still missing after using this tool should you call get_enhanced_page_content next. Do NOT use web_search for current page - use this instead.",
             "name": "get_current_tab_page_content",
             "parameters": {
                 "properties": {},
@@ -516,7 +520,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Get page structure overview with metadata and element counts. Call this FIRST before other content extraction tools to understand what content is available. Returns metadata (title, author, publish date, description) and counts of tables, lists, code blocks, images, and links. Use this to decide which specific extraction tools to call next.",
+            "description": "Get page structure overview with metadata and element counts. Returns metadata (title, author, publish date, description) and counts of tables, lists, code blocks, images, and links. Use this when you need to understand page structure before extracting specific elements like tables or lists.",
             "name": "get_page_structure",
             "parameters": {
                 "properties": {},
@@ -604,7 +608,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Extract only the main content area (article/blog post) without navigation, sidebars, ads, or footer. Use when user asks to summarise, analyse, or understand the main article/post. Falls back to full content if main area cannot be detected. More focused than get_current_tab_page_content.",
+            "description": "Extract only the main content area (article/blog post) without navigation, sidebars, ads, or footer. Use when user asks to summarise, analyse, or understand the main article/post. More focused than get_current_tab_page_content. If main content cannot be detected, use get_enhanced_page_content instead.",
             "name": "get_main_content",
             "parameters": {
                 "properties": {},

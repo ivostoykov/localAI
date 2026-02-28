@@ -70,14 +70,14 @@ function detectImageFormat(base64Data) {
 }
 
 async function handleImageFile(file) {
-    try {
-        // TODO: Add model vision capability check before accepting image upload
-        // Check if active model has projector_info (vision support) via /api/show endpoint
-        // If model doesn't support vision, show error message and suggest switching to vision-capable model
-        // Reference: projector_info !== null indicates vision support (llava, granite3.2-vision, etc.)
+    // TODO: Add model vision capability check before accepting image upload
+    // Check if active model has projector_info (vision support) via /api/show endpoint
+    // If model doesn't support vision, show error message and suggest switching to vision-capable model
+    // Reference: projector_info !== null indicates vision support (llava, granite3.2-vision, etc.)
 
-        const reader = new FileReader();
-        reader.onload = async () => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+        try {
             const base64Content = reader.result.split(',').pop();
             if (!base64Content) {
                 showMessage(`Failed to read image ${file.name}.`, 'error');
@@ -100,13 +100,26 @@ async function handleImageFile(file) {
                 throw new Error(response.message);
             }
 
-            showAttachment(file.name);
-        };
-        reader.readAsDataURL(file);
-    } catch (err) {
-        showMessage(`Failed to read image ${file.name}: ${err.message}`, 'error');
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Image read failed: ${err.message}`, err);
-    }
+            const attachment = {
+                id: response.imageId,
+                type: 'image',
+                filename: file.name,
+                contentType: imageInfo.mimeType,
+                sourceUrl: location.href
+            };
+
+            await addAttachment(attachment);
+            showAttachment(attachment);
+        } catch (err) {
+            showMessage(`Failed to read image ${file.name}: ${err.message}`, 'error');
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Image read failed: ${err.message}`, err);
+        }
+    };
+    reader.onerror = (error) => {
+        showMessage(`Failed to read image ${file.name}: ${error.message}`, 'error');
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - FileReader error:`, error);
+    };
+    reader.readAsDataURL(file);
 }
 
 async function handleGenericFile(file) {
@@ -119,10 +132,19 @@ async function handleGenericFile(file) {
 
         let response;
         try {
+            const uint8Array = new Uint8Array(fileContent);
+            let base64String = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                const chunk = uint8Array.subarray(i, i + chunkSize);
+                base64String += String.fromCharCode(...chunk);
+            }
+            const base64Content = btoa(base64String);
+
             response = await chrome.runtime.sendMessage({
                 action: 'extractText',
                 fileName: file.name,
-                fileContent: btoa(String.fromCharCode(...new Uint8Array(fileContent)))
+                fileContent: base64Content
             });
             if (chrome.runtime.lastError) {
                 throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
@@ -151,7 +173,7 @@ async function handleGenericFile(file) {
         };
 
         await addAttachment(attachment);
-        showAttachment(file.name);
+        showAttachment(attachment);
     } catch (err) {
         showMessage(`Failed to process file ${file.name}: ${err.message}`, 'error');
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error: ${err.message}`, err);
@@ -179,7 +201,7 @@ async function handlePlainTextFile(file) {
         };
 
         await addAttachment(attachment);
-        showAttachment(file.name);
+        showAttachment(attachment);
     } catch (err) {
         showMessage(`Failed to read plain text file ${file.name}: ${err.message}`, 'error');
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error: ${err.message}`, err);
@@ -209,7 +231,7 @@ async function onUserInputFileDropped(e) {
         dropzone.classList.remove('hover');
         setTimeout(() => dropzone.classList.add('invisible'), 750);
 
-        console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - event files:`, e?.dataTransfer?.files);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - event files:`, e?.dataTransfer?.files);
 
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
             const file = e.dataTransfer.files[i];
