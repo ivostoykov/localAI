@@ -416,18 +416,30 @@ async function setActiveSessionPageData(tabId) {
         });
 
         const url = location.href;
-        const pageContent = await getEnhancedPageContent() ?? null;
-
-        if(!pageContent) {
-            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content!`, {
-                url,
-                readyState: document.readyState,
-                bodyExists: !!document.body,
-                bodyLength: document.body?.innerText?.length ?? 0,
-                bodyFirstChars: document.body?.innerText?.substring(0, 100) ?? ''
-            });
+        const waitfor = Date.now() + 3000;
+        while(Date.now() < waitfor){
+            await new Promise(resolve => setTimeout(resolve, Math.min(500, waitfor - Date.now())));
+            if(typeof getEnhancedPageContent === "function"){  break;  }
+        }
+        let pageContent
+        try{
+            pageContent = await getEnhancedPageContent() ?? null;
+            if(!pageContent) {
+                console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content!`, {
+                    url,
+                    readyState: document.readyState,
+                    bodyExists: !!document.body,
+                    bodyLength: document.body?.innerText?.length ?? 0,
+                    bodyFirstChars: document.body?.innerText?.substring(0, 100) ?? ''
+                });
+                return;
+            }
+        }
+        catch(theError){
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getEnhancedPageContent is not available yet`, theError);
             return;
         }
+
 
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Successfully extracted page content`, {
             url,
@@ -447,13 +459,8 @@ async function setActiveSessionPageData(tabId) {
             contentLength: pageContent.length
         });
     } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error in setActiveSessionPageData:`, {
-            error: error.message,
-            stack: error.stack,
-            tabId,
-            url: location.href,
-            readyState: document.readyState
-        });
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error`, {
+            error, tabId, url: location.href, readyState: document.readyState });
     }
 }
 

@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.28.96] - 2026-02-28 - latest
+## [1.28.97] - 2026-02-28 - latest
 - Sanitising and bug fixing.
 
 ## [1.28.90] - 2026-02-24
