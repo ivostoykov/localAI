@@ -1,6 +1,32 @@
 # Local AI - Changelog
 
-## [1.28.97] - 2026-02-28 - latest
+## [1.28.98] - 2026-03-01 - latest
+
+### Session Title Generation
+- Refactored session title generation to execute in background worker after first turn
+- Removed redundant message passing between worker and content script for title generation
+- Removed obsolete userPrompt message flow and related functions (storeLastGeneratedPrompt, dumpRawContent)
+- Added titleGenerated flag to sessions to prevent repeated title generation
+- Cleaned up legacy pre-session-handling code
+- Added navigation fcilitation shortcuts in the optionts page
+
+### Options Page Enhancements
+- Added Title Generator model selector to allow using a different model for generating session titles
+- Added Archived Session Retention Period field (days) with 0=forever option
+- Added keyboard navigation shortcuts:
+  - Ctrl+Home: Jump to first section (General)
+  - Ctrl+End: Jump to last section (Functions)
+  - Ctrl+Shift+PgUp: Previous section (with wrap-around)
+  - Ctrl+Shift+PgDn: Next section (with wrap-around)
+  - Ctrl+S: Save settings (existing)
+- Added keyboard shortcuts hint panel in sidebar with styled kbd elements
+
+### Session Management
+- Session archiving now respects user-defined retention period
+- If retention is set to 0, archived sessions are kept forever (no purging)
+- If retention is not set, defaults to 2 days (ARCHIVE_RETENTION_DAYS)
+
+## [1.28.97] - 2026-02-28
 - Sanitising and bug fixing.
 
 ## [1.28.90] - 2026-02-24

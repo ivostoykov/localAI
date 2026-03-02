@@ -106,22 +106,6 @@ function checkExtensionState() {
     return true;
 }
 
-async function checkAndSetSessionName() {
-    try {
-        const currentSession = await getActiveSession();
-        if (!currentSession || !currentSession?.title || !currentSession?.title?.toLowerCase()?.startsWith('session')) { return; }
-        const sessionData = currentSession?.messages || [];
-        if (sessionData.length < 1) { return; }
-        const userInput = sessionData?.filter(el => el?.role === 'user');
-        if (userInput.length < 1) { return; }
-        if (!userInput[0]?.content) { return; }
-        await chrome.runtime.sendMessage({ action: "checkAndSetSessionName", text: userInput[0]?.content });
-        return true;
-    } catch (err) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
-        return false;
-    }
-}
 
 async function getAiUrl() {
     const laiOptions = await getOptions();

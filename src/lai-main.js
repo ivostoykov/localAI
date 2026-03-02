@@ -1282,10 +1282,6 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         case "dumpInConsole":
             dumpInConsole(response.message, response.obj, response.type);
             break;
-        case "userPrompt":
-            storeLastGeneratedPrompt(response.data);
-            await checkAndSetSessionName();
-            break;
         case "callContentExtractor":
             handleContentExtractorCall(response, sendResponse);
             return true;
@@ -1825,51 +1821,7 @@ function micClicked(e) {
     });
 }
 
-function dumpRawContent(type = 'ai', i) {
-    const sideBar = getSideBar();
-    if (!sideBar) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - SideBar not found!`);
-        return;
-    }
 
-    const aiInputs = sideBar.querySelectorAll(`.lai-${type}-input .lai-input-text`);
-    let content;
-    if (i && i >= 0 && i < aiInputs.length) {
-        content = aiInputs[i]?.rawContent.messages ? aiInputs[i]?.rawContent.messages.map(e => e.content).join('') : aiInputs[i]?.rawContent || '';
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - raw content:}`, content);
-    } else {
-        aiInputs.forEach((el, idx) => {
-            content = el.rawContent.messages ? el.rawContent?.messages.map(e => e.content).join('') : el.rawContent || '';
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - raw content: ${idx}`, content);
-        });
-    }
-}
-
-function storeLastGeneratedPrompt(data) {
-    if (!data) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No prompt received!`);
-        return;
-    }
-
-    let promptData;
-    try {
-        promptData = typeof (data) === 'string' ? JSON.parse(data) : data;
-    } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing received prompt`, data);
-        return;
-    }
-
-    const sideBar = getSideBar();
-    if (!sideBar) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - SideBar not found!`);
-        return;
-    }
-
-    let usrInputs = Array.from(sideBar.querySelectorAll('.lai-user-input .lai-input-text'));
-    if (usrInputs.length < 0) { return; }
-    usrInputs = usrInputs.slice(-1)[0];
-    usrInputs.rawContent = promptData;
-}
 
 function dumpInConsole(message = '', obj, consoleAction = 'log') {
     try {

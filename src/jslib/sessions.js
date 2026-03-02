@@ -276,7 +276,15 @@ async function archiveSession(sessionId) {
 
 async function pruneArchivedSessions() {
     try {
-        const retentionMs = ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+        const options = await getOptions();
+        const retentionDays = options?.sessionRetentionDays ?? ARCHIVE_RETENTION_DAYS;
+
+        if (retentionDays === 0) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Session retention set to forever (0 days), skipping pruning`);
+            return 0;
+        }
+
+        const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
         const cutoffTime = Date.now() - retentionMs;
 
         const archivedSessions = await getArchivedSessions();
@@ -289,7 +297,7 @@ async function pruneArchivedSessions() {
         if (retained.length < initialCount) {
             await setArchivedSessions(retained);
             const prunedCount = initialCount - retained.length;
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Pruned ${prunedCount} archived sessions older than ${ARCHIVE_RETENTION_DAYS} days`);
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Pruned ${prunedCount} archived sessions older than ${retentionDays} days`);
             return prunedCount;
         }
 
