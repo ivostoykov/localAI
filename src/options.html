@@ -20,6 +20,14 @@
         <li class="menu-item" data-section="prompts">User Commands</li>
         <li class="menu-item" data-section="tools">Functions</li>
       </ul>
+      <div class="keyboard-hints">
+        <p><strong>Keyboard Shortcuts:</strong></p>
+        <p><kbd>Ctrl+Shift+Home</kbd> - First section</p>
+        <p><kbd>Ctrl+Shift+End</kbd> - Last section</p>
+        <p><kbd>Ctrl+Shift+PgUp</kbd> - Previous section</p>
+        <p><kbd>Ctrl+Shift+PgDn</kbd> - Next section</p>
+        <p><kbd>Ctrl+S</kbd> - Save settings</p>
+      </div>
     </aside>
 
     <!-- Right panel -->
@@ -69,11 +77,19 @@
                 <input type="checkbox" id="debug" />
                 <label for="debug">Enable debug logging</label>
               </div>
+<!-- second row -->
               <div>
-                <label for="tempRange">Temperature</label>
-                <input type="range" id="tempRange" min="0" max="1" value="0.5" step="0.1" />
-                <input type="number" id="tempInput" min="0" max="1" value="0.5" step="0.1" />
-                <output id="tempOutput">Neutral</output>
+                <div>
+                  <label for="tempRange">Temperature</label>
+                  <input type="range" id="tempRange" min="0" max="1" value="0.5" step="0.1" />
+                  <input type="number" id="tempInput" min="0" max="1" value="0.5" step="0.1" />
+                  <output id="tempOutput">Neutral</output>
+                </div>
+                <div>
+                  <label for="sessionRetentionDays">Archived Session Retention Period </label>
+                  <input type="number" id="sessionRetentionDays" min="0" step="1" placeholder="Default: 2" />
+                  <span>&nbsp;(in days; 0=forever)</span>
+                </div>
               </div>
             </div>
             <!--  -->
@@ -116,6 +132,22 @@
                     <option value="" selected="selected">Select Model</option>
                   </select>
                   <div id="modelButtons">
+                    <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc"
+                      title="Soft list Asc">
+                    <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"
+                      title="Soft List Desc">
+                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models"
+                      title="Reload models">
+                    <img src="img/copy.svg" class="model-icon-button" data-action="copy" alt="Copy" title="Copy">
+                  </div>
+                </div>
+
+                <div class="el-holder">
+                  <label for="titleGeneratorModel">Title Generator:</label>
+                  <select id="titleGeneratorModel" data-list="titleGeneratorModelList">
+                    <option value="" selected="selected">Select Model</option>
+                  </select>
+                  <div id="titleGeneratorModelButtons">
                     <img src="img/a-z.svg" class="model-icon-button" data-action="asc" alt="Soft Asc"
                       title="Soft list Asc">
                     <img src="img/z-a.svg" class="model-icon-button" data-action="desc" alt="Soft Desc"

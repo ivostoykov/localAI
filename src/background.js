@@ -190,11 +190,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse(response);
                     break;
 
-                case "checkAndSetSessionName":
-                    await generateAndUpdateSessionTitle(request?.text ?? '', sender.tab);
-                    sendResponse({ status: 'success' });
-                    break;
-
                 case "deleteSessionMemory":
                     await backgroundMemory.deleteSession(request.sessionId);
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Deleted session ${request.sessionId} from memory`);
@@ -807,6 +802,15 @@ async function fetchDataAction(request, sender) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store turn in memory:`, memoryError);
         }
 
+        if (turnNumber === 1 && !activeSession?.titleGenerated) {
+            const titleWasGenerated = await generateAndUpdateSessionTitle(cleanedUserInput, sender.tab);
+            if (titleWasGenerated) {
+                activeSession = await getActiveSession();
+                activeSession.titleGenerated = true;
+                await setActiveSession(activeSession);
+            }
+        }
+
         await handleResponse(body, sender?.tab?.id);
     }
     catch (e) {
@@ -833,12 +837,6 @@ async function fetchDataAction(request, sender) {
     }
     finally {
         if (tabId != null) {  controllers.delete(tabId);  }
-        try {
-            await chrome.tabs.sendMessage(sender?.tab?.id, { action: "userPrompt", data: JSON.stringify(request.data) });
-            if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        } catch (e3) {
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e3.message}`, e3);
-        }
     }
 
     return { "status": "success", "message": "Request sent. Awaiting response." };
@@ -1198,23 +1196,31 @@ async function getAiUrl() {
 
 async function getAiModel() {
     const laiOptions = await getOptions();
-    return laiOptions?.aiModel;
+    const model = laiOptions?.aiModel;
+    return model && model.trim() ? model : null;
+}
+
+async function getTitleGenerator() {
+    const laiOptions = await getOptions();
+    const model = laiOptions?.titleGeneratorModel;
+    return model && model.trim() ? model : null;
 }
 
 async function generateAndUpdateSessionTitle(text, tab) {
     const titleSeed = await generateSessionTitle(text, tab);
-    if (!titleSeed) { return; }
+    if (!titleSeed) { return false; }
     const activeSession = await getActiveSession();
     let oldTitle = activeSession?.title?.replace(/session/ig, '');
     activeSession["title"] = `${titleSeed}${oldTitle}`;
     await setActiveSession(activeSession);
+    return true;
 }
 
 async function generateSessionTitle(text, tab) {
     if (!text || text === '') { return null; }
     let url = await getAiUrl();
-    let model = await getAiModel();
-    if (!model) { return; }
+    let model = await getTitleGenerator() ?? await getAiModel();
+    if (!model) {   return null;   }
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`);
     await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`, null, 'debug', tab?.id);
 
@@ -1225,13 +1231,13 @@ async function generateSessionTitle(text, tab) {
         "stream": false,
         "raw": true,
         "options": {
-            "temperature": 0,
-            "top_p": 0,
-            "repeat_penalty": 1.2,
+            "temperature": 0.2,
+            "top_p": 0.4,
+            "repeat_penalty": 1.15,
             "presence_penalty": 0.0,
-            "max_tokens": 5
+            "max_tokens": 6
         },
-        "prompt": `Describe in max 5 short words the text below. Output only those 5 words - **nothing else**.
+        "prompt": `Create the shortest possibe meaningful title (maximum 5 words). Remove all punctuation. Your response must be **only** the title. This limit must be strictly followed.
 
 Text_to_describe:
 “{{${text}}}”
@@ -1240,27 +1246,31 @@ Text_to_describe:
 
     if (await modelCanThink(model)) { jsonPrompt["think"] = false; }
 
+    let res;
+    let data;
+    let title;
     try {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - prompt`, {url, jsonPrompt});
-        const res = await fetch(url, {
+        res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(jsonPrompt)
         });
-        const data = await res.json();
+        data = await res.json();
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, data);
         await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, data, 'debug', tab?.id);
-        let title = data?.response?.split('\n')?.map(x => x?.trim())?.filter(Boolean)?.slice(-1)?.[0]?.trim() ?? null;
-        if(!title)  {  return;  }
+        title = data?.response?.split('\n')?.map(x => x?.trim())?.filter(Boolean)?.slice(-1)?.[0]?.trim() ?? null;
+        if(!title)  {  return null;  }
         title = title?.replace(/^\n?title:\s{1,}/i, '');
         title = title?.replace(/[^a-z0-9\s]/gi, '')
-            ?.trim()
-            ?.split(/\s+/)
-            ?.slice(0, 5)
-            ?.join(' ');
+        ?.trim()
+        ?.split(/\s+/)
+        ?.slice(0, 5)
+        ?.join(' ');
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - title: ${title}`);
         return title;
     } catch (err) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, {err, res, data, title});
         return null;
     }
 }

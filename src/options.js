@@ -19,8 +19,43 @@ document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         document.getElementById('laiOptionsForm')?.requestSubmit();
+        return;
     }
-});
+
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+        const menuItems = Array.from(document.querySelectorAll('.menu-item'));
+        if (menuItems.length === 0) return;
+
+        const activeItem = menuItems.find(item => item.classList.contains('active'));
+        const currentIndex = activeItem ? menuItems.indexOf(activeItem) : 0;
+        let targetIndex = currentIndex;
+
+        console.debug(`[${getLineNumber()}]: key`, {"key": e.key, "ctrlKey": e.ctrlKey, "shiftKey": e.shiftKey, "metaKey": e.metaKey, e});
+
+        switch (e.key) {
+            case 'Home':
+                e.preventDefault();
+                targetIndex = 0;
+                break;
+            case 'End':
+                e.preventDefault();
+                targetIndex = menuItems.length - 1;
+                break;
+            case 'PageUp':
+                e.preventDefault();
+                targetIndex = currentIndex > 0 ? currentIndex - 1 : menuItems.length - 1;
+                break;
+            case 'PageDown':
+                e.preventDefault();
+                targetIndex = currentIndex < menuItems.length - 1 ? currentIndex + 1 : 0;
+                break;
+            default:
+                return;
+        }
+
+        menuItems[targetIndex]?.click();
+    }
+}, true);
 
 document.addEventListener('pendingChanges', () => {
     const btn = document.getElementById('cancelButton');
@@ -92,7 +127,7 @@ async function loadSettings(e) {
         }
 
         console.debug(`[${getLineNumber()}]: Stored form data`, formData);
-        const dataLists = ['modelList', 'urlList', 'toolFuncList', 'embeddingModelList', 'embedUrlList'];
+        const dataLists = ['modelList', 'urlList', 'toolFuncList', 'embeddingModelList', 'embedUrlList', 'titleGeneratorModelList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             console.debug(`[${getLineNumber()}]: Stored form data`, { i, list, dataLists: dataLists[i] });
@@ -148,10 +183,21 @@ async function saveSettings(e) {
             if(!element.id || !element.type){
                 console.warn('Problem with saving data from the element', element)
             }
-            optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
+
+            switch (element.type) {
+                case 'checkbox':
+                    optionsData[element.id || i] = element?.checked || false;
+                    break;
+                case 'number':
+                case 'range':
+                    optionsData[element.id || i] = element.value ? Number(element.value) : null;
+                    break;
+                default:
+                    optionsData[element.id || i] = element?.value || '';
+            }
         }
 
-        const dataLists = ['modelList', 'urlList', 'embeddingModelList', 'embedUrlList'];
+        const dataLists = ['modelList', 'urlList', 'embeddingModelList', 'embedUrlList', 'titleGeneratorModelList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             const el = document.querySelector(`select[data-list="${list}"]`);
@@ -304,7 +350,7 @@ async function getAiUserCommands() {
 
 async function attachDataListListeners(e) {
 
-    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons', 'embeddingModelButtons', 'embedUrlButtons'];
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons', 'embeddingModelButtons', 'embedUrlButtons', 'titleGeneratorModelButtons'];
     for (let x = 0; x < containers.length; x++) {
         const container = document.querySelector(`#${containers[x]}`);
         if (!container) { continue; }
@@ -628,7 +674,7 @@ async function fillModelList(models = [], selector = '') {
 
     const laiOptions = await getOptions();
     let activeModelName = laiOptions?.[selector.replace(/^#/, '')];
-    let op = modelDataList.options[0] || null;
+    let op = modelDataList.options?.[0] || null;
     modelDataList.replaceChildren();
     if (op) {
         modelDataList.appendChild(op);
@@ -930,6 +976,7 @@ async function loadModels(e) {
             models.models.sort((a, b) => a.name.localeCompare(b.name));
             await fillModelList(models.models, '#aiModel');
             await fillModelList(models.models, '#embeddingModel');
+            await fillModelList(models.models, '#titleGeneratorModel');
             success = true;
         }
     } catch (e) {

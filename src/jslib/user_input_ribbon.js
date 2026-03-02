@@ -238,10 +238,10 @@ async function debugBtnInit(btn){
     const noDebugImg = btn.querySelector('img[data-type="nodebug"]');
 
     if(debug){
-        debugImg.classList.remove('invisible');
-        noDebugImg.classList.add('invisible');
-    } else {
         noDebugImg.classList.remove('invisible');
         debugImg.classList.add('invisible');
+    } else {
+        debugImg.classList.remove('invisible');
+        noDebugImg.classList.add('invisible');
     }
 }
