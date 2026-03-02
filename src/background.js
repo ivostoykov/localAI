@@ -803,10 +803,12 @@ async function fetchDataAction(request, sender) {
         }
 
         if (turnNumber === 1 && !activeSession?.titleGenerated) {
-            await generateAndUpdateSessionTitle(cleanedUserInput, sender.tab);
-            activeSession = await getActiveSession();
-            activeSession.titleGenerated = true;
-            await setActiveSession(activeSession);
+            const titleWasGenerated = await generateAndUpdateSessionTitle(cleanedUserInput, sender.tab);
+            if (titleWasGenerated) {
+                activeSession = await getActiveSession();
+                activeSession.titleGenerated = true;
+                await setActiveSession(activeSession);
+            }
         }
 
         await handleResponse(body, sender?.tab?.id);
@@ -1194,21 +1196,24 @@ async function getAiUrl() {
 
 async function getAiModel() {
     const laiOptions = await getOptions();
-    return laiOptions?.aiModel;
+    const model = laiOptions?.aiModel;
+    return model && model.trim() ? model : null;
 }
 
 async function getTitleGenerator() {
     const laiOptions = await getOptions();
-    return laiOptions?.titleGeneratorModel;
+    const model = laiOptions?.titleGeneratorModel;
+    return model && model.trim() ? model : null;
 }
 
 async function generateAndUpdateSessionTitle(text, tab) {
     const titleSeed = await generateSessionTitle(text, tab);
-    if (!titleSeed) { return; }
+    if (!titleSeed) { return false; }
     const activeSession = await getActiveSession();
     let oldTitle = activeSession?.title?.replace(/session/ig, '');
     activeSession["title"] = `${titleSeed}${oldTitle}`;
     await setActiveSession(activeSession);
+    return true;
 }
 
 async function generateSessionTitle(text, tab) {

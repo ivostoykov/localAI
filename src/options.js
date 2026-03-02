@@ -183,7 +183,18 @@ async function saveSettings(e) {
             if(!element.id || !element.type){
                 console.warn('Problem with saving data from the element', element)
             }
-            optionsData[element.id || i] = element.type === 'checkbox' ? element?.checked || false : element?.value || '';
+
+            switch (element.type) {
+                case 'checkbox':
+                    optionsData[element.id || i] = element?.checked || false;
+                    break;
+                case 'number':
+                case 'range':
+                    optionsData[element.id || i] = element.value ? Number(element.value) : null;
+                    break;
+                default:
+                    optionsData[element.id || i] = element?.value || '';
+            }
         }
 
         const dataLists = ['modelList', 'urlList', 'embeddingModelList', 'embedUrlList', 'titleGeneratorModelList'];
