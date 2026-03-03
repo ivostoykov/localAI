@@ -1110,12 +1110,17 @@ function laiExtractDataFromResponse(response) {
         return '';
     }
 
-    if(!response.model || !response.message || !response.message.content){
+    const assistantContent = typeof response?.message?.content === 'string' ? response.message.content : '';
+    const hasThinking = typeof response?.message?.thinking === 'string' && response.message.thinking.trim().length > 0;
+
+    if(!response.model || !response.message || (!assistantContent && !hasThinking)){
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Wrong response`, response);
     }
 
     setModelNameLabel(response?.model ?? 'unknown');
-    return response?.message?.content || "Empty content!";
+    if (assistantContent) { return assistantContent; }
+    if (hasThinking) { return ''; }
+    return '';
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {
@@ -1833,4 +1838,3 @@ function dumpInConsole(message = '', obj, consoleAction = 'log') {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing JSON or logging message: ${error.message}`, error);
     }
 }
-
