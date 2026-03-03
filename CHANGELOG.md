@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.28.98] - 2026-03-01 - latest
+## [1.29.08] - 2026-03-03 - latest
+
+### Thinking Response Handling
+- Fixed `thinking` only responses (without `content`) to be handled properly
+- Thinking-only replies are not stored in the history
+- Updated the UI response handler rendering `Empty content!` when thinking reply occurs
+- Output thinking in worker debug console
+
+## [1.28.98] - 2026-03-01
 
 ### Session Title Generation
 - Refactored session title generation to execute in background worker after first turn

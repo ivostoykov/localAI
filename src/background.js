@@ -355,6 +355,32 @@ function processTextChunk(textChunk) {
     return textChunk;
 }
 
+function getAssistantMessageText(message = {}) {
+    if (typeof message?.thinking === 'string' && message.thinking.trim().length > 0) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - assistant thinking received`, message.thinking);
+    }
+
+    if (typeof message?.content === 'string' && message.content.trim().length > 0) {
+        return message.content;
+    }
+
+    if (typeof message?.thinking === 'string' && message.thinking.trim().length > 0) {
+        return message.thinking;
+    }
+
+    return '';
+}
+
+function sanitizeAssistantMessageForHistory(message = {}) {
+    const sanitizedMessage = structuredClone(message);
+    delete sanitizedMessage.thinking;
+
+    const hasContent = typeof sanitizedMessage?.content === 'string' && sanitizedMessage.content.trim().length > 0;
+    const hasToolCalls = Array.isArray(sanitizedMessage?.tool_calls) && sanitizedMessage.tool_calls.length > 0;
+
+    return hasContent || hasToolCalls ? sanitizedMessage : null;
+}
+
 async function handleResponse(responseData = '', senderTabId) {
     try {
         if (!responseData) {
@@ -783,7 +809,10 @@ async function fetchDataAction(request, sender) {
         await updateUIStatusBar(`Final response received...`, sender?.tab);
         await checkResponseTextAndBody({sender, responseText, body});
 
-        activeSession.messages.push(responseMessage);
+        const historyMessage = sanitizeAssistantMessageForHistory(responseMessage);
+        if (historyMessage) {
+            activeSession.messages.push(historyMessage);
+        }
         delete activeSession.attachments;
         await setActiveSession(activeSession);
 
@@ -850,15 +879,18 @@ async function checkResponseTextAndBody(params){
         return;
     }
 
-    if(body?.message?.content && body?.message?.content?.trim()?.length > 0){
-        await updateUIStatusBar(`Response content received...`, sender?.tab);
-        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response content received`, null, 'log', sender?.tab?.id);
+    const assistantMessageText = getAssistantMessageText(body?.message);
+    if(assistantMessageText.length > 0){
+        const responseType = body?.message?.content?.trim()?.length > 0 ? 'content' : 'thinking';
+        await updateUIStatusBar(`Response ${responseType} received...`, sender?.tab);
+        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response ${responseType} received`, null, 'log', sender?.tab?.id);
         return;
     }
 
     const o = {"message": `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty response received. Full body:`,
         "hasMessage": !!body?.message,
         "hasContent": !!body?.message?.content,
+        "hasThinking": !!body?.message?.thinking,
         "hasToolCalls": !!body?.message?.tool_calls,
         "messageRole": body?.message?.role,
         "rawBody": body,
