@@ -1111,16 +1111,13 @@ function laiExtractDataFromResponse(response) {
     }
 
     const assistantContent = typeof response?.message?.content === 'string' ? response.message.content : '';
-    const hasThinking = typeof response?.message?.thinking === 'string' && response.message.thinking.trim().length > 0;
 
-    if(!response.model || !response.message || (!assistantContent && !hasThinking)){
+    if(!response.model || !response.message || !assistantContent){
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Wrong response`, response);
     }
 
     setModelNameLabel(response?.model ?? 'unknown');
-    if (assistantContent) { return assistantContent; }
-    if (hasThinking) { return ''; }
-    return '';
+    return assistantContent || '';
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {
