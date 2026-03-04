@@ -840,7 +840,18 @@ async function fetchDataAction(request, sender) {
             }
         }
 
-        await handleResponse(body, sender?.tab?.id);
+        // Only send response to frontend if it has content or tool calls
+        // Thinking-only responses are logged in worker console but not displayed
+        const hasContent = typeof body?.message?.content === 'string' && body.message.content.trim().length > 0;
+        const hasToolCalls = Array.isArray(body?.message?.tool_calls) && body.message.tool_calls.length > 0;
+        const hasThinkingOnly = typeof body?.message?.thinking === 'string' && body.message.thinking.trim().length > 0 && !hasContent && !hasToolCalls;
+
+        if (hasThinkingOnly) {
+            await updateUIStatusBar(`Thinking completed, awaiting response...`, sender?.tab);
+            await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamEnd" });
+        } else {
+            await handleResponse(body, sender?.tab?.id);
+        }
     }
     catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);

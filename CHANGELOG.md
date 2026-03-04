@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.29.08] - 2026-03-03 - latest
+## [1.29.10] - 2026-03-04 - latest
+
+### Thinking Response Handling Fix
+- Fixed thinking-only responses causing empty content display in UI
+- Thinking-only responses no longer sent to frontend, only logged in worker console
+- Added status bar feedback "Thinking completed, awaiting response..." for thinking-only replies
+- Simplified frontend extraction logic
+
+## [1.29.08] - 2026-03-03
 
 ### Thinking Response Handling
 - Fixed `thinking` only responses (without `content`) to be handled properly
