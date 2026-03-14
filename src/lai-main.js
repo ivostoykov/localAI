@@ -737,6 +737,14 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
     lastChatElement.appendChild(actionIconsDiv);
     messageList.appendChild(lastChatElement);
 
+    if (type === 'ai') {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Created AI placeholder`, {
+            index,
+            aiCardCount: shadowRoot.querySelectorAll('.lai-ai-input').length,
+            chatItemCount: messageList.querySelectorAll('.lai-chat-history').length
+        });
+    }
+
     lastChatElement.addEventListener('mouseenter', function (e) {
         let elChatHist = e.target;
         if (!elChatHist.classList.contains('lai-chat-history')) { elChatHist = el.closest('.lai-chat-history'); }
@@ -1144,6 +1152,11 @@ function scrollChatHistoryContainer(e) {
 function renderCompleteFired(e) {
     const laiChatMessageList = e.target.closest('#laiChatMessageList');
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Render completed`, {
+        renderedChildCount: e.target?.childNodes?.length,
+        renderedTextLength: e.target?.innerText?.length ?? 0,
+        renderedHtmlLength: e.target?.innerHTML?.length ?? 0
+    });
     resetStatusbar();
     laiHandleStreamActions("Streaming response ended", e.target);
 }
@@ -1172,6 +1185,11 @@ async function onRuntimeMessage(response, sender, sendResponse) {
 
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Dropping runtime message because shadowRoot is missing`, {
+            action: response?.action,
+            restartCounter,
+            readyState: document.readyState
+        });
         if (restartCounter < RESTART_LIMIT) {
             restartCounter++;
             start();
@@ -1189,6 +1207,12 @@ async function onRuntimeMessage(response, sender, sendResponse) {
                 recipient?.setAttribute("id", "laiActiveAiInput");
             }
             if (!recipient && response.action.toLowerCase().startsWith('stream')) {
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Dropping stream action because no recipient exists`, {
+                    action: response.action,
+                    aiCardCount: shadowRoot.querySelectorAll('.lai-ai-input').length,
+                    activeRecipientCount: shadowRoot.querySelectorAll('#laiActiveAiInput').length,
+                    chatItemCount: shadowRoot.querySelectorAll('.lai-chat-history').length
+                });
                 return;
             }
         }
@@ -1207,6 +1231,13 @@ async function onRuntimeMessage(response, sender, sendResponse) {
                 updateStatusBar('Receiving and processing data...');
                 const rootRecipient = laiGetRecipient();
                 if (!rootRecipient) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Target element not found!`) }
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Starting parseAndRender`, {
+                    responseAction: response.action,
+                    contentLength: dataChunk.length,
+                    aiCardCount: shadowRoot.querySelectorAll('.lai-ai-input').length,
+                    recipientChildCount: rootRecipient.childNodes.length,
+                    recipientTextLength: rootRecipient.innerText?.length ?? 0
+                });
                 await parseAndRender(dataChunk, rootRecipient, getParseAndRenderOptions(rootRecipient) || {});
             } catch (err) {
                 streamDataError = err;
