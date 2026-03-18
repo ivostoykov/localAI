@@ -259,3 +259,31 @@ function waitForDOMToSettle(settleTime = 1000, maxWait = 10000) {
         timeout = setTimeout(cleanup, settleTime);
     });
 }
+
+async function validateAndGetTabId(tabId) {
+    if (typeof tabId === 'number' && !isNaN(tabId)) {
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            if (tab) return tabId;
+        } catch (error) {
+            console.warn(`>>> ${manifest?.name ?? ''} - Tab ${tabId} not found, getting active tab`);
+        }
+    }
+
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return activeTab?.id || null;
+}
+
+async function isValidContentScriptTab(tabId) {
+    if (!tabId) return false;
+
+    try {
+        const tab = await chrome.tabs.get(tabId);
+        const url = tab?.url || '';
+
+        return url.startsWith('http://') || url.startsWith('https://');
+    } catch (error) {
+        console.warn(`>>> ${manifest?.name ?? ''} - Cannot verify tab ${tabId}:`, error);
+        return false;
+    }
+}

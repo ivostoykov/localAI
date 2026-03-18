@@ -396,13 +396,65 @@ async function setOptions(options) {
     }
 }
 
-async function getActiveSessionPageData(tabId) {
-    const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
-    const result = await chrome.storage.local.get([key]);
-    const pageData = result[key] || null;
-    if(!pageData){
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing page data`, {pageData, key, result});
+async function requestPageDataFromTab(tabId) {
+    try {
+        const response = await chrome.tabs.sendMessage(tabId, {
+            action: 'capturePageData',
+            tabId: tabId
+        });
+
+        if (response?.success) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page data captured for tab ${tabId}`);
+            return true;
+        }
+
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to capture page data for tab ${tabId}:`, response?.error);
+        return false;
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error requesting page data from tab ${tabId}:`, error);
+        return false;
     }
+}
+
+async function getActiveSessionPageData(tabId) {
+    const validatedTabId = await validateAndGetTabId(tabId);
+
+    if (!validatedTabId) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab ID available`);
+        return null;
+    }
+
+    const key = `${activePageStorageKey}:${validatedTabId}`;
+    let result = await chrome.storage.local.get([key]);
+    let pageData = result[key] || null;
+
+    if (pageData) {
+        return pageData;
+    }
+
+    const isValidTab = await isValidContentScriptTab(validatedTabId);
+    if (!isValidTab) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${validatedTabId} does not support content scripts (not http/https)`);
+        return null;
+    }
+
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page data missing for tab ${validatedTabId}, requesting capture`);
+    const captureSuccess = await requestPageDataFromTab(validatedTabId);
+
+    if (!captureSuccess) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to capture page data for tab ${validatedTabId}`);
+        return null;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    result = await chrome.storage.local.get([key]);
+    pageData = result[key] || null;
+
+    if (!pageData) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page data still missing after capture attempt for tab ${validatedTabId}`);
+    }
+
     return pageData;
 }
 
@@ -440,12 +492,12 @@ async function setActiveSessionPageData(tabId) {
                     bodyLength: document.body?.innerText?.length ?? 0,
                     bodyFirstChars: document.body?.innerText?.substring(0, 100) ?? ''
                 });
-                return;
+                return false;
             }
         }
         catch(theError){
             console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getEnhancedPageContent is not available yet`, theError);
-            return;
+            return false;
         }
 
 
@@ -466,9 +518,11 @@ async function setActiveSessionPageData(tabId) {
             url,
             contentLength: pageContent.length
         });
+        return true;
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error`, {
             error, tabId, url: location.href, readyState: document.readyState });
+        return false;
     }
 }
 

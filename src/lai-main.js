@@ -1324,6 +1324,20 @@ async function onRuntimeMessage(response, sender, sendResponse) {
                 await setActiveSessionPageData(tabId);
             })();
             break;
+        case "capturePageData":
+            (async () => {
+                try {
+                    const success = await setActiveSessionPageData(response.tabId);
+                    if (success) {
+                        sendResponse({ success: true });
+                    } else {
+                        sendResponse({ success: false, error: 'Page content not available or empty' });
+                    }
+                } catch (error) {
+                    sendResponse({ success: false, error: error.message });
+                }
+            })();
+            return true;
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
             break;

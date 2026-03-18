@@ -5,6 +5,12 @@ try {
     console.error('>>> Failed to load jslib/constants.js:', e);
 }
 
+try {
+    importScripts('jslib/utils.js');
+} catch (e) {
+    console.error('>>> Failed to load jslib/utils.js:', e);
+}
+
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 
 try {
@@ -499,7 +505,14 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
     try {
         switch (funcType?.toLowerCase()) {
             case 'tool':
-                data = await execInternalTool(toolCall, tab?.id);
+                let validatedTabId = tab?.id;
+                if (!validatedTabId) {
+                    validatedTabId = await validateAndGetTabId(null);
+                    if (!validatedTabId) {
+                        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab for internal tool execution`);
+                    }
+                }
+                data = await execInternalTool(toolCall, validatedTabId);
                 break;
             case 'function':
                 res = await fetchExtResponse(funcUrl, {
@@ -557,6 +570,14 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
 }
 
 async function processCommandPlaceholders(userInputValue, existingAttachments = [], tabId) {
+    if (!tabId) {
+        const hasPageCommand = /@\{\{page\}\}/.test(userInputValue);
+        if (hasPageCommand) {
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page command requires valid tabId, attempting to get active tab`);
+            tabId = await validateAndGetTabId(null);
+        }
+    }
+
     const userCommands = [...userInputValue.matchAll(/@\{\{([\s\S]+?)\}\}/gm)];
     const newAttachments = [];
 
@@ -671,7 +692,14 @@ async function fetchDataAction(request, sender) {
         return { "status": "error", "message": msg };
     }
 
-    const tabId = sender.tab?.id;
+    let tabId = sender?.tab?.id;
+    if (!tabId) {
+        tabId = await validateAndGetTabId(null);
+        if (!tabId) {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab context available`);
+        }
+    }
+
     const controller = new AbortController();
     if (tabId != null) { controllers.set(tabId, controller); }
 
@@ -689,7 +717,7 @@ async function fetchDataAction(request, sender) {
     const userAssistantMessages = (activeSession?.messages || []).filter(m => m.role === 'user' || m.role === 'assistant');
     const turnNumber = Math.floor(userAssistantMessages.length / 2) + 1;
     let attachments = [...(activeSession?.attachments || [])];
-    const { pageContent, pageHash } = await processCommandArguments(userInput, attachments, sender?.tab?.id);
+    const { pageContent, pageHash } = await processCommandArguments(userInput, attachments, tabId);
     const cleanedUserInput = replaceCommandPlaceholders(userInput);
     const systemInstructions = request.systemInstructions || laiOptions?.systemInstructions || '';
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to call buildOptimisedContext, backgroundMemory is:`, typeof backgroundMemory);
