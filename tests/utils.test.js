@@ -21,9 +21,9 @@ global.manifest = {
     version: '1.28.29'
 };
 
-const executeUtilsCode = new Function('chrome', 'manifest', 'document', 'window', 'getLineNumber', utilsCode + '; return { getLineNumber, getHighestZIndex, checkExtensionState };');
+const executeUtilsCode = new Function('chrome', 'manifest', 'document', 'window', 'getLineNumber', utilsCode + '; return { getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab };');
 
-let getLineNumber, getHighestZIndex, checkExtensionState;
+let getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab;
 
 describe('utils.js', () => {
     beforeEach(() => {
@@ -31,6 +31,8 @@ describe('utils.js', () => {
         getLineNumber = exports.getLineNumber;
         getHighestZIndex = exports.getHighestZIndex;
         checkExtensionState = exports.checkExtensionState;
+        validateAndGetTabId = exports.validateAndGetTabId;
+        isValidContentScriptTab = exports.isValidContentScriptTab;
 
         // Clear DOM
         document.body.innerHTML = '';
@@ -122,6 +124,104 @@ describe('utils.js', () => {
 
             fakeBrowser.runtime.id = originalId;
             delete fakeBrowser.runtime.reload;
+        });
+    });
+
+    describe('validateAndGetTabId', () => {
+        beforeEach(() => {
+            fakeBrowser.tabs.get = vi.fn();
+            fakeBrowser.tabs.query = vi.fn();
+        });
+
+        it('returns valid tabId when tab exists', async () => {
+            const mockTab = { id: 123, url: 'https://example.com' };
+            fakeBrowser.tabs.get.mockResolvedValue(mockTab);
+
+            const result = await validateAndGetTabId(123);
+
+            expect(result).toBe(123);
+            expect(fakeBrowser.tabs.get).toHaveBeenCalledWith(123);
+        });
+
+        it('falls back to active tab when tabId is invalid', async () => {
+            const mockActiveTab = { id: 456, url: 'https://example.com' };
+            fakeBrowser.tabs.get.mockRejectedValue(new Error('Tab not found'));
+            fakeBrowser.tabs.query.mockResolvedValue([mockActiveTab]);
+
+            const result = await validateAndGetTabId(999);
+
+            expect(result).toBe(456);
+            expect(fakeBrowser.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
+        });
+
+        it('falls back to active tab when tabId is null', async () => {
+            const mockActiveTab = { id: 789, url: 'https://example.com' };
+            fakeBrowser.tabs.query.mockResolvedValue([mockActiveTab]);
+
+            const result = await validateAndGetTabId(null);
+
+            expect(result).toBe(789);
+            expect(fakeBrowser.tabs.query).toHaveBeenCalledWith({ active: true, currentWindow: true });
+        });
+
+        it('returns null when no active tab available', async () => {
+            fakeBrowser.tabs.query.mockResolvedValue([]);
+
+            const result = await validateAndGetTabId(null);
+
+            expect(result).toBe(null);
+        });
+    });
+
+    describe('isValidContentScriptTab', () => {
+        beforeEach(() => {
+            fakeBrowser.tabs.get = vi.fn();
+        });
+
+        it('returns true for http URLs', async () => {
+            fakeBrowser.tabs.get.mockResolvedValue({ id: 123, url: 'http://example.com' });
+
+            const result = await isValidContentScriptTab(123);
+
+            expect(result).toBe(true);
+        });
+
+        it('returns true for https URLs', async () => {
+            fakeBrowser.tabs.get.mockResolvedValue({ id: 123, url: 'https://example.com' });
+
+            const result = await isValidContentScriptTab(123);
+
+            expect(result).toBe(true);
+        });
+
+        it('returns false for chrome:// URLs', async () => {
+            fakeBrowser.tabs.get.mockResolvedValue({ id: 123, url: 'chrome://extensions' });
+
+            const result = await isValidContentScriptTab(123);
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false for about: URLs', async () => {
+            fakeBrowser.tabs.get.mockResolvedValue({ id: 123, url: 'about:blank' });
+
+            const result = await isValidContentScriptTab(123);
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when tabId is null', async () => {
+            const result = await isValidContentScriptTab(null);
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when tab not found', async () => {
+            fakeBrowser.tabs.get.mockRejectedValue(new Error('Tab not found'));
+
+            const result = await isValidContentScriptTab(999);
+
+            expect(result).toBe(false);
         });
     });
 });

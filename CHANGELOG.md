@@ -1,6 +1,22 @@
 # Local AI - Changelog
 
-## [1.29.10] - 2026-03-04 - latest
+## [1.29.15] - 2026-03-18 - latest
+
+### Page Data Retrieval Fix
+- Fixed "no page available" error when model requests page content with `@{{page}}` placeholder
+- Added `validateAndGetTabId` utility to handle missing or invalid tab IDs with fallback to active tab
+- Added `isValidContentScriptTab` utility to validate tabs support content scripts (http/https only)
+- Transformed `getActiveSessionPageData` from passive retriever to active data provider
+- Added `requestPageDataFromTab` to trigger content script page capture when data missing
+- Modified `setActiveSessionPageData` to return success/failure status instead of void
+- Added tab ID validation at all entry points (fetchDataAction, execInternalTool, processCommandPlaceholders)
+- Added `capturePageData` message handler in content script
+- Imported `jslib/utils.js` into background service worker
+- Added comprehensive test coverage for new validation functions (12 new test cases)
+- Fixed storage key mismatch issue caused by undefined tab IDs
+- Improved error handling for non-http(s) tabs (chrome://, about:, extension pages)
+
+## [1.29.10] - 2026-03-04
 
 ### Thinking Response Handling Fix
 - Fixed thinking-only responses causing empty content display in UI

@@ -1327,8 +1327,12 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         case "capturePageData":
             (async () => {
                 try {
-                    await setActiveSessionPageData(response.tabId);
-                    sendResponse({ success: true });
+                    const success = await setActiveSessionPageData(response.tabId);
+                    if (success) {
+                        sendResponse({ success: true });
+                    } else {
+                        sendResponse({ success: false, error: 'Page content not available or empty' });
+                    }
                 } catch (error) {
                     sendResponse({ success: false, error: error.message });
                 }
