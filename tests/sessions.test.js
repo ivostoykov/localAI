@@ -309,9 +309,6 @@ describe('sessions.js', () => {
         });
     });
 
-    // REMOVED: getActiveSessionPageData, setActiveSessionPageData, removeActiveSessionPageData tests
-    // These functions were deprecated in Phase 5 (page content now fetched on-demand)
-
     describe('getAiUserCommands', () => {
         it('returns stored commands', async () => {
             const commands = ['command1', 'command2'];
