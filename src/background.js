@@ -5,6 +5,12 @@ try {
     console.error('>>> Failed to load jslib/constants.js:', e);
 }
 
+try {
+    importScripts('jslib/utils.js');
+} catch (e) {
+    console.error('>>> Failed to load jslib/utils.js:', e);
+}
+
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 
 try {

@@ -492,12 +492,12 @@ async function setActiveSessionPageData(tabId) {
                     bodyLength: document.body?.innerText?.length ?? 0,
                     bodyFirstChars: document.body?.innerText?.substring(0, 100) ?? ''
                 });
-                return;
+                return false;
             }
         }
         catch(theError){
             console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getEnhancedPageContent is not available yet`, theError);
-            return;
+            return false;
         }
 
 
@@ -518,9 +518,11 @@ async function setActiveSessionPageData(tabId) {
             url,
             contentLength: pageContent.length
         });
+        return true;
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error`, {
             error, tabId, url: location.href, readyState: document.readyState });
+        return false;
     }
 }
 
