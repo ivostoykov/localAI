@@ -270,6 +270,12 @@ function waitForDOMToSettle(settleTime = 1000, maxWait = 10000) {
     });
 }
 
+function isMessagePersistable(message = {}) {
+    const hasContent = typeof message?.content === 'string' && message.content.trim().length > 0;
+    const hasToolCalls = Array.isArray(message?.tool_calls) && message.tool_calls.length > 0;
+    return hasContent || hasToolCalls;
+}
+
 async function validateAndGetTabId(tabId) {
     if (typeof tabId === 'number' && !isNaN(tabId)) {
         try {

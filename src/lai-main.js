@@ -1107,12 +1107,6 @@ function laiFinalPreFormat() {
     });
 }
 
-function isMessagePersistable(message = {}) {
-    const hasContent = typeof message?.content === 'string' && message.content.trim().length > 0;
-    const hasToolCalls = Array.isArray(message?.tool_calls) && message.tool_calls.length > 0;
-    return hasContent || hasToolCalls;
-}
-
 function laiExtractDataFromResponse(response) {
     const responseJson = response.response;
     try {

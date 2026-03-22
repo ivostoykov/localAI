@@ -377,12 +377,6 @@ function getAssistantMessageText(message = {}) {
     return '';
 }
 
-function isMessagePersistable(message = {}) {
-    const hasContent = typeof message?.content === 'string' && message.content.trim().length > 0;
-    const hasToolCalls = Array.isArray(message?.tool_calls) && message.tool_calls.length > 0;
-    return hasContent || hasToolCalls;
-}
-
 function sanitizeAssistantMessageForHistory(message = {}) {
     const sanitizedMessage = structuredClone(message);
     delete sanitizedMessage.thinking;

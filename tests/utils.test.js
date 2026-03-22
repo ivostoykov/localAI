@@ -21,9 +21,9 @@ global.manifest = {
     version: '1.28.29'
 };
 
-const executeUtilsCode = new Function('chrome', 'manifest', 'document', 'window', 'getLineNumber', utilsCode + '; return { getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab, modelCanThinkHelper, modelCanUseToolsHelper };');
+const executeUtilsCode = new Function('chrome', 'manifest', 'document', 'window', 'getLineNumber', utilsCode + '; return { getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab, modelCanThinkHelper, modelCanUseToolsHelper, isMessagePersistable };');
 
-let getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab, modelCanThinkHelper, modelCanUseToolsHelper;
+let getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab, modelCanThinkHelper, modelCanUseToolsHelper, isMessagePersistable;
 
 describe('utils.js', () => {
     beforeEach(() => {
@@ -35,6 +35,7 @@ describe('utils.js', () => {
         isValidContentScriptTab = exports.isValidContentScriptTab;
         modelCanThinkHelper = exports.modelCanThinkHelper;
         modelCanUseToolsHelper = exports.modelCanUseToolsHelper;
+        isMessagePersistable = exports.isMessagePersistable;
 
         // Clear DOM
         document.body.innerHTML = '';
@@ -378,6 +379,73 @@ describe('utils.js', () => {
             const result = await modelCanUseToolsHelper('test-model');
 
             expect(result).toBe(false);
+        });
+    });
+
+    describe('isMessagePersistable', () => {
+        it('returns true when message has content', () => {
+            const message = { content: 'Hello world' };
+
+            expect(isMessagePersistable(message)).toBe(true);
+        });
+
+        it('returns true when message has tool_calls', () => {
+            const message = { tool_calls: [{ name: 'tool1' }] };
+
+            expect(isMessagePersistable(message)).toBe(true);
+        });
+
+        it('returns true when message has both content and tool_calls', () => {
+            const message = {
+                content: 'Using tool',
+                tool_calls: [{ name: 'tool1' }]
+            };
+
+            expect(isMessagePersistable(message)).toBe(true);
+        });
+
+        it('returns false when message has empty content', () => {
+            const message = { content: '' };
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when message has only whitespace content', () => {
+            const message = { content: '   \n\t  ' };
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when message has empty tool_calls array', () => {
+            const message = { tool_calls: [] };
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when message has no content or tool_calls', () => {
+            const message = {};
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when message is undefined', () => {
+            expect(isMessagePersistable(undefined)).toBe(false);
+        });
+
+        it('returns false when message is null', () => {
+            expect(isMessagePersistable(null)).toBe(false);
+        });
+
+        it('returns false when content is not a string', () => {
+            const message = { content: 123 };
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when tool_calls is not an array', () => {
+            const message = { tool_calls: 'not-array' };
+
+            expect(isMessagePersistable(message)).toBe(false);
         });
     });
 });

@@ -10,12 +10,17 @@ const backgroundCode = fs.readFileSync(
     'utf-8'
 );
 
+const utilsCode = fs.readFileSync(
+    path.join(__dirname, '../src/jslib/utils.js'),
+    'utf-8'
+);
+
 // Extract only the pure functions we want to test
 const processTextChunkCode = backgroundCode.match(/function processTextChunk\([\s\S]*?\n}\n/)[0];
 const getLastConsecutiveUserRecordsCode = backgroundCode.match(/function getLastConsecutiveUserRecords\([\s\S]*?\n}\n/)[0];
 const replaceCommandPlaceholdersCode = backgroundCode.match(/function replaceCommandPlaceholders\([\s\S]*?\n}\n/)[0];
 const getLineNumberCode = 'function getLineNumber() { return "test:1"; }';
-const isMessagePersistableCode = backgroundCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
+const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 const sanitizeAssistantMessageForHistoryCode = backgroundCode.match(/function sanitizeAssistantMessageForHistory\([\s\S]*?\n}\n/)[0];
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
 const modelCanUseToolsCode = backgroundCode.match(/async function modelCanUseTools\([\s\S]*?\n}\n/)[0];

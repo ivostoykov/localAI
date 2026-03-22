@@ -29,6 +29,8 @@
 - Automatically uses `showUIMessage()` in background or `showMessage()` in content scripts
 - Removed duplicate `getAiUrl()` from background.js
 - Fixed typo in utils.js: "Faild" → "Failed"
+- Moved `isMessagePersistable()` to utils.js to eliminate duplication
+- Function now available from single source for both background.js and lai-main.js
 
 ### Code Refactoring
 - Renamed utils.js model capability functions to avoid naming conflicts
@@ -39,7 +41,7 @@
 - Fixed race condition in model capability detection during model swap
 - Added await for getModelInfo response before checking capabilities
 - Modified `laiExtractDataFromResponse` to extract and wrap thinking content in `<think>` tags
-- Extracted `isMessagePersistable()` helper function to avoid duplicating persistence logic
+- Centralised `isMessagePersistable()` helper function in utils.js
 - Used in both background.js (`sanitizeAssistantMessageForHistory`) and lai-main.js (`laiExtractDataFromResponse`)
 - Single source of truth for what makes a message persistable (content OR tool_calls)
 
@@ -48,6 +50,9 @@
 - Added test for thinking-only response skipping behaviour
 - Added test for thinking display when tool_calls present but no content
 - Updated existing test to verify thinking-only responses are skipped
+- Added comprehensive tests for `isMessagePersistable()` in utils.test.js (13 test cases)
+- Updated test extraction in background.test.js and lai-main.test.js to use utils.js source
+- All 162 tests passing
 - Added tests for `sanitizeAssistantMessageForHistory` to verify thinking removal from history
 - Added tests for `modelCanThink` and `modelCanUseTools` in background.js
 - Added tests for `modelCanThinkHelper` and `modelCanUseToolsHelper` in utils.test.js

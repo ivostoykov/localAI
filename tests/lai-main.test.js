@@ -10,6 +10,11 @@ const laiMainCode = fs.readFileSync(
     'utf-8'
 );
 
+const utilsCode = fs.readFileSync(
+    path.join(__dirname, '../src/jslib/utils.js'),
+    'utf-8'
+);
+
 // Setup DOM environment
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.document = dom.window.document;
@@ -29,9 +34,12 @@ global.chrome = {
     }
 };
 
+// Extract isMessagePersistable from utils
+const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
+
 // Extract the functions we want to test
-const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome',
-    laiMainCode + '; return { laiExtractDataFromResponse, isMessagePersistable };'
+const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
+    isMessagePersistableCode + '\n' + laiMainCode + '; return { laiExtractDataFromResponse, isMessagePersistable };'
 );
 
 let laiExtractDataFromResponse, isMessagePersistable;
@@ -47,7 +55,7 @@ describe('lai-main.js', () => {
         // Mock setModelNameLabel
         global.setModelNameLabel = vi.fn();
 
-        const exports = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome);
+        const exports = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome, global.isMessagePersistable);
         laiExtractDataFromResponse = exports.laiExtractDataFromResponse;
         isMessagePersistable = exports.isMessagePersistable;
     });
