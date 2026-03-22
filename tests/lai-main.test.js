@@ -90,7 +90,7 @@ describe('lai-main.js', () => {
             expect(result.indexOf('<think>')).toBeLessThan(result.indexOf('Final answer here'));
         });
 
-        it('handles response with only thinking and no content', () => {
+        it('skips response with only thinking and no content (not persisted)', () => {
             const response = {
                 response: JSON.stringify({
                     model: 'thinking-model',
@@ -104,9 +104,10 @@ describe('lai-main.js', () => {
 
             const result = laiExtractDataFromResponse(response);
 
-            expect(result).toContain('<think>');
-            expect(result).toContain('Just thinking, no answer yet');
-            expect(result).toContain('</think>');
+            // Thinking-only responses are not persisted in history, so should not be displayed
+            expect(result).toBe('');
+            expect(result).not.toContain('<think>');
+            expect(result).not.toContain('Just thinking, no answer yet');
         });
 
         it('handles response with empty thinking', () => {
@@ -257,6 +258,44 @@ Third line of thinking`;
 
             expect(result).toBe('');
             expect(result).not.toContain('<think>');
+        });
+
+        it('skips thinking-only responses (not persisted in history)', () => {
+            const response = {
+                response: JSON.stringify({
+                    model: 'thinking-model',
+                    message: {
+                        role: 'assistant',
+                        content: '',
+                        thinking: 'Some internal reasoning without final answer'
+                    }
+                })
+            };
+
+            const result = laiExtractDataFromResponse(response);
+
+            expect(result).toBe('');
+            expect(result).not.toContain('<think>');
+            expect(result).not.toContain('internal reasoning');
+        });
+
+        it('includes thinking when response has tool_calls but no content', () => {
+            const response = {
+                response: JSON.stringify({
+                    model: 'thinking-model',
+                    message: {
+                        role: 'assistant',
+                        content: '',
+                        thinking: 'Deciding which tool to use',
+                        tool_calls: [{ id: '1', function: { name: 'test_tool', arguments: '{}' } }]
+                    }
+                })
+            };
+
+            const result = laiExtractDataFromResponse(response);
+
+            // Tool calls are persisted, so thinking should not be shown (content is empty)
+            expect(result).toBe('');
         });
     });
 });

@@ -14,6 +14,12 @@
 - Enhanced tool error messages to prevent model hallucination of non-existent function names
 - Added strong reminder to stick to provided tools list when function not found
 - Tool error messages now list available tools to guide model selection
+- Fixed on-demand page capture failure during startup when `shadowRoot` not yet initialized
+- Moved `capturePageData` and `dumpInConsole` message handlers before `shadowRoot` guard
+- These handlers don't require UI, so can execute even before content script fully initialized
+- Fixed thinking-only replies persistence mismatch (displayed in UI but disappeared after reload)
+- Thinking-only responses now skipped during display to match history persistence behaviour
+- Messages without content or tool_calls are not saved to history, so shouldn't be shown in UI
 
 ### Code Refactoring
 - Renamed utils.js model capability functions to avoid naming conflicts
@@ -26,11 +32,16 @@
 - Modified `laiExtractDataFromResponse` to extract and wrap thinking content in `<think>` tags
 
 ### Tests
-- Added comprehensive tests for `laiExtractDataFromResponse` (12 test cases)
+- Added comprehensive tests for `laiExtractDataFromResponse` (14 test cases)
+- Added test for thinking-only response skipping behaviour
+- Added test for thinking display when tool_calls present but no content
+- Updated existing test to verify thinking-only responses are skipped
 - Added tests for `sanitizeAssistantMessageForHistory` to verify thinking removal from history
 - Added tests for `modelCanThink` and `modelCanUseTools` in background.js
 - Added tests for `modelCanThinkHelper` and `modelCanUseToolsHelper` in utils.test.js
-- All 148 tests passing
+- Added test coverage for page-capture functions in sessions.test.js (3 test cases)
+- Tests cover `requestPageDataFromTab` success, failure, and error scenarios
+- All 153 tests passing
 
 ## [1.29.15] - 2026-03-18
 

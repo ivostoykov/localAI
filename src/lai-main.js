@@ -1120,9 +1120,18 @@ function laiExtractDataFromResponse(response) {
 
     const assistantContent = typeof response?.message?.content === 'string' ? response.message.content : '';
     const thinking = typeof response?.message?.thinking === 'string' ? response.message.thinking.trim() : '';
+    const hasToolCalls = Array.isArray(response?.message?.tool_calls) && response.message.tool_calls.length > 0;
+
+    // Skip thinking-only responses that won't be persisted in history
+    // (matches sanitizeAssistantMessageForHistory behaviour in background.js)
+    const hasContent = assistantContent.trim().length > 0;
+    if (!hasContent && !hasToolCalls && thinking) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping thinking-only response (not persisted)`, { thinkingLength: thinking.length });
+        return '';
+    }
 
     let fullContent = assistantContent;
-    if (thinking) {
+    if (thinking && hasContent) {
         fullContent = `<think>\n${thinking}\n</think>\n\n${assistantContent}`;
     }
 
@@ -1184,11 +1193,34 @@ function getParseAndRenderOptions(rootEl) {
 }
 
 async function onRuntimeMessage(response, sender, sendResponse) {
+    // Handle messages that don't require shadowRoot first
     if (response && response?.action === 'ping') {
         sendResponse({ pong: true });
         return true;
     }
 
+    if (response?.action === 'capturePageData') {
+        (async () => {
+            try {
+                const success = await setActiveSessionPageData(response.tabId);
+                if (success) {
+                    sendResponse({ success: true });
+                } else {
+                    sendResponse({ success: false, error: 'Page content not available or empty' });
+                }
+            } catch (error) {
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+
+    if (response?.action === 'dumpInConsole') {
+        dumpInConsole(response.message, response.obj, response.type);
+        return;
+    }
+
+    // All other actions require shadowRoot
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Dropping runtime message because shadowRoot is missing`, {
@@ -1318,9 +1350,6 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         case "updateStatusbar":
             if (response.message) { updateStatusBar(response.message); }
             break;
-        case "dumpInConsole":
-            dumpInConsole(response.message, response.obj, response.type);
-            break;
         case "callContentExtractor":
             (async () => {
                 await handleContentExtractorCall(response, sendResponse);
@@ -1332,20 +1361,6 @@ async function onRuntimeMessage(response, sender, sendResponse) {
                 await setActiveSessionPageData(tabId);
             })();
             break;
-        case "capturePageData":
-            (async () => {
-                try {
-                    const success = await setActiveSessionPageData(response.tabId);
-                    if (success) {
-                        sendResponse({ success: true });
-                    } else {
-                        sendResponse({ success: false, error: 'Page content not available or empty' });
-                    }
-                } catch (error) {
-                    sendResponse({ success: false, error: error.message });
-                }
-            })();
-            return true;
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
             break;
