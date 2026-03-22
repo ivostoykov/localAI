@@ -1119,13 +1119,25 @@ function laiExtractDataFromResponse(response) {
     }
 
     const assistantContent = typeof response?.message?.content === 'string' ? response.message.content : '';
+    const thinking = typeof response?.message?.thinking === 'string' ? response.message.thinking.trim() : '';
 
-    if(!response.model || !response.message || !assistantContent){
+    const isPersistable = isMessagePersistable(response.message);
+    if (!isPersistable && thinking) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping thinking-only response (not persisted)`, { thinkingLength: thinking.length });
+        return '';
+    }
+
+    let fullContent = assistantContent;
+    if (thinking && assistantContent.trim().length > 0) {
+        fullContent = `<think>\n${thinking}\n</think>\n\n${assistantContent}`;
+    }
+
+    if(!response.model || !response.message || !fullContent){
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Wrong response`, response);
     }
 
     setModelNameLabel(response?.model ?? 'unknown');
-    return assistantContent || '';
+    return fullContent || '';
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {
@@ -1178,11 +1190,34 @@ function getParseAndRenderOptions(rootEl) {
 }
 
 async function onRuntimeMessage(response, sender, sendResponse) {
+    // Handle messages that don't require shadowRoot first
     if (response && response?.action === 'ping') {
         sendResponse({ pong: true });
         return true;
     }
 
+    if (response?.action === 'capturePageData') {
+        (async () => {
+            try {
+                const success = await setActiveSessionPageData(response.tabId);
+                if (success) {
+                    sendResponse({ success: true });
+                } else {
+                    sendResponse({ success: false, error: 'Page content not available or empty' });
+                }
+            } catch (error) {
+                sendResponse({ success: false, error: error.message });
+            }
+        })();
+        return true;
+    }
+
+    if (response?.action === 'dumpInConsole') {
+        dumpInConsole(response.message, response.obj, response.type);
+        return;
+    }
+
+    // All other actions require shadowRoot
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Dropping runtime message because shadowRoot is missing`, {
@@ -1312,11 +1347,10 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         case "updateStatusbar":
             if (response.message) { updateStatusBar(response.message); }
             break;
-        case "dumpInConsole":
-            dumpInConsole(response.message, response.obj, response.type);
-            break;
         case "callContentExtractor":
-            handleContentExtractorCall(response, sendResponse);
+            (async () => {
+                await handleContentExtractorCall(response, sendResponse);
+            })();
             return true;
         case "refreshPageData":
             (async () => {

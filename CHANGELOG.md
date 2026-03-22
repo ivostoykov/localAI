@@ -1,17 +1,52 @@
 # Local AI - Changelog
 
-## [1.29.15] - 2026-03-18 - latest
+## [1.29.18] - 2026-03-22 - latest
+
+### New Features
+- Added thinking/reasoning display support for models with thinking capabilities
+- Thinking content now rendered as collapsible "🤔 Thought" sections in UI
+- Thinking is not stored in database or session history
+
+### Bug Fixes
+- Fixed rendering in thinking blocks
+- Fixed critical message passing bug preventing proper returning results
+- Fixed await async responses bug
+- Enhanced tool error messages
+- Tool error messages now list available tools to guide model selection
+- Fixed on-demand page capture failure during startup
+- Fixed thinking-only replies persistence mismatch
+- Thinking-only responses now skipped during display to match history persistence behaviour
+- Messages without content or tool_calls are not saved to history
+- Eliminated unnecessary latency on first page-tool request for uncached tabs
+- Removed duplicate functions
+- Unified functions with automatic context detection in utils.js
+- Detects service worker context
+- Automatically uses proper message depending on the execution context
+
+### Code Refactoring
+- Fixed functions naming conflicts
+- Fixed race condition in model capability detection during model swap
+- Centralised some helper functions
+
+### Tests
+- Added comprehensive tests (14 test cases)
+- Added test for thinking-only response skipping behaviour
+- Added test for thinking display when tool_calls present but no content
+- Updated existing test to verify thinking-only responses are skipped
+- Added test coverage for page-capture functions in sessions.test.js (3 test cases)
+
+## [1.29.15] - 2026-03-18
 
 ### Page Data Retrieval Fix
 - Fixed "no page available" error when model requests page content with `@{{page}}` placeholder
-- Added `validateAndGetTabId` utility to handle missing or invalid tab IDs with fallback to active tab
-- Added `isValidContentScriptTab` utility to validate tabs support content scripts (http/https only)
-- Transformed `getActiveSessionPageData` from passive retriever to active data provider
-- Added `requestPageDataFromTab` to trigger content script page capture when data missing
-- Modified `setActiveSessionPageData` to return success/failure status instead of void
-- Added tab ID validation at all entry points (fetchDataAction, execInternalTool, processCommandPlaceholders)
-- Added `capturePageData` message handler in content script
-- Imported `jslib/utils.js` into background service worker
+- Added utility to handle missing or invalid tab IDs with fallback to active tab
+- Added utility to validate tabs support content scripts (http/https only)
+- Transformed Page Data getter from passive retriever to active data provider
+- Added a trigger to capture the page data when data missing
+- Added return success/failure status for data capture
+- Added tab ID validation at all entry points
+- Added capture Page Data message handler in content script
+- Imported required script into background service worker
 - Added comprehensive test coverage for new validation functions (12 new test cases)
 - Fixed storage key mismatch issue caused by undefined tab IDs
 - Improved error handling for non-http(s) tabs (chrome://, about:, extension pages)

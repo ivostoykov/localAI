@@ -21,9 +21,9 @@ global.manifest = {
     version: '1.28.29'
 };
 
-const executeUtilsCode = new Function('chrome', 'manifest', 'document', 'window', 'getLineNumber', utilsCode + '; return { getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab };');
+const executeUtilsCode = new Function('chrome', 'manifest', 'document', 'window', 'getLineNumber', utilsCode + '; return { getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab, modelCanThinkHelper, modelCanUseToolsHelper, isMessagePersistable };');
 
-let getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab;
+let getLineNumber, getHighestZIndex, checkExtensionState, validateAndGetTabId, isValidContentScriptTab, modelCanThinkHelper, modelCanUseToolsHelper, isMessagePersistable;
 
 describe('utils.js', () => {
     beforeEach(() => {
@@ -33,6 +33,9 @@ describe('utils.js', () => {
         checkExtensionState = exports.checkExtensionState;
         validateAndGetTabId = exports.validateAndGetTabId;
         isValidContentScriptTab = exports.isValidContentScriptTab;
+        modelCanThinkHelper = exports.modelCanThinkHelper;
+        modelCanUseToolsHelper = exports.modelCanUseToolsHelper;
+        isMessagePersistable = exports.isMessagePersistable;
 
         // Clear DOM
         document.body.innerHTML = '';
@@ -222,6 +225,226 @@ describe('utils.js', () => {
             const result = await isValidContentScriptTab(999);
 
             expect(result).toBe(false);
+        });
+    });
+    describe('modelCanThinkHelper', () => {
+        beforeEach(() => {
+            fakeBrowser.runtime.sendMessage = vi.fn();
+        });
+
+        it('returns true when model has thinking capability', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue({
+                canThink: true
+            });
+
+            const result = await modelCanThinkHelper('thinking-model');
+
+            expect(result).toBe(true);
+            expect(fakeBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+                action: 'modelCanThink',
+                model: 'thinking-model'
+            });
+        });
+
+        it('returns false when model does not have thinking capability', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue({
+                canThink: false
+            });
+
+            const result = await modelCanThinkHelper('standard-model');
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when modelName is empty', async () => {
+            const result = await modelCanThinkHelper('');
+
+            expect(result).toBe(false);
+            expect(fakeBrowser.runtime.sendMessage).not.toHaveBeenCalled();
+        });
+
+        it('returns false when modelName is null', async () => {
+            const result = await modelCanThinkHelper(null);
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when response has error', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue({
+                error: 'Model not found'
+            });
+
+            const result = await modelCanThinkHelper('invalid-model');
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when sendMessage throws error', async () => {
+            fakeBrowser.runtime.sendMessage.mockRejectedValue(new Error('Communication error'));
+
+            const result = await modelCanThinkHelper('test-model');
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when response is undefined', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue(undefined);
+
+            const result = await modelCanThinkHelper('test-model');
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when canThink property is missing', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue({});
+
+            const result = await modelCanThinkHelper('test-model');
+
+            expect(result).toBe(false);
+        });
+    });
+
+    describe('modelCanUseToolsHelper', () => {
+        beforeEach(() => {
+            fakeBrowser.runtime.sendMessage = vi.fn();
+        });
+
+        it('returns true when model has tools capability', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue({
+                canUseTools: true
+            });
+
+            const result = await modelCanUseToolsHelper('tools-model');
+
+            expect(result).toBe(true);
+            expect(fakeBrowser.runtime.sendMessage).toHaveBeenCalledWith({
+                action: 'modelCanUseTools',
+                model: 'tools-model'
+            });
+        });
+
+        it('returns false when model does not have tools capability', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue({
+                canUseTools: false
+            });
+
+            const result = await modelCanUseToolsHelper('standard-model');
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when modelName is empty', async () => {
+            const result = await modelCanUseToolsHelper('');
+
+            expect(result).toBe(false);
+            expect(fakeBrowser.runtime.sendMessage).not.toHaveBeenCalled();
+        });
+
+        it('returns false when modelName is null', async () => {
+            const result = await modelCanUseToolsHelper(null);
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when response has error', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue({
+                error: 'Model not found'
+            });
+
+            const result = await modelCanUseToolsHelper('invalid-model');
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when sendMessage throws error', async () => {
+            fakeBrowser.runtime.sendMessage.mockRejectedValue(new Error('Communication error'));
+
+            const result = await modelCanUseToolsHelper('test-model');
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when response is undefined', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue(undefined);
+
+            const result = await modelCanUseToolsHelper('test-model');
+
+            expect(result).toBe(false);
+        });
+
+        it('returns false when canUseTools property is missing', async () => {
+            fakeBrowser.runtime.sendMessage.mockResolvedValue({});
+
+            const result = await modelCanUseToolsHelper('test-model');
+
+            expect(result).toBe(false);
+        });
+    });
+
+    describe('isMessagePersistable', () => {
+        it('returns true when message has content', () => {
+            const message = { content: 'Hello world' };
+
+            expect(isMessagePersistable(message)).toBe(true);
+        });
+
+        it('returns true when message has tool_calls', () => {
+            const message = { tool_calls: [{ name: 'tool1' }] };
+
+            expect(isMessagePersistable(message)).toBe(true);
+        });
+
+        it('returns true when message has both content and tool_calls', () => {
+            const message = {
+                content: 'Using tool',
+                tool_calls: [{ name: 'tool1' }]
+            };
+
+            expect(isMessagePersistable(message)).toBe(true);
+        });
+
+        it('returns false when message has empty content', () => {
+            const message = { content: '' };
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when message has only whitespace content', () => {
+            const message = { content: '   \n\t  ' };
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when message has empty tool_calls array', () => {
+            const message = { tool_calls: [] };
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when message has no content or tool_calls', () => {
+            const message = {};
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when message is undefined', () => {
+            expect(isMessagePersistable(undefined)).toBe(false);
+        });
+
+        it('returns false when message is null', () => {
+            expect(isMessagePersistable(null)).toBe(false);
+        });
+
+        it('returns false when content is not a string', () => {
+            const message = { content: 123 };
+
+            expect(isMessagePersistable(message)).toBe(false);
+        });
+
+        it('returns false when tool_calls is not an array', () => {
+            const message = { tool_calls: 'not-array' };
+
+            expect(isMessagePersistable(message)).toBe(false);
         });
     });
 });
