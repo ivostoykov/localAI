@@ -524,7 +524,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${funcType} ${toolCall.function.name} response`, data);
                 await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${funcType} ${toolCall.function.name} response`, data, 'debug', tab?.id);
                 if (res?.status !== 200 || data?.status === 'error') {
-                    data = `"${toolCall?.function?.name}" call returned error: ${data.message}\nSelect and call another function from the list.\n Continue until a valid response is received or no options remain.`;
+                    data = `"${toolCall?.function?.name}" call returned error: ${data.message}\n\nIMPORTANT: Only use functions from the provided tools list. Do not invent or assume function names.\nSelect and call another function from the list.\nContinue until a valid response is received or no options remain.`;
                     return data;
                 }
                 break;
@@ -868,18 +868,20 @@ async function fetchDataAction(request, sender) {
             }
         }
 
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] -  - response body message`, body?.message);
+        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response body message`, body?.message, 'info', sender?.tab?.id);
         // Only send response to frontend if it has content or tool calls
         // Thinking-only responses are logged in worker console but not displayed
-        const hasContent = typeof body?.message?.content === 'string' && body.message.content.trim().length > 0;
-        const hasToolCalls = Array.isArray(body?.message?.tool_calls) && body.message.tool_calls.length > 0;
-        const hasThinkingOnly = typeof body?.message?.thinking === 'string' && body.message.thinking.trim().length > 0 && !hasContent && !hasToolCalls;
+        // const hasContent = typeof body?.message?.content === 'string' && body.message.content.trim().length > 0;
+        // const hasToolCalls = Array.isArray(body?.message?.tool_calls) && body.message.tool_calls.length > 0;
+        // const hasThinkingOnly = typeof body?.message?.thinking === 'string' && body.message.thinking.trim().length > 0 && !hasContent && !hasToolCalls;
 
-        if (hasThinkingOnly) {
-            await updateUIStatusBar(`Thinking completed, awaiting response...`, sender?.tab);
-            await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamEnd" });
-        } else {
+        // if (hasThinkingOnly) {
+        //     await updateUIStatusBar(`Thinking completed, awaiting response...`, sender?.tab);
+        //     await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamEnd" });
+        // } else {
             await handleResponse(body, sender?.tab?.id);
-        }
+        // }
     }
     catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);

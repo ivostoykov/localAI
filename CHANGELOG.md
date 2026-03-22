@@ -1,17 +1,49 @@
 # Local AI - Changelog
 
-## [1.29.15] - 2026-03-18 - latest
+## [1.29.17] - 2026-03-22 - latest
+
+### New Features
+- Added thinking/reasoning display support for models with thinking capabilities
+- Thinking content now rendered as collapsible "🤔 Thought" sections in UI
+- Thinking is displayed in UI but not stored in database or session history
+
+### Bug Fixes
+- Fixed newline rendering in thinking blocks with CSS display improvements for paragraph elements
+- Fixed critical message passing bug preventing content extractor tools from returning results
+- Content extractor calls (`get_page_structure`, `get_enhanced_page_content`, etc.) now properly await async responses
+- Enhanced tool error messages to prevent model hallucination of non-existent function names
+- Added strong reminder to stick to provided tools list when function not found
+- Tool error messages now list available tools to guide model selection
+
+### Code Refactoring
+- Renamed utils.js model capability functions to avoid naming conflicts
+- `modelCanThink` → `modelCanThinkHelper` (content script helper)
+- `modelCanUseTools` → `modelCanUseToolsHelper` (content script helper)
+- Background worker retains direct function names for internal use
+- Updated all ribbon.js calls to use new Helper function names
+- Fixed race condition in model capability detection during model swap
+- Added await for getModelInfo response before checking capabilities
+- Modified `laiExtractDataFromResponse` to extract and wrap thinking content in `<think>` tags
+
+### Tests
+- Added comprehensive tests for `laiExtractDataFromResponse` (12 test cases)
+- Added tests for `sanitizeAssistantMessageForHistory` to verify thinking removal from history
+- Added tests for `modelCanThink` and `modelCanUseTools` in background.js
+- Added tests for `modelCanThinkHelper` and `modelCanUseToolsHelper` in utils.test.js
+- All 148 tests passing
+
+## [1.29.15] - 2026-03-18
 
 ### Page Data Retrieval Fix
 - Fixed "no page available" error when model requests page content with `@{{page}}` placeholder
-- Added `validateAndGetTabId` utility to handle missing or invalid tab IDs with fallback to active tab
-- Added `isValidContentScriptTab` utility to validate tabs support content scripts (http/https only)
-- Transformed `getActiveSessionPageData` from passive retriever to active data provider
-- Added `requestPageDataFromTab` to trigger content script page capture when data missing
-- Modified `setActiveSessionPageData` to return success/failure status instead of void
-- Added tab ID validation at all entry points (fetchDataAction, execInternalTool, processCommandPlaceholders)
-- Added `capturePageData` message handler in content script
-- Imported `jslib/utils.js` into background service worker
+- Added utility to handle missing or invalid tab IDs with fallback to active tab
+- Added utility to validate tabs support content scripts (http/https only)
+- Transformed Page Data getter from passive retriever to active data provider
+- Added a trigger to capture the page data when data missing
+- Added return success/failure status for data capture
+- Added tab ID validation at all entry points
+- Added capture Page Data message handler in content script
+- Imported required script into background service worker
 - Added comprehensive test coverage for new validation functions (12 new test cases)
 - Fixed storage key mismatch issue caused by undefined tab IDs
 - Improved error handling for non-http(s) tabs (chrome://, about:, extension pages)

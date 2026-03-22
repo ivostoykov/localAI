@@ -1119,13 +1119,19 @@ function laiExtractDataFromResponse(response) {
     }
 
     const assistantContent = typeof response?.message?.content === 'string' ? response.message.content : '';
+    const thinking = typeof response?.message?.thinking === 'string' ? response.message.thinking.trim() : '';
 
-    if(!response.model || !response.message || !assistantContent){
+    let fullContent = assistantContent;
+    if (thinking) {
+        fullContent = `<think>\n${thinking}\n</think>\n\n${assistantContent}`;
+    }
+
+    if(!response.model || !response.message || !fullContent){
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Wrong response`, response);
     }
 
     setModelNameLabel(response?.model ?? 'unknown');
-    return assistantContent || '';
+    return fullContent || '';
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {
@@ -1316,7 +1322,9 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             dumpInConsole(response.message, response.obj, response.type);
             break;
         case "callContentExtractor":
-            handleContentExtractorCall(response, sendResponse);
+            (async () => {
+                await handleContentExtractorCall(response, sendResponse);
+            })();
             return true;
         case "refreshPageData":
             (async () => {

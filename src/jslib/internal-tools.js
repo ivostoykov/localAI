@@ -200,7 +200,7 @@ async function execInternalTool(call = {}, tabId = null) {
     const funcName = call?.function?.name.toLowerCase();
     if(!funcName || !isInternalTool(funcName)){
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Unrecognised tool: '${funcName}'. Available:`, getInternalToolNames());
-        return `${funcName} was not found!`;
+        return `Tool "${funcName}" was not found!\n\nIMPORTANT: Only use tools from the provided tools list. Do not invent or assume tool names.\nAvailable internal tools: ${getInternalToolNames().join(', ')}`;
     }
     let data;
 

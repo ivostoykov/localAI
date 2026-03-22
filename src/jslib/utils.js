@@ -132,7 +132,7 @@ async function getAiModel() {
     return laiOptions?.aiModel;
 }
 
-async function modelCanThink(modelName = '') {
+async function modelCanThinkHelper(modelName = '') {
     if (!modelName) { return false; }
 
     try {
@@ -149,7 +149,7 @@ async function modelCanThink(modelName = '') {
     }
 }
 
-async function modelCanUseTools(modelName = '') {
+async function modelCanUseToolsHelper(modelName = '') {
     if (!modelName) { return false; }
 
     try {
