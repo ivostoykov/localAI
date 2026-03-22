@@ -275,7 +275,6 @@ function isMessagePersistable(message = {}) {
     const hasToolCalls = Array.isArray(message?.tool_calls) && message.tool_calls.length > 0;
     return hasContent || hasToolCalls;
 }
-
 async function validateAndGetTabId(tabId) {
     if (typeof tabId === 'number' && !isNaN(tabId)) {
         try {

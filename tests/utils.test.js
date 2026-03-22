@@ -227,7 +227,6 @@ describe('utils.js', () => {
             expect(result).toBe(false);
         });
     });
-
     describe('modelCanThinkHelper', () => {
         beforeEach(() => {
             fakeBrowser.runtime.sendMessage = vi.fn();
