@@ -1,65 +1,39 @@
 # Local AI - Changelog
 
-## [1.29.17] - 2026-03-22 - latest
+## [1.29.18] - 2026-03-22 - latest
 
 ### New Features
 - Added thinking/reasoning display support for models with thinking capabilities
 - Thinking content now rendered as collapsible "🤔 Thought" sections in UI
-- Thinking is displayed in UI but not stored in database or session history
+- Thinking is not stored in database or session history
 
 ### Bug Fixes
-- Fixed newline rendering in thinking blocks with CSS display improvements for paragraph elements
-- Fixed critical message passing bug preventing content extractor tools from returning results
-- Content extractor calls (`get_page_structure`, `get_enhanced_page_content`, etc.) now properly await async responses
-- Enhanced tool error messages to prevent model hallucination of non-existent function names
-- Added strong reminder to stick to provided tools list when function not found
+- Fixed rendering in thinking blocks
+- Fixed critical message passing bug preventing proper returning results
+- Fixed await async responses bug
+- Enhanced tool error messages
 - Tool error messages now list available tools to guide model selection
-- Fixed on-demand page capture failure during startup when `shadowRoot` not yet initialized
-- Moved `capturePageData` and `dumpInConsole` message handlers before `shadowRoot` guard
-- These handlers don't require UI, so can execute even before content script fully initialized
-- Fixed thinking-only replies persistence mismatch (displayed in UI but disappeared after reload)
+- Fixed on-demand page capture failure during startup
+- Fixed thinking-only replies persistence mismatch
 - Thinking-only responses now skipped during display to match history persistence behaviour
-- Messages without content or tool_calls are not saved to history, so shouldn't be shown in UI
-- Removed 1-second artificial delay in lazy page-capture path after successful capture
-- The `requestPageDataFromTab()` response already confirms storage completion
+- Messages without content or tool_calls are not saved to history
 - Eliminated unnecessary latency on first page-tool request for uncached tabs
-- Removed duplicate `getLineNumber()` function from background.js (now provided by utils.js)
-- Unified `getAiUrl()` function with automatic context detection in utils.js
-- Detects service worker context (`typeof window === 'undefined'`) vs content script
-- Automatically uses `showUIMessage()` in background or `showMessage()` in content scripts
-- Removed duplicate `getAiUrl()` from background.js
-- Fixed typo in utils.js: "Faild" → "Failed"
-- Moved `isMessagePersistable()` to utils.js to eliminate duplication
-- Function now available from single source for both background.js and lai-main.js
+- Removed duplicate functions
+- Unified functions with automatic context detection in utils.js
+- Detects service worker context
+- Automatically uses proper message depending on the execution context
 
 ### Code Refactoring
-- Renamed utils.js model capability functions to avoid naming conflicts
-- `modelCanThink` → `modelCanThinkHelper` (content script helper)
-- `modelCanUseTools` → `modelCanUseToolsHelper` (content script helper)
-- Background worker retains direct function names for internal use
-- Updated all ribbon.js calls to use new Helper function names
+- Fixed functions naming conflicts
 - Fixed race condition in model capability detection during model swap
-- Added await for getModelInfo response before checking capabilities
-- Modified `laiExtractDataFromResponse` to extract and wrap thinking content in `<think>` tags
-- Centralised `isMessagePersistable()` helper function in utils.js
-- Used in both background.js (`sanitizeAssistantMessageForHistory`) and lai-main.js (`laiExtractDataFromResponse`)
-- Single source of truth for what makes a message persistable (content OR tool_calls)
+- Centralised some helper functions
 
 ### Tests
-- Added comprehensive tests for `laiExtractDataFromResponse` (14 test cases)
+- Added comprehensive tests (14 test cases)
 - Added test for thinking-only response skipping behaviour
 - Added test for thinking display when tool_calls present but no content
 - Updated existing test to verify thinking-only responses are skipped
-- Added comprehensive tests for `isMessagePersistable()` in utils.test.js (13 test cases)
-- Updated test extraction in background.test.js and lai-main.test.js to use utils.js source
-- All 162 tests passing
-- Added tests for `sanitizeAssistantMessageForHistory` to verify thinking removal from history
-- Added tests for `modelCanThink` and `modelCanUseTools` in background.js
-- Added tests for `modelCanThinkHelper` and `modelCanUseToolsHelper` in utils.test.js
 - Added test coverage for page-capture functions in sessions.test.js (3 test cases)
-- Tests cover `requestPageDataFromTab` success, failure, and error scenarios
-- Removed `getLineNumber()` tests from background.test.js (now provided by utils.js)
-- All 151 tests passing
 
 ## [1.29.15] - 2026-03-18
 
