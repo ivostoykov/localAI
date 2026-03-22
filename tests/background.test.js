@@ -14,7 +14,8 @@ const backgroundCode = fs.readFileSync(
 const processTextChunkCode = backgroundCode.match(/function processTextChunk\([\s\S]*?\n}\n/)[0];
 const getLastConsecutiveUserRecordsCode = backgroundCode.match(/function getLastConsecutiveUserRecords\([\s\S]*?\n}\n/)[0];
 const replaceCommandPlaceholdersCode = backgroundCode.match(/function replaceCommandPlaceholders\([\s\S]*?\n}\n/)[0];
-const getLineNumberCode = backgroundCode.match(/function getLineNumber\([\s\S]*?\n}\n/)[0];
+const getLineNumberCode = 'function getLineNumber() { return "test:1"; }';
+const isMessagePersistableCode = backgroundCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 const sanitizeAssistantMessageForHistoryCode = backgroundCode.match(/function sanitizeAssistantMessageForHistory\([\s\S]*?\n}\n/)[0];
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
 const modelCanUseToolsCode = backgroundCode.match(/async function modelCanUseTools\([\s\S]*?\n}\n/)[0];
@@ -24,16 +25,17 @@ ${processTextChunkCode}
 ${getLastConsecutiveUserRecordsCode}
 ${replaceCommandPlaceholdersCode}
 ${getLineNumberCode}
+${isMessagePersistableCode}
 ${sanitizeAssistantMessageForHistoryCode}
 ${modelCanThinkCode}
 ${modelCanUseToolsCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, sanitizeAssistantMessageForHistory, modelCanThink, modelCanUseTools };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, modelCanThink, modelCanUseTools };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, sanitizeAssistantMessageForHistory, modelCanThink, modelCanUseTools;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, modelCanThink, modelCanUseTools;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -42,6 +44,7 @@ describe('background.js', () => {
         getLastConsecutiveUserRecords = exports.getLastConsecutiveUserRecords;
         replaceCommandPlaceholders = exports.replaceCommandPlaceholders;
         getLineNumber = exports.getLineNumber;
+        isMessagePersistable = exports.isMessagePersistable;
         sanitizeAssistantMessageForHistory = exports.sanitizeAssistantMessageForHistory;
         modelCanThink = exports.modelCanThink;
         modelCanUseTools = exports.modelCanUseTools;
@@ -193,30 +196,6 @@ describe('background.js', () => {
             const result = replaceCommandPlaceholders(input);
 
             expect(result).toBe('[see page content attachment] and [see page content attachment] again');
-        });
-    });
-
-    describe('getLineNumber', () => {
-        it('returns line number information', () => {
-            const lineNumber = getLineNumber();
-
-            expect(lineNumber).toBeDefined();
-            expect(typeof lineNumber).toBe('string');
-        });
-
-        it('returns "Unknown" when stack unavailable', () => {
-            const originalError = Error;
-            global.Error = class extends originalError {
-                constructor() {
-                    super();
-                    this.stack = '';
-                }
-            };
-
-            const lineNumber = getLineNumber();
-            expect(lineNumber).toBe('Unknown');
-
-            global.Error = originalError;
         });
     });
 

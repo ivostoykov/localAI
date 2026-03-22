@@ -1107,6 +1107,12 @@ function laiFinalPreFormat() {
     });
 }
 
+function isMessagePersistable(message = {}) {
+    const hasContent = typeof message?.content === 'string' && message.content.trim().length > 0;
+    const hasToolCalls = Array.isArray(message?.tool_calls) && message.tool_calls.length > 0;
+    return hasContent || hasToolCalls;
+}
+
 function laiExtractDataFromResponse(response) {
     const responseJson = response.response;
     try {
@@ -1120,18 +1126,15 @@ function laiExtractDataFromResponse(response) {
 
     const assistantContent = typeof response?.message?.content === 'string' ? response.message.content : '';
     const thinking = typeof response?.message?.thinking === 'string' ? response.message.thinking.trim() : '';
-    const hasToolCalls = Array.isArray(response?.message?.tool_calls) && response.message.tool_calls.length > 0;
 
-    // Skip thinking-only responses that won't be persisted in history
-    // (matches sanitizeAssistantMessageForHistory behaviour in background.js)
-    const hasContent = assistantContent.trim().length > 0;
-    if (!hasContent && !hasToolCalls && thinking) {
+    const isPersistable = isMessagePersistable(response.message);
+    if (!isPersistable && thinking) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping thinking-only response (not persisted)`, { thinkingLength: thinking.length });
         return '';
     }
 
     let fullContent = assistantContent;
-    if (thinking && hasContent) {
+    if (thinking && assistantContent.trim().length > 0) {
         fullContent = `<think>\n${thinking}\n</think>\n\n${assistantContent}`;
     }
 

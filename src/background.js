@@ -377,14 +377,17 @@ function getAssistantMessageText(message = {}) {
     return '';
 }
 
+function isMessagePersistable(message = {}) {
+    const hasContent = typeof message?.content === 'string' && message.content.trim().length > 0;
+    const hasToolCalls = Array.isArray(message?.tool_calls) && message.tool_calls.length > 0;
+    return hasContent || hasToolCalls;
+}
+
 function sanitizeAssistantMessageForHistory(message = {}) {
     const sanitizedMessage = structuredClone(message);
     delete sanitizedMessage.thinking;
 
-    const hasContent = typeof sanitizedMessage?.content === 'string' && sanitizedMessage.content.trim().length > 0;
-    const hasToolCalls = Array.isArray(sanitizedMessage?.tool_calls) && sanitizedMessage.tool_calls.length > 0;
-
-    return hasContent || hasToolCalls ? sanitizedMessage : null;
+    return isMessagePersistable(sanitizedMessage) ? sanitizedMessage : null;
 }
 
 async function handleResponse(responseData = '', senderTabId) {
@@ -1241,30 +1244,6 @@ async function modelCanUseTools(modelName, tab) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, modelData);
         return false;
     }
-}
-
-function getLineNumber() {
-    const e = new Error();
-    const stackLines = e.stack.split("\n").map(line => line.trim());
-    let index = stackLines.findIndex(line => line.includes(getLineNumber.name));
-
-    return stackLines[index + 1]
-        ?.replace(/\s{0,}at\s+/, '')
-        ?.replace(/^.*?\/([^\/]+\/[^\/]+:\d+:\d+)$/, '$1')
-        ?.split('/')?.pop().replace(/\)$/, '')
-        || "Unknown";
-}
-
-async function getAiUrl() {
-    const laiOptions = await getLaiOptions();
-    if (!laiOptions?.aiUrl) {
-        let msg = 'Missing API endpoint!';
-        await showUIMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg}`, laiOptions);
-        return null;
-    }
-
-    return laiOptions.aiUrl;
 }
 
 async function getAiModel() {

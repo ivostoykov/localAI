@@ -29,12 +29,12 @@ global.chrome = {
     }
 };
 
-// Extract the function we want to test
+// Extract the functions we want to test
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome',
-    laiMainCode + '; return { laiExtractDataFromResponse };'
+    laiMainCode + '; return { laiExtractDataFromResponse, isMessagePersistable };'
 );
 
-let laiExtractDataFromResponse;
+let laiExtractDataFromResponse, isMessagePersistable;
 
 describe('lai-main.js', () => {
     beforeEach(() => {
@@ -49,6 +49,7 @@ describe('lai-main.js', () => {
 
         const exports = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome);
         laiExtractDataFromResponse = exports.laiExtractDataFromResponse;
+        isMessagePersistable = exports.isMessagePersistable;
     });
 
     describe('laiExtractDataFromResponse', () => {

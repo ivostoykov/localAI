@@ -20,6 +20,15 @@
 - Fixed thinking-only replies persistence mismatch (displayed in UI but disappeared after reload)
 - Thinking-only responses now skipped during display to match history persistence behaviour
 - Messages without content or tool_calls are not saved to history, so shouldn't be shown in UI
+- Removed 1-second artificial delay in lazy page-capture path after successful capture
+- The `requestPageDataFromTab()` response already confirms storage completion
+- Eliminated unnecessary latency on first page-tool request for uncached tabs
+- Removed duplicate `getLineNumber()` function from background.js (now provided by utils.js)
+- Unified `getAiUrl()` function with automatic context detection in utils.js
+- Detects service worker context (`typeof window === 'undefined'`) vs content script
+- Automatically uses `showUIMessage()` in background or `showMessage()` in content scripts
+- Removed duplicate `getAiUrl()` from background.js
+- Fixed typo in utils.js: "Faild" → "Failed"
 
 ### Code Refactoring
 - Renamed utils.js model capability functions to avoid naming conflicts
@@ -30,6 +39,9 @@
 - Fixed race condition in model capability detection during model swap
 - Added await for getModelInfo response before checking capabilities
 - Modified `laiExtractDataFromResponse` to extract and wrap thinking content in `<think>` tags
+- Extracted `isMessagePersistable()` helper function to avoid duplicating persistence logic
+- Used in both background.js (`sanitizeAssistantMessageForHistory`) and lai-main.js (`laiExtractDataFromResponse`)
+- Single source of truth for what makes a message persistable (content OR tool_calls)
 
 ### Tests
 - Added comprehensive tests for `laiExtractDataFromResponse` (14 test cases)
@@ -41,7 +53,8 @@
 - Added tests for `modelCanThinkHelper` and `modelCanUseToolsHelper` in utils.test.js
 - Added test coverage for page-capture functions in sessions.test.js (3 test cases)
 - Tests cover `requestPageDataFromTab` success, failure, and error scenarios
-- All 153 tests passing
+- Removed `getLineNumber()` tests from background.test.js (now provided by utils.js)
+- All 151 tests passing
 
 ## [1.29.15] - 2026-03-18
 

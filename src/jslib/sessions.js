@@ -446,8 +446,6 @@ async function getActiveSessionPageData(tabId) {
         return null;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
     result = await chrome.storage.local.get([key]);
     pageData = result[key] || null;
 
