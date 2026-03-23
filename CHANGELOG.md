@@ -1,6 +1,11 @@
 # Local AI - Changelog
 
-## [1.29.18] - 2026-03-22 - latest
+## [1.29.20] - 2026-03-23 - latest
+- Fixed prompt placehoders bug causing empty contnet.
+- Fixed element filtering
+- Other minor fixes
+
+## [1.29.18] - 2026-03-22
 
 ### New Features
 - Added thinking/reasoning display support for models with thinking capabilities
