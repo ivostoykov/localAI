@@ -891,6 +891,65 @@ globalThis.contentExtractorHelpers = {
   },
 
   /**
+   * Show filtering configuration and test selectors
+   * Usage: await contentExtractorHelpers.testFilters()
+   */
+  async testFilters() {
+    console.log('=== CONTENT FILTERING DEBUG ===');
+
+    const filterConfig = await loadFilteringConfig();
+    console.log('Filter config:', filterConfig);
+    console.log('Enabled:', filterConfig?.enabled);
+    console.log('Selectors:', filterConfig?.selectors);
+
+    if (!filterConfig?.selectors || filterConfig.selectors.length === 0) {
+      console.warn('⚠️ No selectors configured!');
+      return filterConfig;
+    }
+
+    // Test each selector individually
+    console.log('\n=== TESTING EACH SELECTOR ===');
+    filterConfig.selectors.forEach((selector, i) => {
+      try {
+        const matches = document.querySelectorAll(selector);
+        console.log(`${i + 1}. "${selector}" → ${matches.length} matches`);
+        if (matches.length > 0) {
+          console.log('   First match:', matches[0]);
+        }
+      } catch (err) {
+        console.error(`${i + 1}. "${selector}" → ERROR:`, err.message);
+      }
+    });
+
+    // Test combined selector
+    console.log('\n=== TESTING COMBINED SELECTOR ===');
+    try {
+      const combined = filterConfig.selectors.join(',');
+      const matches = document.querySelectorAll(combined);
+      console.log(`Combined selector: ${matches.length} matches`);
+      console.log('Combined string:', combined);
+    } catch (err) {
+      console.error('Combined selector ERROR:', err);
+    }
+
+    // Test on cloned DOM
+    console.log('\n=== TESTING ON CLONED DOM ===');
+    const domClone = document.body.cloneNode(true);
+    try {
+      const combined = filterConfig.selectors.join(',');
+      const matchesInClone = domClone.querySelectorAll(combined);
+      console.log(`Matches in clone before removal: ${matchesInClone.length}`);
+      matchesInClone.forEach(e => e.remove());
+      const matchesAfter = domClone.querySelectorAll(combined);
+      console.log(`Matches in clone after removal: ${matchesAfter.length}`);
+    } catch (err) {
+      console.error('Clone test ERROR:', err);
+    }
+
+    return filterConfig;
+  },
+
+  /**
    * Show help/available commands
    * Usage: contentExtractorHelpers.help()
    */
@@ -919,6 +978,9 @@ globalThis.contentExtractorHelpers = {
 ║                                                            ║
 ║  • await contentExtractorHelpers.stats()                   ║
 ║    → Show page structure statistics                        ║
+║                                                            ║
+║  • await contentExtractorHelpers.testFilters()             ║
+║    → Test content filtering selectors (DEBUG)              ║
 ║                                                            ║
 ║  Element Testing:                                          ║
 ║  • contentExtractorHelpers.testLists()                     ║
