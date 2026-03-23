@@ -34,9 +34,8 @@ async function initSidebar(deadline) {
         return;
     }
 
-    shadowRoot.addEventListener('click', async e => await closeAllDropDownRibbonMenus(e));
-
     shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => {
+        e.stopPropagation();
         let feedbackMessage = e.target;
         if (feedbackMessage?.id !== 'feedbackMessage') {
             feedbackMessage = e.target.closest('div#feedbackMessage');
@@ -45,7 +44,9 @@ async function initSidebar(deadline) {
         handleErrorButton();
         feedbackMessage.replaceChildren();
         feedbackMessage.classList.remove('feedback-message-active')
-    });
+    }, true);
+
+    shadowRoot.addEventListener('click', async e => await closeAllDropDownRibbonMenus(e));
 
     const ribbon = getRibbon();
     if (!ribbon) { console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, ribbon); }

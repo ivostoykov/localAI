@@ -603,6 +603,7 @@ async function processCommandPlaceholders(userInputValue, existingAttachments = 
                         pageHash: pageData?.pageHash
                     };
                 }
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Command @{{${cmdText}}} received. Attachment created`, attachment);
                 break;
             case 'now':
                 attachment = {
@@ -611,6 +612,7 @@ async function processCommandPlaceholders(userInputValue, existingAttachments = 
                     content: `current date and time or timestamp is: ${(new Date()).toISOString()}`,
                     sourceUrl: 'system'
                 };
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Command @{{${cmdText}}} received. Attachment created`, attachment);
                 break;
             case "today":
                 attachment = {
@@ -619,6 +621,7 @@ async function processCommandPlaceholders(userInputValue, existingAttachments = 
                     content: `current date is: ${(new Date()).toISOString().split('T')[0]}`,
                     sourceUrl: 'system'
                 };
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Command @{{${cmdText}}} received. Attachment created`, attachment);
                 break;
             case "time":
                 attachment = {
@@ -627,6 +630,7 @@ async function processCommandPlaceholders(userInputValue, existingAttachments = 
                     content: `current time is: ${(new Date()).toISOString().split('T')[1]}`,
                     sourceUrl: 'system'
                 };
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Command @{{${cmdText}}} received. Attachment created`, attachment);
                 break;
         }
 

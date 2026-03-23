@@ -279,19 +279,33 @@ async function removeElementsBySelectors() {
   const filterConfig = await loadFilteringConfig();
   const selectors = filterConfig?.selectors ?? null;
   const domClone = document.body.cloneNode(true);
-  if(!domClone || !filterConfig?.enabled || !selectors){ return domClone;  }
+
+  console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Filter config:`, {
+    enabled: filterConfig?.enabled,
+    selectorCount: selectors?.length ?? 0,
+    selectors: selectors
+  });
+
+  if(!domClone || !filterConfig?.enabled || !selectors || selectors.length === 0){
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Filtering skipped: domClone=${!!domClone}, enabled=${filterConfig?.enabled}, selectorsPresent=${!!selectors && selectors.length > 0}`);
+    return domClone;
+  }
 
   try {
     Array.from(domClone.attributes).forEach(attr => {
       domClone.removeAttribute(attr.name);
     });
 
-    domClone
-      ?.querySelectorAll(selectors.join(','))
-      ?.forEach(e => e.remove());
+    const selectorString = selectors.join(',');
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Combined selector:`, selectorString);
+
+    const matchedElements = domClone.querySelectorAll(selectorString);
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Matched ${matchedElements.length} elements to remove`);
+
+    matchedElements.forEach(e => e.remove());
 
   } catch (err) {
-    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, {err, filterConfig, selectors, domClone});
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error during filtering:`, {err, filterConfig, selectors, domClone});
   }
   console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - after cleaning`, domClone);
   return domClone;
