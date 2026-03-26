@@ -3,9 +3,9 @@
 *.bak
 *.back
 *.new
-.vscode/
 *.log
 CLAUDE.md
+AGENTS.md
 .mcp.json
 .continuerules
 *.json.*
@@ -17,6 +17,9 @@ Chrome_changes/
 .claude/**
 .docs/
 .docs/**
+.aimem/
+.vscode/
+.issues/
 
 # Test and dependencies
 node_modules/
