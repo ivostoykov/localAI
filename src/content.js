@@ -133,8 +133,6 @@ async function allDOMContentLoaded(e) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Removed activeSessionIdKey`);
     const tabId = await getMyTabId();
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Got tabId:`, tabId);
-    await setActiveSessionPageData(tabId);
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Called setActiveSessionPageData`);
     await getAiUserCommands(); //TODO: remove it as global
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Got AI user commands`);
   } catch (err) {
@@ -156,10 +154,6 @@ if ('navigation' in window) {
     window.addEventListener("popstate", triggerUpdate);
     window.addEventListener("pushstate", triggerUpdate);
     window.addEventListener("replacestate", triggerUpdate);
-    navigation.addEventListener('navigate', async () => {
-        const tabId = await getMyTabId();
-        await setActiveSessionPageData(tabId);
-    });
 }
 
 function attachElementSelectionListenersToFrames() {

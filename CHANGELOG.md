@@ -1,6 +1,32 @@
 # Local AI - Changelog
 
-## [1.29.20] - 2026-03-23 - latest
+## [1.29.28] - 2026-03-27 - latest
+
+### Bug Fixes
+
+- Fixed internal tools silently returning empty results
+- Fixed grouped LinkedIn experience entries mislabelling bare tenure strings
+- Fixed emitting multi-paragraph promotional blurbs
+
+## [1.29.27] - 2026-03-27
+
+### LinkedIn Experience Section Normalisation
+- Added self-contained LinkedIn profile extractor
+- Detects LinkedIn profile pages and replaces the raw section with normalised output
+- Handles grouped layout (company header + role list) and standalone layout (role-first entries)
+- Uses stable selectors
+- Filters "Show all" / "Show less" LinkedIn UI noise
+- Updated LinkedIn related content output format
+
+### Page Content — On-Demand Extraction
+- Removed eager page-content pre-load on navigation and tab activation
+- `@{{page}}` parameter now extracts content fresh from the live DOM at request time
+- Page content is persisted to session history only after it is actually sent to the model
+- Removed `redundant message handlers
+- Simplified page read from session DB only
+- Purge stale page storage keys left by earlier installations — called once at service-worker startup; planned for removal after v1.31.x
+
+## [1.29.20] - 2026-03-23
 - Fixed content filtering missing some pre-defined elements
 - Fixed prompt placeholder bug causing casual empty content
 - Other minor fixes

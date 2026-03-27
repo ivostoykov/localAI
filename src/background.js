@@ -45,6 +45,7 @@ try {
 }
 
 init();
+clearLegacyPageContentStorage();
 
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
     if (areaName !== 'sync') { return; }
@@ -91,22 +92,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
-    const tabId = activeInfo.tabId;
-    const key = `${activePageStorageKey}:${tabId}`;
-
-    try {
-        const result = await chrome.storage.local.get([key]);
-        const pageData = result[key];
-
-        if (!pageData) {
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${tabId} activated but no page data found, requesting refresh`);
-            // Send message to content script to refresh page data
-            await chrome.tabs.sendMessage(tabId, { action: 'refreshPageData' });
-        }
-    } catch (error) {
-        // Tab might not have content script loaded yet (e.g., chrome:// pages)
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not check/refresh page data for tab ${tabId}:`, error.message);
-    }
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${activeInfo.tabId} activated`);
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -589,22 +575,24 @@ async function processCommandPlaceholders(userInputValue, existingAttachments = 
 
         let attachment;
         switch (cmdText) {
-            case 'page':
-                const pageData = await getActiveSessionPageData(tabId);
-                const pageContent = pageData?.pageContent ?? "";
-                if (!pageContent) {
-                    console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content for @{{page}}`, pageData);
+            case 'page': {
+                const freshContent = await callContentScriptExtractor(tabId, 'getEnhancedPageContent', null);
+                if (!freshContent || freshContent.startsWith('Error')) {
+                    console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to extract page content for @{{page}}`, freshContent);
                 } else {
+                    const tab = await chrome.tabs.get(tabId).catch(() => null);
+                    const freshHash = await generatePageHash(tab?.url || '', freshContent);
                     attachment = {
                         cmd: 'page',
                         type: "snippet",
-                        content: pageContent,
-                        sourceUrl: pageData?.url || 'unknown',
-                        pageHash: pageData?.pageHash
+                        content: freshContent,
+                        sourceUrl: tab?.url || 'unknown',
+                        pageHash: freshHash
                     };
                 }
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Command @{{${cmdText}}} received. Attachment created`, attachment);
                 break;
+            }
             case 'now':
                 attachment = {
                     cmd: 'now',

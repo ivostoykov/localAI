@@ -531,6 +531,35 @@ async function removeActiveSessionPageData(tabId) {
     await chrome.storage.local.remove(activePageStorageKey); // temp to remove old storage
 }
 
+/**
+ * Temporary migration helper — added in v1.29.20.
+ *
+ * Prior to v1.29.20 the extension eagerly stored full page content in
+ * chrome.storage.local under keys matching `${activePageStorageKey}:*`.
+ * That eager pre-load was removed in v1.29.20 in favour of on-demand
+ * extraction at request time.
+ *
+ * This function clears any stale page-content keys left over from earlier
+ * installations so they do not consume storage space indefinitely.
+ *
+ * REMOVE in a future release once the migration period has passed
+ * (planned for removal after two releases, i.e. v1.31.x or later).
+ */
+async function clearLegacyPageContentStorage() {
+    try {
+        const allKeys = await chrome.storage.local.get(null);
+        const legacyKeys = Object.keys(allKeys).filter(key =>
+            key === activePageStorageKey || key.startsWith(`${activePageStorageKey}:`)
+        );
+        if (legacyKeys.length > 0) {
+            await chrome.storage.local.remove(legacyKeys);
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cleared ${legacyKeys.length} legacy page-content storage key(s)`);
+        }
+    } catch (e) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - clearLegacyPageContentStorage failed:`, e);
+    }
+}
+
 async function deleteSessionMemory(sessionId) {
     try {
         await chrome.runtime.sendMessage({ action: 'deleteSessionMemory', sessionId: sessionId });

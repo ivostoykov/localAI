@@ -46,18 +46,6 @@ async function getAllSessionPages(tabId) {
     const sessionId = await getActiveSessionId();
     if (!sessionId) { return "No active session yet."; }
 
-    const data = await getActiveSessionPageData(tabId);
-    if (data?.pageContent && data?.pageHash) {
-        const currentPage = {
-            url: data.url || location.href,
-            title: data.title || 'Untitled',
-            content: data.pageContent,
-            hash: data.pageHash,
-            timestamp: Date.now()
-        };
-        await backgroundMemory.addPageToSession(sessionId, currentPage);
-    }
-
     const allPages = await backgroundMemory.getSessionPages(sessionId);
     return allPages.length > 0
         ? JSON.stringify(allPages, null, 2)
@@ -67,18 +55,6 @@ async function getAllSessionPages(tabId) {
 async function getLastSessionPages(count = 1, tabId) {
     const sessionId = await getActiveSessionId();
     if (!sessionId) { return "No active session yet."; }
-
-    const data = await getActiveSessionPageData(tabId);
-    if (data?.pageContent && data?.pageHash) {
-        const currentPage = {
-            url: data.url || location.href,
-            title: data.title || 'Untitled',
-            content: data.pageContent,
-            hash: data.pageHash,
-            timestamp: Date.now()
-        };
-        await backgroundMemory.addPageToSession(sessionId, currentPage);
-    }
 
     const lastPages = await backgroundMemory.getLastSessionPages(sessionId, count);
     return lastPages.length > 0
@@ -202,26 +178,30 @@ async function execInternalTool(call = {}, tabId = null) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Unrecognised tool: '${funcName}'. Available:`, getInternalToolNames());
         return `Tool "${funcName}" was not found!\n\nIMPORTANT: Only use tools from the provided tools list. Do not invent or assume tool names.\nAvailable internal tools: ${getInternalToolNames().join(', ')}`;
     }
-    let data;
-
     switch (funcName) {
-        case "get_current_tab_url":
-            data = await getActiveSessionPageData(tabId);
-            return data?.url || 'No URL available';
+        case "get_current_tab_url": {
+            const vid = await validateAndGetTabId(tabId);
+            if (!vid) return 'No URL available';
+            const tab = await chrome.tabs.get(vid);
+            return tab?.url || 'No URL available';
+        }
 
         case "get_date":
             return new Date().toISOString().split('T')[0];
 
-        case "get_tab_info":
-            data = await getActiveSessionPageData(tabId);
+        case "get_tab_info": {
+            const vid = await validateAndGetTabId(tabId);
+            if (!vid) return JSON.stringify({ url: 'No URL available', content: 'No page content available' }, null, 2);
+            const tab = await chrome.tabs.get(vid);
+            const content = await callContentScriptExtractor(vid, 'getEnhancedPageContent', null);
             return JSON.stringify({
-                url: data?.url || 'No URL available',
-                content: data?.pageContent || 'No page content available'
+                url: tab?.url || 'No URL available',
+                content: content || 'No page content available'
             }, null, 2);
+        }
 
         case "get_current_tab_page_content":
-            data = await getActiveSessionPageData(tabId);
-            return data?.pageContent || 'No page content available';
+            return await callContentScriptExtractor(tabId, 'getEnhancedPageContent', null);
 
         case "get_all_session_pages":
             return await getAllSessionPages(tabId);

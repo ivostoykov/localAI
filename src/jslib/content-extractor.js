@@ -20,8 +20,13 @@ async function getEnhancedPageContent() {
   const cleanedDOM = await getDocumentContentFiltered();
   const mainContent = detectMainContent(cleanedDOM);
   const structure = extractEnhancedTextStructure(mainContent || cleanedDOM);
+  let result = formatEnhancedPageContent(structure, metadata);
 
-  return formatEnhancedPageContent(structure, metadata);
+  if (typeof replaceLinkedInExperienceSection === 'function' && isLinkedInProfilePage()) {
+    result = replaceLinkedInExperienceSection(result);
+  }
+
+  return result;
 }
 
 /**

@@ -1197,22 +1197,6 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         return true;
     }
 
-    if (response?.action === 'capturePageData') {
-        (async () => {
-            try {
-                const success = await setActiveSessionPageData(response.tabId);
-                if (success) {
-                    sendResponse({ success: true });
-                } else {
-                    sendResponse({ success: false, error: 'Page content not available or empty' });
-                }
-            } catch (error) {
-                sendResponse({ success: false, error: error.message });
-            }
-        })();
-        return true;
-    }
-
     if (response?.action === 'dumpInConsole') {
         dumpInConsole(response.message, response.obj, response.type);
         return;
@@ -1351,26 +1335,6 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         case "callContentExtractor":
             (async () => {
                 await handleContentExtractorCall(response, sendResponse);
-            })();
-            return true;
-        case "refreshPageData":
-            (async () => {
-                const tabId = await getMyTabId();
-                await setActiveSessionPageData(tabId);
-            })();
-            break;
-        case "capturePageData":
-            (async () => {
-                try {
-                    const success = await setActiveSessionPageData(response.tabId);
-                    if (success) {
-                        sendResponse({ success: true });
-                    } else {
-                        sendResponse({ success: false, error: 'Page content not available or empty' });
-                    }
-                } catch (error) {
-                    sendResponse({ success: false, error: error.message });
-                }
             })();
             return true;
         default:

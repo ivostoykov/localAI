@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "Local AI helper",
     "short_name": "localAI",
-    "version": "1.29.20",
+    "version": "1.29.28",
     "options_page": "options.html",
     "permissions": [
         "activeTab",
@@ -33,6 +33,7 @@
                 "jslib/sessions.js",
                 "jslib/log.js",
                 "jslib/content-cleaner.js",
+                "jslib/li-extractor.js",
                 "jslib/content-extractor.js",
                 "jslib/files.js",
                 "jslib/solomd2html.js",
