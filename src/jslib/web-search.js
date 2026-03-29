@@ -107,14 +107,16 @@ async function isCaptchaOrConsentPage(tabId) {
 async function fetchPageSummary(searchTabId, url) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Fetching page summary:`, url);
     try {
+        const loadPromise = waitForTabLoad(searchTabId);
         await chrome.tabs.update(searchTabId, { url });
-        await waitForTabLoad(searchTabId);
+        await loadPromise;
         const response = await chrome.tabs.sendMessage(searchTabId, {
             action: 'callContentExtractor',
             functionName: 'getMainContentOnly',
             argument: null
         });
-        const content = response?.error ? '' : (response?.result || '');
+        const raw = response?.error ? '' : (response?.result || '');
+        const content = raw.startsWith('Could not detect') ? '' : raw;
         return { url, content };
     } catch (err) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - fetchPageSummary failed for ${url}:`, err.message);
@@ -143,8 +145,9 @@ async function searchWeb(query) {
 
     const serpUrl = getSearchUrl(engine, query);
     try {
+        const loadPromise = waitForTabLoad(searchTabId);
         await chrome.tabs.update(searchTabId, { url: serpUrl });
-        await waitForTabLoad(searchTabId);
+        await loadPromise;
     } catch (err) {
         return `Search failed: could not load results page. ${err.message}`;
     }

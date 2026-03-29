@@ -9,6 +9,7 @@ AGENTS.md
 .mcp.json
 .continuerules
 *.json.*
+.codex
 
 # Dirs
 Chrome.bak/

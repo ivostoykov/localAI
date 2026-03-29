@@ -19,8 +19,8 @@ const ENGINES = {
         name: 'Google',
         buildUrl: (query) => `https://www.google.com/search?q=${encodeURIComponent(query)}`,
         resultSelectors: [
-            'div#search a[jsname][href^="http"]',
-            'div.g a[href^="http"]'
+            'div#search h3 a[href^="http"]',
+            'div.g h3 a[href^="http"]'
         ],
         filterUrl: (url) => {
             try {
@@ -45,8 +45,7 @@ const ENGINES = {
         name: 'Bing',
         buildUrl: (query) => `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
         resultSelectors: [
-            'li.b_algo h2 a',
-            'ol#b_results li.b_algo a[href^="http"]'
+            'li.b_algo h2 a'
         ],
         filterUrl: (url) => {
             try {
