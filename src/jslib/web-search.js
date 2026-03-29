@@ -52,24 +52,25 @@ async function extractSerpUrls(searchTabId, engine, maxResults) {
     try {
         scriptResult = await chrome.scripting.executeScript({
             target: { tabId: searchTabId },
-            func: (selectors) => {
+            func: (selectors, limit) => {
                 const seen = new Set();
                 const links = [];
                 for (const sel of selectors) {
+                    if (links.length >= limit) break;
                     try {
-                        document.querySelectorAll(sel).forEach(el => {
-                            const anchor = el.tagName === 'A' ? el : el.closest('a');
-                            const href = anchor?.href;
+                        for (const el of document.querySelectorAll(sel)) {
+                            if (links.length >= limit) break;
+                            const href = el.href;
                             if (href && href.startsWith('http') && !seen.has(href)) {
                                 seen.add(href);
                                 links.push(href);
                             }
-                        });
+                        }
                     } catch { /* ignore invalid selectors */ }
                 }
                 return links;
             },
-            args: [config.resultSelectors]
+            args: [config.resultSelectors, maxResults]
         });
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - extractSerpUrls failed:`, err);

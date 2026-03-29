@@ -19,8 +19,8 @@ const ENGINES = {
         name: 'Google',
         buildUrl: (query) => `https://www.google.com/search?q=${encodeURIComponent(query)}`,
         resultSelectors: [
-            'div#search h3 a[href^="http"]',
-            'div.g h3 a[href^="http"]'
+            'div#search a:has(h3)[href^="http"]',
+            'div.g a:has(h3)[href^="http"]'
         ],
         filterUrl: (url) => {
             try {
