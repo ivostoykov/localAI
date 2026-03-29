@@ -1,6 +1,17 @@
 # Local AI - Changelog
 
-## [1.29.28] - 2026-03-27 - latest
+## [1.29.30] - 2026-03-29 - latest
+
+### Browser-Session Web Search
+
+- Added `search_web` internal tool allowing the LLM to search the web using the user's configured search engine
+- Search opens a reusable background tab (visible, non-active) and reuses it across requests — tab ID persisted in `chrome.storage.session`
+- Added `src/jslib/search-engines.js` — engine registry with URL builders, SERP CSS selectors, and URL filters/decoders for DuckDuckGo, Google, and Bing
+- Added `src/jslib/web-search.js` — orchestrator handling tab lifecycle, SERP scraping via `chrome.scripting.executeScript`, result page content extraction, captcha/consent detection, and result assembly
+- Added `searchEngine` setting (default: DuckDuckGo) and `searchResultCount` setting (default: 3, max: 5) to General Settings
+- Fixed `saveSettings` in options page not persisting plain `<select>` values (`select-one` type was missing from the handled types list)
+
+## [1.29.28] - 2026-03-27
 
 ### Bug Fixes
 

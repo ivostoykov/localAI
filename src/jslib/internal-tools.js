@@ -244,6 +244,9 @@ async function execInternalTool(call = {}, tabId = null) {
 
         case "get_main_content":
             return await callContentScriptExtractor(tabId, 'getMainContentOnly', null);
+
+        case "search_web":
+            return await searchWeb(call?.function?.arguments?.query);
     }
 }
 
@@ -585,6 +588,25 @@ const INTERNAL_TOOL_DEFINITIONS = [
         "strict": true,
         "type": "tool",
         "usage_cost": 3
+    },
+    {
+        "function": {
+            "description": "Search the web using the user's configured search engine. Opens a background browser tab, fetches the search results page, and returns extracted content from the top result pages. Use when the user explicitly asks to search the web, look something up online, or find information not available on the current page. Do NOT use for current page content — use get_current_tab_page_content instead.",
+            "name": "search_web",
+            "parameters": {
+                "properties": {
+                    "query": {
+                        "description": "The search query",
+                        "type": "string"
+                    }
+                },
+                "required": ["query"],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "tool",
+        "usage_cost": 5
     },
     {
         "function": {

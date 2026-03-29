@@ -44,6 +44,18 @@ try {
     console.error('>>> Failed to load jslib/internal-tools.js:', e);
 }
 
+try {
+    importScripts('jslib/search-engines.js');
+} catch (e) {
+    console.error('>>> Failed to load jslib/search-engines.js:', e);
+}
+
+try {
+    importScripts('jslib/web-search.js');
+} catch (e) {
+    console.error('>>> Failed to load jslib/web-search.js:', e);
+}
+
 init();
 clearLegacyPageContentStorage();
 

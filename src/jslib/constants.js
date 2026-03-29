@@ -13,3 +13,5 @@ var MAX_SESSION_PAGES = 5; // Maximum pages to keep per session
 var ARCHIVE_RETENTION_DAYS = 2; // Keep archived sessions for 2 days
 var mainHelpPageUrl = 'https://github.com/ivostoykov/localAI/blob/main/documentation.md';
 var modifiersHelpUrl = 'https://github.com/ivostoykov/localAI/blob/main/documentation.md#modifiers';
+var DEFAULT_SEARCH_ENGINE = 'duckduckgo';
+var DEFAULT_SEARCH_RESULT_COUNT = 3;
