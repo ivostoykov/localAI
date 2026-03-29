@@ -177,7 +177,7 @@ async function saveSettings(e) {
         for (let i = 0; i < elements.length; i++) {
             const element = elements[i];
             console.debug(`[${getLineNumber()}]: ${element?.id} is ${element?.type}`);
-            if (['select', 'checkbox', 'text', 'textarea', 'number', 'range', 'url'].indexOf(element.type) < 0) {
+            if (['select', 'select-one', 'checkbox', 'text', 'textarea', 'number', 'range', 'url'].indexOf(element.type) < 0) {
                 continue;
             }
             if(!element.id || !element.type){
