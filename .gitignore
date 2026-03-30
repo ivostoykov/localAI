@@ -19,6 +19,7 @@ Chrome_changes/
 .docs/
 .docs/**
 .aimem/
+.aimem-spec/
 .vscode/
 .issues/
 

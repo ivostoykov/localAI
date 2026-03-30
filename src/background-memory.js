@@ -106,14 +106,15 @@ class BackgroundMemory {
       throw new Error("No session Id was provided and no active session Id was found.");
     }
     const currentContext = await this.getContext(sessionId);
+    const deduplicatedAttachments = this.getDeduplicatedAttachments(attachments, pageContent);
     const context = {
       sessionId,
       tabId,
       pageContent: pageContent || null,
       pageHash: pageHash || null,
       pageSummary: pageContent ? this.extractPageSummary(pageContent) : null,
-      attachments: attachments || [],
-      attachmentSummaries: (attachments || []).map(att => this.extractAttachmentSummary(att)),
+      attachments: deduplicatedAttachments,
+      attachmentSummaries: deduplicatedAttachments.map(att => this.extractAttachmentSummary(att)),
       timestamp: Date.now()
     };
     const updatedContext = Object.assign({}, currentContext, context);
@@ -153,6 +154,7 @@ class BackgroundMemory {
     const context = [];
     const budget = 3200;
     let used = 0;
+    const deduplicatedAttachments = this.getDeduplicatedAttachments(attachments, pageContent);
 
     if (systemInstructions) {
       context.push({ role: 'system', content: systemInstructions });
@@ -161,8 +163,8 @@ class BackgroundMemory {
 
     let sessionContext = await this.getContext(sessionId);
 
-    if (pageContent || attachments?.length > 0) {
-      await this.storeContext(sessionId, pageContent, attachments, pageHash, tabId);
+    if (pageContent || deduplicatedAttachments.length > 0) {
+      await this.storeContext(sessionId, pageContent, deduplicatedAttachments, pageHash, tabId);
       sessionContext = await this.getContext(sessionId);
     }
 
@@ -194,9 +196,14 @@ class BackgroundMemory {
       }
     // }
 
-    if (sessionContext?.attachments?.length > 0) {
+    const contextAttachments = this.getDeduplicatedAttachments(
+      sessionContext?.attachments,
+      pageContent || sessionContext?.pageContent
+    );
+
+    if (contextAttachments.length > 0) {
       if (turnNumber <= 2) {
-        sessionContext.attachments.forEach(att => {
+        contextAttachments.forEach(att => {
           const header = `[ATTACHMENT ${att.type?.toUpperCase()}]` +
             (att.filename ? ` (${att.filename})` : '') +
             (att.sourceUrl ? ` (from ${att.sourceUrl.split('/').slice(-2).join('/')})` : '');
@@ -207,7 +214,9 @@ class BackgroundMemory {
           used += this.estimateTokens(att.content);
         });
       } else if (sessionContext.attachmentSummaries?.length > 0) {
-        const summaries = sessionContext.attachmentSummaries.join('\n');
+        const summaries = contextAttachments
+          .map(att => this.extractAttachmentSummary(att))
+          .join('\n');
         context.push({ role: 'system', content: `[ATTACHMENTS]: ${summaries}` });
         used += this.estimateTokens(summaries);
       }
@@ -299,6 +308,28 @@ class BackgroundMemory {
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  getDeduplicatedAttachments(attachments = [], pageContent = null) {
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+      return [];
+    }
+
+    return attachments.filter(att => {
+      if (!att) {
+        return false;
+      }
+
+      if (!pageContent) {
+        return true;
+      }
+
+      if (att.cmd === 'page') {
+        return false;
+      }
+
+      return !(typeof att.content === 'string' && att.content === pageContent);
+    });
   }
 
   chunkPageContent(pageContent, maxTokens = 500) {

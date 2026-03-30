@@ -100,6 +100,21 @@ describe('background-memory.js', () => {
             expect(context.attachments).toHaveLength(1);
             expect(context.attachmentSummaries).toHaveLength(1);
         });
+
+        it('removes duplicate page attachments when page content is already stored', async () => {
+            const pageContent = 'Page content here';
+            const attachments = [
+                { id: 'page-att', cmd: 'page', type: 'snippet', content: pageContent },
+                { id: 'other-att', type: 'snippet', content: 'Different attachment content' }
+            ];
+
+            await backgroundMemory.storeContext('session-1', pageContent, attachments);
+
+            const context = await backgroundMemory.getContext('session-1');
+
+            expect(context.attachments).toHaveLength(1);
+            expect(context.attachments[0].id).toBe('other-att');
+        });
     });
 
     describe('getRecentTurns', () => {
@@ -164,6 +179,24 @@ describe('background-memory.js', () => {
             expect(context.some(msg => msg.content === 'System instructions')).toBe(true);
             // Page content is no longer auto-included (Phase 5 - on-demand fetching)
             expect(context[context.length - 1].content).toBe('Hello');
+        });
+
+        it('does not include page content twice when a matching attachment exists', async () => {
+            const pageContent = 'Page content here';
+            const context = await backgroundMemory.buildOptimisedContext(
+                'session-1',
+                'Hello',
+                1,
+                null,
+                pageContent,
+                [
+                    { id: 'page-att', cmd: 'page', type: 'snippet', content: pageContent }
+                ],
+                'hash-1'
+            );
+
+            expect(context.filter(msg => msg.content === `[PAGE CONTENT]:\n${pageContent}`)).toHaveLength(1);
+            expect(context.some(msg => msg.content.includes('[ATTACHMENT'))).toBe(false);
         });
 
         it('includes recent turns', async () => {

@@ -1190,7 +1190,7 @@ function getParseAndRenderOptions(rootEl) {
     return { abortSignal: controller.signal };
 }
 
-async function onRuntimeMessage(response, sender, sendResponse) {
+function onRuntimeMessage(response, sender, sendResponse) {
     // Handle messages that don't require shadowRoot first
     if (response && response?.action === 'ping') {
         sendResponse({ pong: true });
@@ -1201,6 +1201,20 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         dumpInConsole(response.message, response.obj, response.type);
         return;
     }
+
+    messageProcessor(response, sender)
+        .then(result => {
+            sendResponse(result ?? { result: true });
+        })
+        .catch(error => {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error handling runtime message:`, error);
+            sendResponse({ error: error?.message || String(error) });
+        });
+
+    return true;
+}
+
+async function messageProcessor(response, sender) {
 
     // All other actions require shadowRoot
     const shadowRoot = getShadowRoot();
@@ -1214,7 +1228,7 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             restartCounter++;
             start();
         }
-        return;
+        return { error: 'Local AI UI is not ready yet.' };
     }
 
     let recipient;
@@ -1333,10 +1347,7 @@ async function onRuntimeMessage(response, sender, sendResponse) {
             if (response.message) { updateStatusBar(response.message); }
             break;
         case "callContentExtractor":
-            (async () => {
-                await handleContentExtractorCall(response, sendResponse);
-            })();
-            return true;
+            return { result: await handleContentExtractorCall(response) };
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
             break;
@@ -1347,8 +1358,7 @@ async function onRuntimeMessage(response, sender, sendResponse) {
         resetStatusbar();
     }
 
-    sendResponse({result: true});
-    return true;
+    return { result: true };
 }
 
 function laiHandleStreamActions(logMessage, recipient, abortText = '') {
@@ -1391,48 +1401,46 @@ function laiGetRecipient() {
     return recipient;
 }
 
-async function handleContentExtractorCall(response, sendResponse) {
-    try {
-        const { functionName, argument } = response;
-        let result;
+async function handleContentExtractorCall(response) {
+    const { functionName, argument } = response;
+    let result;
 
-        switch (functionName) {
-            case 'getPageStructureSummary':
-                const summaryObj = await getPageStructureSummary();
-                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getPageStructureSummary returned:`, summaryObj);
-                result = JSON.stringify(summaryObj, null, 2);
-                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - JSON.stringify result:`, result);
-                break;
-            case 'getPageTables':
-                result = await getPageTables(argument);
-                break;
-            case 'getPageLists':
-                result = await getPageLists(argument);
-                break;
-            case 'getPageCodeBlocks':
-                result = await getPageCodeBlocks(argument);
-                break;
-            case 'getPageMetadataFormatted':
-                result = getPageMetadataFormatted();
-                break;
-            case 'getEnhancedPageContent':
-                result = await getEnhancedPageContent();
-                break;
-            case 'getMainContentOnly':
-                result = await getMainContentOnly();
-                break;
-            default:
-                sendResponse({ error: `Unknown content extractor function: ${functionName}` });
-                return;
-        }
-
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to send response, result type:`, typeof result, 'result length:', result?.length);
-        sendResponse({ result });
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Response sent`);
-    } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Content extractor error:`, error);
-        sendResponse({ error: error.message });
+    switch (functionName) {
+        case 'getPageStructureSummary':
+            const summaryObj = await getPageStructureSummary();
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getPageStructureSummary returned:`, summaryObj);
+            result = JSON.stringify(summaryObj, null, 2);
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - JSON.stringify result:`, result);
+            break;
+        case 'getPageTables':
+            result = await getPageTables(argument);
+            break;
+        case 'getPageLists':
+            result = await getPageLists(argument);
+            break;
+        case 'getPageCodeBlocks':
+            result = await getPageCodeBlocks(argument);
+            break;
+        case 'getPageMetadataFormatted':
+            result = getPageMetadataFormatted();
+            break;
+        case 'getEnhancedPageContent':
+            result = await getEnhancedPageContent();
+            break;
+        case 'getMainContentOnly':
+            result = await getMainContentOnly();
+            break;
+        default:
+            throw new Error(`Unknown content extractor function: ${functionName}`);
     }
+
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Content extractor result ready`, {
+        functionName,
+        resultType: typeof result,
+        resultLength: result?.length
+    });
+
+    return result;
 }
 
 async function ask2ExplainSelection(response) {

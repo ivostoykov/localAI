@@ -1,6 +1,18 @@
 # Local AI - Changelog
 
-## [1.29.34] - 2026-03-29 - latest
+## [1.29.37] - 2026-03-30 - latest
+
+### Message Passing Fixes
+
+- Fixed content-extractor message passing so extracted page content is returned reliably to the worker instead of occasionally resolving to a bare `true`
+- Refactored the content-script runtime message handler to use a single response path
+- Removed redundant `sendResponse` handling, which now returns extracted content directly
+
+### Context Handling
+
+- Removed duplicated page-context injection for `@{{page}}` so non-tool models no longer receive the same page content twice
+
+## [1.29.34] - 2026-03-29
 
 ### Browser-Session Web Search
 
