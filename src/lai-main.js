@@ -1089,8 +1089,6 @@ async function queryAI(userInput) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
         shadowRoot?.getElementById('laiAbort')?.classList.add('invisible');
         shadowRoot?.getElementById('laiUserInput')?.classList.remove('invisible');
-    }
-    finally {
         resetStatusbar();
         shadowRoot.getElementById('laiUserInput')?.focus();
     }
@@ -1139,6 +1137,98 @@ function laiExtractDataFromResponse(response) {
 
     setModelNameLabel(response?.model ?? 'unknown');
     return fullContent || '';
+}
+
+function composeStreamingPreviewText({ thinking = '', content = '' } = {}) {
+    const blocks = [];
+    if ((thinking || '').trim().length > 0) {
+        blocks.push(`Thinking...\n${thinking}`);
+    }
+    if ((content || '').trim().length > 0) {
+        blocks.push(content);
+    }
+
+    return blocks.join('\n\n');
+}
+
+function appendStreamChunkToRecipient(recipient, response = {}) {
+    if (!recipient) { return ''; }
+
+    const contentDelta = typeof response?.contentDelta === 'string' ? response.contentDelta : '';
+    const thinkingDelta = typeof response?.thinkingDelta === 'string' ? response.thinkingDelta : '';
+    const rawChunk = typeof response?.rawChunk === 'string' ? response.rawChunk : '';
+    const accumulatedThinking = `${recipient._laiStreamThinking || ''}${thinkingDelta}`;
+    const accumulatedContent = `${recipient._laiStreamContent || ''}${contentDelta}`;
+
+    recipient._laiStreamThinking = accumulatedThinking;
+    recipient._laiStreamContent = accumulatedContent;
+    if (rawChunk) {
+        recipient._laiRawResponse = `${recipient._laiRawResponse || ''}${rawChunk}\n`;
+    }
+
+    if (response?.model) {
+        setModelNameLabel(response.model);
+    }
+
+    recipient.classList.add('lai-stream-live');
+    recipient.dataset.status = 'streaming';
+    recipient.replaceChildren();
+    recipient.textContent = composeStreamingPreviewText({
+        thinking: accumulatedThinking,
+        content: accumulatedContent
+    });
+
+    return recipient.textContent || '';
+}
+
+function resetStreamTracking(recipient, keepRawResponse = true) {
+    if (!recipient) { return; }
+
+    delete recipient._laiStreamThinking;
+    delete recipient._laiStreamContent;
+    if (!keepRawResponse) {
+        delete recipient._laiRawResponse;
+    }
+
+    recipient.classList.remove('lai-stream-live');
+    delete recipient.dataset.status;
+}
+
+function clearStreamingRecipient(recipient, keepRawResponse = true) {
+    if (!recipient) { return; }
+
+    recipient.replaceChildren();
+    resetStreamTracking(recipient, keepRawResponse);
+}
+
+async function finaliseStreamRecipient(recipient, response = {}) {
+    if (!recipient) { return; }
+
+    if (typeof response?.rawResponse === 'string' && response.rawResponse) {
+        recipient._laiRawResponse = response.rawResponse;
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Raw streamed response kept for debug`, {
+            rawResponseLength: response.rawResponse.length,
+            rawResponse: response.rawResponse
+        });
+    }
+
+    const finalContent = laiExtractDataFromResponse(response);
+    clearStreamingRecipient(recipient, !!recipient._laiRawResponse);
+
+    if (!finalContent) {
+        return;
+    }
+
+    try {
+        await parseAndRender(finalContent, recipient, {
+            ...(getParseAndRenderOptions(recipient) || {}),
+            streamReply: false
+        });
+    } catch (error) {
+        recipient.textContent = finalContent;
+        laiHandleStreamActions("Streaming response render fallback", recipient);
+        throw error;
+    }
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {
@@ -1257,28 +1347,33 @@ async function messageProcessor(response, sender) {
     switch (response.action) {
         case "streamData":
 
-            let dataChunk;
             let streamDataError;
             try {
-                dataChunk = laiExtractDataFromResponse(response);
-                if (!dataChunk) { return; }
-                updateStatusBar('Receiving and processing data...');
                 const rootRecipient = laiGetRecipient();
                 if (!rootRecipient) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Target element not found!`) }
-                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Starting parseAndRender`, {
+                updateStatusBar('Receiving and processing data...');
+                const previewText = appendStreamChunkToRecipient(rootRecipient, response);
+                if (!previewText) { return; }
+                scrollChatHistoryContainer({ target: rootRecipient });
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Stream chunk appended`, {
                     responseAction: response.action,
-                    contentLength: dataChunk.length,
+                    contentLength: previewText.length,
                     aiCardCount: shadowRoot.querySelectorAll('.lai-ai-input').length,
                     recipientChildCount: rootRecipient.childNodes.length,
                     recipientTextLength: rootRecipient.innerText?.length ?? 0
                 });
-                await parseAndRender(dataChunk, rootRecipient, getParseAndRenderOptions(rootRecipient) || {});
             } catch (err) {
                 streamDataError = err;
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, dataChunk, response);
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, response);
             }
             break;
         case "streamEnd":
+            try {
+                await finaliseStreamRecipient(recipient, response);
+            } catch (error) {
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to finalise streamed response`, error, response);
+                showMessage(`Failed to render the response as markdown - ${error.message}`, 'warning');
+            }
             break;
         case "streamError":
             laiHandleStreamActions("Stream Error", recipient);
@@ -1382,6 +1477,10 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
             span.textContent = abortText;
             recipient.appendChild(span);
         } else { recipient.innerHTML += `<span class="lai-aborted-text">${abortText}</span>`; }
+    }
+
+    if (recipient) {
+        resetStreamTracking(recipient);
     }
 }
 

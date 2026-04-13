@@ -141,8 +141,7 @@ async function initRibbon() {
         updateStatusBar(`Thinking ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
         setTimeout(() => { resetStatusbar(); }, 1000);
     });
-    await adjustThinkingStatus(ribbon?.querySelector('#modelThinking'));
-    await adjustToolsStatus(ribbon?.querySelector('#toolFunctions'));
+    scheduleModelCapabilityRefresh();
 
     shadowRoot?.getElementById('recycleCurrentSessionBtn')?.addEventListener('click', async e => await recycleActiveSession(e, shadowRoot), false);
     shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
@@ -163,12 +162,38 @@ async function initRibbon() {
 
 }
 
+function scheduleModelCapabilityRefresh(attempt = 0) {
+    if (attempt > 5) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Model capability refresh retries exhausted.`);
+        return;
+    }
+
+    const shadowRoot = getShadowRoot();
+    const ribbon = getRibbon();
+    if (!shadowRoot || !ribbon) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Retrying model capability refresh (${attempt + 1}/6) because the ribbon is not ready yet.`);
+        setTimeout(() => scheduleModelCapabilityRefresh(attempt + 1), 500);
+        return;
+    }
+
+    Promise.allSettled([
+        adjustThinkingStatus(ribbon?.querySelector('#modelThinking'), { suppressStatusBar: true, throwOnError: true }),
+        adjustToolsStatus(ribbon?.querySelector('#toolFunctions'), { suppressStatusBar: true, throwOnError: true })
+    ]).then(results => {
+        const failed = results.some(result => result.status === 'rejected');
+        if (!failed) { return; }
+
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Retrying model capability refresh (${attempt + 1}/6) after a startup capability probe failure.`, results);
+        setTimeout(() => scheduleModelCapabilityRefresh(attempt + 1), 1000);
+    });
+}
+
 async function closeAllDropDownRibbonMenus(e) {
     const shadowRoot = getShadowRoot();
     const openMenus = Array.from(shadowRoot?.querySelectorAll('.js-menu-is-open') ?? []);
     if (openMenus.length < 1) { return; }
 
-    const compPath = e.composedPath(); // check for sidebar - if not in there, head button is clicked
+    const compPath = typeof e?.composedPath === 'function' ? e.composedPath() : []; // check for sidebar - if not in there, head button is clicked
     if (compPath?.findIndex(e => e.id === 'laiMainButton') > -1) { return; } // ext main buttono was clicked
 
     const originator = compPath?.[0]; // e?.target;
@@ -177,6 +202,8 @@ async function closeAllDropDownRibbonMenus(e) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - compPath inside forEach`, compPath);
         if (el === originator) { return; }
         if (compPath?.findIndex(p => p === el) > 0) { return; } // clicked inside the menu
+        const relatedMenuId = el?.dataset?.menuId;
+        if (relatedMenuId && compPath?.findIndex(p => p?.id === relatedMenuId) > -1) { return; }
         el?.click();
     });
 }
@@ -478,19 +505,19 @@ async function modelLabelClicked(e) {
     container.classList.remove('open', 'js-menu-is-open');
 }
 
-async function getAndShowModels() {
+async function getAndShowModels(forceRefresh = false) {
     const laiOptions = await getOptions();
     let response;
-    updateStatusBar('Loading model list...')
+    updateStatusBar(forceRefresh ? 'Refreshing model list...' : 'Loading model list...')
     try {
-        response = await chrome.runtime.sendMessage({ action: "getModels" });
+        response = await chrome.runtime.sendMessage({ action: "getModels", forceRefresh });
         if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         if (typeof (response) === 'boolean') { return; }
         if (!response) { throw new Error(`[${getLineNumber()}] - Server does not respond!`); }
         if (response.status !== 'success') { throw new Error(response?.message || 'Unknown error!'); }
-        laiOptions.modelList = response.models?.map(m => m.name).sort() || [];
+        laiOptions.modelList = response.models?.map(m => m.name).filter(Boolean).sort() || [];
         await setOptions(laiOptions);
-        await fillAndShowModelList(response.models?.sort((a, b) => a.name.localeCompare(b.name)));
+        await fillAndShowModelList(response.models || []);
     } catch (e) {
         showMessage(e.message, 'error');
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: ${e.message}`, e, response);
@@ -498,7 +525,7 @@ async function getAndShowModels() {
 
 }
 
-async function fillAndShowModelList(models) {
+async function fillAndShowModelList(models = []) {
     const shadowRoot = getShadowRoot();
     const modelList = shadowRoot.querySelector('#availableModelList');
     const modelsDropDown = shadowRoot.querySelector('#modelList');
@@ -509,21 +536,51 @@ async function fillAndShowModelList(models) {
         return;
     }
 
-    modelList.replaceChildren();
     modelsDropDown.replaceChildren();
     modelsDropDown.appendChild(opt);
     const laiOptions = await getOptions();
-    for (let idx = 0, l = models.length; idx < l; idx++) {
+    modelList.replaceChildren();
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'model-list-toolbar';
+    const refreshButton = document.createElement('button');
+    refreshButton.type = 'button';
+    refreshButton.className = 'model-list-refresh';
+    refreshButton.setAttribute('aria-label', 'Refresh the available models');
+    refreshButton.title = 'Refresh the available models';
+    refreshButton.textContent = '🗘';
+    refreshButton.addEventListener('click', async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        await getAndShowModels(true);
+    });
+    toolbar.appendChild(refreshButton);
+    modelList.appendChild(toolbar);
+
+    for (let idx = 0; idx < models.length; idx++) {
         const model = models[idx];
-        const m = document.createElement('div');
-        m.textContent = `${model.name}${model.name === laiOptions.aiModel ? ' ✔' : ''}`;
-        m.addEventListener('click', async e => {
-            e.stopPropagation();
-            await closeAllDropDownRibbonMenus(e);
-            modelsDropDown.selectedIndex = idx + 1; // there is an extra empty option
-            await swapActiveModel(e, model.name);
+        const item = document.createElement('div');
+        item.className = 'model-list-item';
+        item.dataset.modelName = model?.name || '';
+        item.dataset.modelSource = model?.source || '';
+        item.textContent = `${model?.name || ''}${model?.name === laiOptions.aiModel ? ' ✔' : ''}`;
+
+        if (!model?.name) {
+            item.classList.add('unavailable');
+            modelList.appendChild(item);
+            continue;
+        }
+
+        item.addEventListener('click', async event => {
+            event.stopPropagation();
+            await closeAllDropDownRibbonMenus(event);
+            const matchingOption = Array.from(modelsDropDown.options).findIndex(option => option.value === model.name);
+            if (matchingOption > -1) {
+                modelsDropDown.selectedIndex = matchingOption;
+            }
+            await swapActiveModel(event, model.name);
         });
-        modelList.appendChild(m);
+        modelList.appendChild(item);
 
         opt = document.createElement('option');
         opt.text = opt.value = model.name;
@@ -537,7 +594,6 @@ async function fillAndShowModelList(models) {
 async function swapActiveModel(e, modelName) {
     e.stopPropagation();
     const activatedModel = e.target;
-    const parent = activatedModel.parentElement;
     const laiOptions = await getOptions();
     const oldModel = laiOptions.aiModel;
     if (!activatedModel) { return; }
@@ -572,9 +628,12 @@ async function swapActiveModel(e, modelName) {
         await adjustToolsStatus();
 
         setModelNameLabel({ "model": modelName });
-        Array.from(parent.children).forEach(child => child.textContent = child.textContent.replace(/ ✔/g, ''));
-        activatedModel.textContent = `${activatedModel.textContent} ✔`;
-        parent.classList.add('invisible');
+        const availableModelList = getShadowRoot()?.querySelector('#availableModelList');
+        availableModelList?.querySelectorAll('.model-list-item').forEach(item => {
+            const itemModelName = item.dataset.modelName || item.textContent.replace(/ ✔/g, '');
+            item.textContent = `${itemModelName}${itemModelName === modelName ? ' ✔' : ''}`;
+        });
+        availableModelList?.classList.add('invisible');
         const sideBar = getSideBar();
         sideBar.querySelector('div#modelNameContainer')?.classList.remove('open')
         showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
@@ -735,23 +794,29 @@ function getModelModifiers() {
     return settings;
 }
 
-async function adjustThinkingStatus(thinkingIconEl) {
+async function adjustThinkingStatus(thinkingIconEl, options = {}) {
+    const suppressStatusBar = options?.suppressStatusBar || false;
+    const throwOnError = options?.throwOnError || false;
     if (!thinkingIconEl) {
         let shadowRoot = getShadowRoot();
         thinkingIconEl = shadowRoot?.querySelector('#modelThinking');
         if (!thinkingIconEl) { return; }
     }
     const model = await getAiModel();
-    if (await modelCanThinkHelper(model)) {
+    if (await modelCanThinkHelper(model, { throwOnError })) {
         thinkingIconEl.classList.remove('disabled');
     } else {
         thinkingIconEl.classList.add('disabled');
     }
-    updateStatusBar(`Thinking ${thinkingIconEl.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
-    setTimeout(() => { resetStatusbar(); }, 1000);
+    if (!suppressStatusBar) {
+        updateStatusBar(`Thinking ${thinkingIconEl.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
+        setTimeout(() => { resetStatusbar(); }, 1000);
+    }
 }
 
-async function adjustToolsStatus(el) {
+async function adjustToolsStatus(el, options = {}) {
+    const suppressStatusBar = options?.suppressStatusBar || false;
+    const throwOnError = options?.throwOnError || false;
     if (!el) {
         let shadowRoot = getShadowRoot();
         el = shadowRoot?.querySelector('#toolFunctions');
@@ -759,11 +824,13 @@ async function adjustToolsStatus(el) {
     }
 
     const model = await getAiModel();
-    if (await modelCanUseToolsHelper(model)) {
+    if (await modelCanUseToolsHelper(model, { throwOnError })) {
         el.classList.remove('disabled');
     } else {
         el.classList.add('disabled');
     }
-    updateStatusBar(`Tools ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
-    setTimeout(() => { resetStatusbar(); }, 1000);
+    if (!suppressStatusBar) {
+        updateStatusBar(`Tools ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
+        setTimeout(() => { resetStatusbar(); }, 1000);
+    }
 }

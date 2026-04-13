@@ -22,6 +22,13 @@ const replaceCommandPlaceholdersCode = backgroundCode.match(/function replaceCom
 const getLineNumberCode = 'function getLineNumber() { return "test:1"; }';
 const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 const sanitizeAssistantMessageForHistoryCode = backgroundCode.match(/function sanitizeAssistantMessageForHistory\([\s\S]*?\n}\n/)[0];
+const normaliseStreamLineCode = backgroundCode.match(/function normaliseStreamLine\([\s\S]*?\n}\n/)[0];
+const mergeStreamChunkBodyCode = backgroundCode.match(/function mergeStreamChunkBody\([\s\S]*?\n}\n/)[0];
+const getStreamChunkUiPayloadCode = backgroundCode.match(/function getStreamChunkUiPayload\([\s\S]*?\n}\n/)[0];
+const parsePositiveIntegerCode = backgroundCode.match(/function parsePositiveInteger\([\s\S]*?\n}\n/)[0];
+const getAutomaticContextWindowCode = backgroundCode.match(/async function getAutomaticContextWindow\([\s\S]*?\n}\n/)[0];
+const applyAutomaticModelOptionsCode = backgroundCode.match(/async function applyAutomaticModelOptions\([\s\S]*?\n}\n/)[0];
+const handleResponseCode = backgroundCode.match(/async function handleResponse\([\s\S]*?\n}\n/)[0];
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
 const modelCanUseToolsCode = backgroundCode.match(/async function modelCanUseTools\([\s\S]*?\n}\n/)[0];
 
@@ -32,15 +39,22 @@ ${replaceCommandPlaceholdersCode}
 ${getLineNumberCode}
 ${isMessagePersistableCode}
 ${sanitizeAssistantMessageForHistoryCode}
+${normaliseStreamLineCode}
+${mergeStreamChunkBodyCode}
+${getStreamChunkUiPayloadCode}
+${parsePositiveIntegerCode}
+${getAutomaticContextWindowCode}
+${applyAutomaticModelOptionsCode}
+${handleResponseCode}
 ${modelCanThinkCode}
 ${modelCanUseToolsCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, modelCanThink, modelCanUseTools };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, modelCanThink, modelCanUseTools };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, modelCanThink, modelCanUseTools;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, modelCanThink, modelCanUseTools;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -51,6 +65,13 @@ describe('background.js', () => {
         getLineNumber = exports.getLineNumber;
         isMessagePersistable = exports.isMessagePersistable;
         sanitizeAssistantMessageForHistory = exports.sanitizeAssistantMessageForHistory;
+        normaliseStreamLine = exports.normaliseStreamLine;
+        mergeStreamChunkBody = exports.mergeStreamChunkBody;
+        getStreamChunkUiPayload = exports.getStreamChunkUiPayload;
+        parsePositiveInteger = exports.parsePositiveInteger;
+        getAutomaticContextWindow = exports.getAutomaticContextWindow;
+        applyAutomaticModelOptions = exports.applyAutomaticModelOptions;
+        handleResponse = exports.handleResponse;
         modelCanThink = exports.modelCanThink;
         modelCanUseTools = exports.modelCanUseTools;
     });
@@ -315,6 +336,225 @@ describe('background.js', () => {
             sanitizeAssistantMessageForHistory(message);
 
             expect(message.thinking).toBe(originalThinking);
+        });
+    });
+
+    describe('stream helpers', () => {
+        it('normalises data-prefixed lines and skips done markers', () => {
+            expect(normaliseStreamLine('data: {"a":1}')).toBe('{"a":1}');
+            expect(normaliseStreamLine('data: [DONE]')).toBe('');
+            expect(normaliseStreamLine('   ')).toBe('');
+        });
+
+        it('merges streamed content and thinking into one body', () => {
+            const merged = mergeStreamChunkBody({}, {
+                model: 'phi4:latest',
+                message: {
+                    role: 'assistant',
+                    content: 'Hello',
+                    thinking: 'Thinking'
+                },
+                done: false
+            });
+
+            const mergedAgain = mergeStreamChunkBody(merged, {
+                message: {
+                    content: ' world',
+                    thinking: ' more'
+                },
+                done: true,
+                done_reason: 'stop'
+            });
+
+            expect(mergedAgain.model).toBe('phi4:latest');
+            expect(mergedAgain.message.content).toBe('Hello world');
+            expect(mergedAgain.message.thinking).toBe('Thinking more');
+            expect(mergedAgain.done).toBe(true);
+            expect(mergedAgain.done_reason).toBe('stop');
+        });
+
+        it('builds UI payload from streamed chunk deltas', () => {
+            const payload = getStreamChunkUiPayload({
+                model: 'phi4:latest',
+                message: {
+                    content: 'Hi',
+                    thinking: 'Let me think'
+                }
+            }, '{"model":"phi4:latest"}');
+
+            expect(payload).toEqual({
+                model: 'phi4:latest',
+                contentDelta: 'Hi',
+                thinkingDelta: 'Let me think',
+                rawChunk: '{"model":"phi4:latest"}'
+            });
+        });
+    });
+
+    describe('parsePositiveInteger', () => {
+        it('returns a positive integer for integer input', () => {
+            expect(parsePositiveInteger(4096)).toBe(4096);
+        });
+
+        it('floors decimal input', () => {
+            expect(parsePositiveInteger('4096.9')).toBe(4096);
+        });
+
+        it('returns null for empty or invalid input', () => {
+            expect(parsePositiveInteger('')).toBe(null);
+            expect(parsePositiveInteger('abc')).toBe(null);
+            expect(parsePositiveInteger(0)).toBe(null);
+        });
+    });
+
+    describe('getAutomaticContextWindow', () => {
+        beforeEach(() => {
+            global.getModelInfo = vi.fn();
+            global.console = {
+                error: vi.fn()
+            };
+            global.manifest = { name: 'Test' };
+        });
+
+        it('returns local model context window when available', async () => {
+            global.getModelInfo.mockResolvedValue({
+                source: 'local',
+                contextWindow: 8192
+            });
+
+            const result = await getAutomaticContextWindow('phi4:latest');
+
+            expect(result).toBe(8192);
+        });
+
+        it('returns null for cloud models', async () => {
+            global.getModelInfo.mockResolvedValue({
+                source: 'cloud',
+                contextWindow: 131072
+            });
+
+            const result = await getAutomaticContextWindow('gpt-oss:120b-cloud');
+
+            expect(result).toBe(null);
+        });
+
+        it('returns null when model info is missing or invalid', async () => {
+            global.getModelInfo.mockResolvedValue({
+                source: 'local',
+                contextWindow: 0
+            });
+
+            const result = await getAutomaticContextWindow('broken-model');
+
+            expect(result).toBe(null);
+        });
+    });
+
+    describe('applyAutomaticModelOptions', () => {
+        beforeEach(() => {
+            global.getModelInfo = vi.fn();
+            global.console = {
+                error: vi.fn()
+            };
+            global.manifest = { name: 'Test' };
+        });
+
+        it('preserves explicitly provided num_ctx', async () => {
+            const requestData = {
+                options: {
+                    num_ctx: '2048',
+                    temperature: 0.2
+                }
+            };
+
+            const result = await applyAutomaticModelOptions(requestData, 'phi4:latest');
+
+            expect(result.options.num_ctx).toBe(2048);
+            expect(global.getModelInfo).not.toHaveBeenCalled();
+        });
+
+        it('injects automatic num_ctx for local models when absent', async () => {
+            global.getModelInfo.mockResolvedValue({
+                source: 'local',
+                contextWindow: 32768
+            });
+            const requestData = {
+                options: {
+                    temperature: 0.2
+                }
+            };
+
+            const result = await applyAutomaticModelOptions(requestData, 'phi4:latest');
+
+            expect(result.options.num_ctx).toBe(32768);
+            expect(result.options.temperature).toBe(0.2);
+        });
+
+        it('does not inject num_ctx for cloud models', async () => {
+            global.getModelInfo.mockResolvedValue({
+                source: 'cloud',
+                contextWindow: 131072
+            });
+            const requestData = {
+                options: {
+                    temperature: 0.2
+                }
+            };
+
+            const result = await applyAutomaticModelOptions(requestData, 'gpt-oss:120b-cloud');
+
+            expect(result.options.num_ctx).toBeUndefined();
+            expect(result.options.temperature).toBe(0.2);
+        });
+
+        it('leaves request data unchanged when no options are resolved', async () => {
+            global.getModelInfo.mockResolvedValue({
+                source: 'local',
+                contextWindow: null
+            });
+            const requestData = {};
+
+            const result = await applyAutomaticModelOptions(requestData, 'phi4:latest');
+
+            expect(result.options).toBeUndefined();
+        });
+    });
+
+    describe('handleResponse', () => {
+        beforeEach(() => {
+            global.chrome = {
+                runtime: {
+                    lastError: null
+                },
+                tabs: {
+                    sendMessage: vi.fn().mockResolvedValue(undefined)
+                }
+            };
+            global.showUIMessage = vi.fn();
+            global.console = {
+                debug: vi.fn(),
+                error: vi.fn()
+            };
+            global.manifest = { name: 'Test' };
+        });
+
+        it('sends a single streamEnd message with the final response payload', async () => {
+            await handleResponse({ message: { content: 'Hello' } }, 123);
+
+            expect(global.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
+            expect(global.chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
+                action: 'streamEnd',
+                response: JSON.stringify({ message: { content: 'Hello' } })
+            });
+        });
+
+        it('sends an empty streamEnd message when no response data exists', async () => {
+            await handleResponse('', 123);
+
+            expect(global.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
+            expect(global.chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
+                action: 'streamEnd'
+            });
         });
     });
 

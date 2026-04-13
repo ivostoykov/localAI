@@ -1,60 +1,30 @@
 
-try {
-    importScripts('jslib/constants.js');
-} catch (e) {
-    console.error('>>> Failed to load jslib/constants.js:', e);
+const backgroundRuntimeUrl = chrome.runtime?.getURL?.('') || '';
+const shouldImportBackgroundScripts = typeof importScripts === 'function' && backgroundRuntimeUrl.startsWith('chrome-extension://');
+
+function importBackgroundScript(path) {
+    if (!shouldImportBackgroundScripts) { return; }
+
+    try {
+        importScripts(path);
+    } catch (e) {
+        console.error(`>>> Failed to load ${path}:`, e);
+    }
 }
 
-try {
-    importScripts('jslib/utils.js');
-} catch (e) {
-    console.error('>>> Failed to load jslib/utils.js:', e);
-}
+importBackgroundScript('jslib/constants.js');
+importBackgroundScript('jslib/utils.js');
+importBackgroundScript('jslib/model-catalogue.js');
 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 
-try {
-    importScripts('jslib/log.js');
-} catch (e) {
-    console.error('>>> Failed to load jslib/log.js:', e);
-}
-
-try {
-    importScripts('background-memory.js');
-} catch (e) {
-    console.error('>>> Failed to load background-memory.js:', e);
-}
-
-try {
-    importScripts('jslib/sessions.js');
-} catch (e) {
-    console.error('>>> Failed to load jslib/sessions.js:', e);
-}
-
-try {
-    importScripts('jslib/session-repository.js');
-} catch (e) {
-    console.error('>>> Failed to load jslib/session-repository.js:', e);
-}
-
-try {
-    importScripts('jslib/internal-tools.js');
-    console.debug('>>> jslib/internal-tools.js loaded successfully');
-} catch (e) {
-    console.error('>>> Failed to load jslib/internal-tools.js:', e);
-}
-
-try {
-    importScripts('jslib/search-engines.js');
-} catch (e) {
-    console.error('>>> Failed to load jslib/search-engines.js:', e);
-}
-
-try {
-    importScripts('jslib/web-search.js');
-} catch (e) {
-    console.error('>>> Failed to load jslib/web-search.js:', e);
-}
+importBackgroundScript('jslib/log.js');
+importBackgroundScript('background-memory.js');
+importBackgroundScript('jslib/sessions.js');
+importBackgroundScript('jslib/session-repository.js');
+importBackgroundScript('jslib/internal-tools.js');
+importBackgroundScript('jslib/search-engines.js');
+importBackgroundScript('jslib/web-search.js');
 
 init();
 clearLegacyPageContentStorage();
@@ -107,115 +77,107 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${activeInfo.tabId} activated`);
 });
 
+async function handleRuntimeMessage(request, sender) {
+    let response;
+    const tabId = sender?.tab?.id;
+
+    if (request.action === 'fetchData' && tabId != null) {
+        controllers.delete(tabId);
+    }
+
+    switch (request.action) {
+        case 'getTabId':
+            return { tabId: sender?.tab?.id };
+
+        case 'getModels':
+            return await getModels(request?.forceRefresh || false);
+
+        case 'fetchData':
+            return await fetchDataAction(request, sender);
+
+        case 'abortFetch':
+            if (tabId != null) {
+                const ctrl = controllers.get(tabId);
+                if (ctrl) {
+                    ctrl.abort('User aborted last request.');
+                    controllers.delete(tabId);
+                }
+            }
+            return;
+
+        case 'extractText':
+            return await convertFileToText(request.fileContent);
+
+        case "openModifiersHelpMenu":
+            chrome.tabs.create({ url: modifiersHelpUrl });
+            return;
+
+        case "openMainHelpMenu":
+            chrome.tabs.create({ url: mainHelpPageUrl });
+            return;
+
+        case "openOptionsPage":
+            chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
+            return;
+
+        case "modelCanThink":
+            response = await modelCanThink(request?.model);
+            return { canThink: response };
+
+        case "modelCanUseTools":
+            response = await modelCanUseTools(request?.model, sender?.tab);
+            return { canUseTools: response };
+
+        case "modelInfo":
+            return await getModelInfo(request?.model);
+
+        case "getModelInfo":
+            return await getModelInfo(request?.modelName, request?.forceRefresh);
+
+        case "prepareModels":
+            response = await prepareModels(request.modelName, request.unload, sender?.tab);
+            return { status: response?.status ?? 500, text: response?.statusText ?? 'Unknown error' };
+
+        case "storeImage":
+            return await storeImageHandler(request.base64, request.filename, request.mimeType);
+
+        case "deleteSessionMemory":
+            await backgroundMemory.deleteSession(request.sessionId);
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Deleted session ${request.sessionId} from memory`);
+            return { status: 'success' };
+
+        case "clearAllMemory":
+            await backgroundMemory.clearAll();
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cleared all memory from IndexedDB`);
+            return { status: 'success' };
+
+        default:
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
+            return;
+    }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    (async () => {
-        try {
-            let response;
-            const tabId = sender.tab?.id;
+    const runtimeUrl = chrome.runtime.getURL('');
+    const isFirefoxRuntime = runtimeUrl.startsWith('moz-extension://');
 
-            if (request.action === 'fetchData' && tabId != null) {
-                controllers.delete(tabId);
-            }
+    if (isFirefoxRuntime) {
+        return handleRuntimeMessage(request, sender).catch(async error => {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error handling message:`, error);
+            await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender?.tab?.id);
+            return { status: 'error', message: error.toString() };
+        });
+    }
 
-            switch (request.action) {
-                case 'getTabId':
-                    response = { tabId: sender.tab?.id };
-                    sendResponse(response);
-                    break;
-
-                case 'getModels':
-                    response = await getModels();
-                    sendResponse(response);
-                    break;
-
-                case 'fetchData':
-                    response = await fetchDataAction(request, sender);
-                    sendResponse(response);
-                    break;
-
-                case 'abortFetch':
-                    if (tabId != null) {
-                        const ctrl = controllers.get(tabId);
-                        if (ctrl) {
-                            ctrl.abort('User aborted last request.');
-                            controllers.delete(tabId);
-                        }
-                    }
-                    sendResponse();
-                    break;
-
-                case 'extractText':
-                    response = await convertFileToText(request.fileContent);
-                    sendResponse(response);
-                    break;
-
-                case "openModifiersHelpMenu":
-                    chrome.tabs.create({ url: modifiersHelpUrl });
-                    sendResponse();
-                    break;
-
-                case "openMainHelpMenu":
-                    chrome.tabs.create({ url: mainHelpPageUrl });
-                    sendResponse();
-                    break;
-
-                case "openOptionsPage":
-                    chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
-                    sendResponse();
-                    break;
-
-                case "modelCanThink":
-                    response = await modelCanThink(request?.model);
-                    sendResponse({ canThink: response });
-                    break;
-
-                case "modelCanUseTools":
-                    response = await modelCanUseTools(request?.model, sender?.tab);
-                    sendResponse({ canUseTools: response });
-                    break;
-
-                case "modelInfo":
-                    response = await getModelInfo(request?.model);
-                    sendResponse(response);
-                    break;
-
-                case "getModelInfo":
-                    response = await getModelInfo(request?.modelName, request?.forceRefresh);
-                    sendResponse(response);
-                    break;
-
-                case "prepareModels":
-                    response = await prepareModels(request.modelName, request.unload, sender.tab);
-                    sendResponse({ status: response?.status ?? 500, text: response?.statusText ?? 'Unknown error' });
-                    break;
-
-                case "storeImage":
-                    response = await storeImageHandler(request.base64, request.filename, request.mimeType);
-                    sendResponse(response);
-                    break;
-
-                case "deleteSessionMemory":
-                    await backgroundMemory.deleteSession(request.sessionId);
-                    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Deleted session ${request.sessionId} from memory`);
-                    sendResponse({ status: 'success' });
-                    break;
-
-                case "clearAllMemory":
-                    await backgroundMemory.clearAll();
-                    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cleared all memory from IndexedDB`);
-                    sendResponse({ status: 'success' });
-                    break;
-
-                default:
-                    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Unrecognized action:`, request?.action);
-                    sendResponse();
-            }
-        } catch (error) {
+    handleRuntimeMessage(request, sender)
+        .then(response => {
+            sendResponse(response);
+        })
+        .catch(async error => {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error handling message:`, error);
             await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error: ${error.message}`, error, "error", sender?.tab?.id);
             sendResponse({ status: 'error', message: error.toString() });
-        }
-    })();
+        });
 
     return true;
 });
@@ -275,6 +237,7 @@ async function init() {
         }
 
         await cleanupOrphanedSessions();
+        await refreshModelCatalogueCache();
         await validateModelInfoCache();
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - Failed to initialise memory system:`, e);
@@ -382,17 +345,185 @@ function sanitizeAssistantMessageForHistory(message = {}) {
     return isMessagePersistable(sanitizedMessage) ? sanitizedMessage : null;
 }
 
+function normaliseStreamLine(rawLine = '') {
+    let line = `${rawLine || ''}`.trim();
+    if (!line) { return ''; }
+
+    line = line.replace(/^data:\s+/i, '').trim();
+    if (/^\[DONE\]$/i.test(line)) { return ''; }
+
+    return line;
+}
+
+function mergeStreamChunkBody(body = {}, chunk = {}) {
+    const mergedBody = body && typeof body === 'object' ? body : {};
+    if (!mergedBody.message || typeof mergedBody.message !== 'object') {
+        mergedBody.message = { role: 'assistant', content: '', thinking: '' };
+    }
+
+    mergedBody.model = chunk?.model || mergedBody.model || '';
+    mergedBody.created_at = chunk?.created_at || mergedBody.created_at;
+    mergedBody.done = chunk?.done ?? mergedBody.done ?? false;
+    mergedBody.done_reason = chunk?.done_reason || mergedBody.done_reason || '';
+    mergedBody.total_duration = chunk?.total_duration ?? mergedBody.total_duration;
+    mergedBody.load_duration = chunk?.load_duration ?? mergedBody.load_duration;
+    mergedBody.prompt_eval_count = chunk?.prompt_eval_count ?? mergedBody.prompt_eval_count;
+    mergedBody.prompt_eval_duration = chunk?.prompt_eval_duration ?? mergedBody.prompt_eval_duration;
+    mergedBody.eval_count = chunk?.eval_count ?? mergedBody.eval_count;
+    mergedBody.eval_duration = chunk?.eval_duration ?? mergedBody.eval_duration;
+
+    const chunkMessage = chunk?.message || {};
+    mergedBody.message.role = chunkMessage?.role || mergedBody.message.role || 'assistant';
+    mergedBody.message.content = `${mergedBody.message.content || ''}${typeof chunkMessage?.content === 'string' ? chunkMessage.content : ''}`;
+    mergedBody.message.thinking = `${mergedBody.message.thinking || ''}${typeof chunkMessage?.thinking === 'string' ? chunkMessage.thinking : ''}`;
+    if (Array.isArray(chunkMessage?.tool_calls) && chunkMessage.tool_calls.length > 0) {
+        mergedBody.message.tool_calls = chunkMessage.tool_calls;
+    }
+
+    return mergedBody;
+}
+
+function getStreamChunkUiPayload(chunk = {}, rawChunk = '') {
+    const chunkMessage = chunk?.message || {};
+
+    return {
+        model: chunk?.model || '',
+        contentDelta: typeof chunkMessage?.content === 'string' ? chunkMessage.content : '',
+        thinkingDelta: typeof chunkMessage?.thinking === 'string' ? chunkMessage.thinking : '',
+        rawChunk
+    };
+}
+
+async function sendStreamChunkToUi(senderTabId, payload = {}, debugEnabled = false) {
+    if (!senderTabId) { return; }
+
+    const hasVisibleDelta = !!((payload?.contentDelta || '') || (payload?.thinkingDelta || ''));
+    if (!hasVisibleDelta && !debugEnabled) { return; }
+
+    await chrome.tabs.sendMessage(senderTabId, {
+        action: "streamData",
+        model: payload?.model || '',
+        contentDelta: payload?.contentDelta || '',
+        thinkingDelta: payload?.thinkingDelta || '',
+        rawChunk: debugEnabled ? (payload?.rawChunk || '') : ''
+    });
+    if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+}
+
+async function consumeStreamResponse(response, senderTabId, debugEnabled = false) {
+    if (!response?.body || typeof response.body.getReader !== 'function') {
+        const responseText = await response.clone().text();
+        return {
+            responseText,
+            body: await response.json()
+        };
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let responseText = '';
+    let body = {};
+
+    while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (let index = 0; index < lines.length; index++) {
+            const line = normaliseStreamLine(lines[index]);
+            if (!line) { continue; }
+
+            responseText += `${line}\n`;
+            const chunk = JSON.parse(line);
+            body = mergeStreamChunkBody(body, chunk);
+            await sendStreamChunkToUi(senderTabId, getStreamChunkUiPayload(chunk, line), debugEnabled);
+        }
+
+        if (done) { break; }
+    }
+
+    const trailingLine = normaliseStreamLine(buffer);
+    if (trailingLine) {
+        responseText += `${trailingLine}\n`;
+        const chunk = JSON.parse(trailingLine);
+        body = mergeStreamChunkBody(body, chunk);
+        await sendStreamChunkToUi(senderTabId, getStreamChunkUiPayload(chunk, trailingLine), debugEnabled);
+    }
+
+    return {
+        responseText: responseText.trim(),
+        body
+    };
+}
+
+function parsePositiveInteger(value) {
+    const parsedValue = Number(value);
+    if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+        return null;
+    }
+
+    return Math.floor(parsedValue);
+}
+
+async function getAutomaticContextWindow(modelName = '') {
+    if (!modelName) { return null; }
+
+    try {
+        const modelData = await getModelInfo(modelName);
+        if (modelData?.error) { return null; }
+        if ((modelData?.source || '').toLowerCase() === 'cloud') { return null; }
+
+        return parsePositiveInteger(modelData?.contextWindow);
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to resolve automatic context window`, error);
+        return null;
+    }
+}
+
+async function applyAutomaticModelOptions(requestData = {}, modelName = '') {
+    if (!requestData || typeof requestData !== 'object') { return requestData; }
+
+    const currentOptions = (requestData?.options && typeof requestData.options === 'object')
+        ? requestData.options
+        : {};
+    const explicitNumCtx = parsePositiveInteger(currentOptions?.num_ctx);
+    if (explicitNumCtx) {
+        currentOptions.num_ctx = explicitNumCtx;
+        requestData.options = currentOptions;
+        return requestData;
+    }
+
+    const automaticNumCtx = await getAutomaticContextWindow(modelName);
+    if (!automaticNumCtx) {
+        if (Object.keys(currentOptions).length > 0) {
+            requestData.options = currentOptions;
+        } else {
+            delete requestData.options;
+        }
+        return requestData;
+    }
+
+    currentOptions.num_ctx = automaticNumCtx;
+    requestData.options = currentOptions;
+    return requestData;
+}
+
 async function handleResponse(responseData = '', senderTabId) {
     try {
         if (!responseData) {
             await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" });
             if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+            return;
         }
 
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response (type: ${typeof (responseData)})`, responseData);
-        await chrome.tabs.sendMessage(senderTabId, { action: "streamData", response: JSON.stringify(responseData) });
-        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-        await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" });
+        await chrome.tabs.sendMessage(senderTabId, {
+            action: "streamEnd",
+            response: JSON.stringify(responseData)
+        });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
@@ -400,6 +531,20 @@ async function handleResponse(responseData = '', senderTabId) {
     }
 
     return;
+}
+
+async function handleStreamEnd(responseData = '', senderTabId, rawResponse = '', debugEnabled = false) {
+    try {
+        await chrome.tabs.sendMessage(senderTabId, {
+            action: "streamEnd",
+            response: JSON.stringify(responseData),
+            rawResponse: debugEnabled ? rawResponse : ''
+        });
+        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
+        await showUIMessage(error.message, 'error');
+    }
 }
 
 async function askAIExplanation(info, tab) {
@@ -706,8 +851,9 @@ async function fetchDataAction(request, sender) {
 
     let model = await getAiModel()
     if (model) { request.data['model'] = model; }
+    await applyAutomaticModelOptions(request.data, model);
 
-    request.data["stream"] = false;
+    request.data["stream"] = true;
     request["format"] = "json";
 
     const userInput = request?.data?.userInput || "";
@@ -787,9 +933,15 @@ async function fetchDataAction(request, sender) {
         while(true) {
             reqOpt.body = JSON.stringify(request.data);
             response = await fetch(url, reqOpt);
-            responseText = await response.clone().text();
+            if (request.data.stream && response.ok) {
+                const streamedResponse = await consumeStreamResponse(response, sender?.tab?.id, laiOptions?.debug ?? false);
+                responseText = streamedResponse.responseText;
+                body = streamedResponse.body;
+            } else {
+                responseText = await response.clone().text();
+                body = await response.json();
+            }
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response received.`, responseText);
-            body = await response.json();
             responseMessage = body?.message;
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response as JSON`, body);
             request.data.messages.push(responseMessage);
@@ -881,7 +1033,11 @@ async function fetchDataAction(request, sender) {
         //     await updateUIStatusBar(`Thinking completed, awaiting response...`, sender?.tab);
         //     await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamEnd" });
         // } else {
-            await handleResponse(body, sender?.tab?.id);
+            if (request.data.stream) {
+                await handleStreamEnd(body, sender?.tab?.id, responseText, laiOptions?.debug ?? false);
+            } else {
+                await handleResponse(body, sender?.tab?.id);
+            }
         // }
     }
     catch (e) {
@@ -1033,7 +1189,8 @@ async function getLaiOptions() {
         "showEmbeddedButton": false,
         "loadHistoryOnStart": false,
         "systemInstructions": 'You are a helpful assistant.',
-        "personalInfo": ''
+        "personalInfo": '',
+        "debug": false
     };
 
     try {
@@ -1098,7 +1255,7 @@ async function getCurrentTab() {
     return tab;
 }
 
-async function getModels() {
+async function getModels(forceRefresh = false) {
     const laiOptions = await getLaiOptions();
     let urlVal = laiOptions?.aiUrl;
     if (!urlVal) {
@@ -1113,18 +1270,13 @@ async function getModels() {
 
     if (urlVal.indexOf('/api/') < 0) { return; }
 
-    let response;
-    let models;
     try {
-        urlVal = new URL('/api/tags', (new URL(urlVal)).origin).href;
-        response = await fetch(urlVal, {
-            headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-            },
-        });
-
-        models = await response.json();
-        if (models.models && Array.isArray(models.models)) { return { "status": "success", "models": models.models }; }
+        const catalogue = await getModelCatalogue(urlVal, forceRefresh);
+        return {
+            "status": "success",
+            "models": catalogue?.models || [],
+            "groups": catalogue?.groups || { local: [], cloud: [] }
+        };
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
         return { "status": "error", "message": e.message };
@@ -1193,36 +1345,15 @@ async function prepareModels(modelName, remove = false, tab) {
 
 async function getModelInfo(modelName, forceRefresh = false) {
     if (!modelName) { modelName = await getAiModel(); }
-
-    if (!forceRefresh) {
-        const cached = await chrome.storage.local.get(['activeModel']);
-        if (cached?.activeModel?.modelName === modelName) {
-            return cached.activeModel;
-        }
+    const apiUrl = await getAiUrl();
+    if (!apiUrl) {
+        return { model: modelName, error: 'Missing API endpoint' };
     }
 
-    let url = await getAiUrl();
-    url = new URL(url);
-    url = `${url.protocol}//${url.host}/api/show`;
-
-    const data = { "model": modelName };
-    let res;
     try {
-        res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        const fullData = await res.json();
-
-        const { license, modelfile, template, tensors, ...cleanData } = fullData;
-        cleanData.modelName = modelName;
-
-        await chrome.storage.local.set({ activeModel: cleanData });
-
-        return cleanData;
+        return await getModelInfoFromApi(apiUrl, modelName, forceRefresh);
     } catch (err) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, res);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
         return { model: modelName, error: err.message };
     }
 }
@@ -1345,22 +1476,36 @@ async function validateModelInfoCache() {
     try {
         const laiOptions = await getOptions();
         const currentModel = laiOptions?.aiModel;
+        const aiUrl = laiOptions?.aiUrl;
 
-        if (!currentModel) {
+        if (!currentModel || !aiUrl) {
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No active model configured`);
             return;
         }
 
-        const cached = await chrome.storage.local.get(['activeModel']);
+        const cached = await getCachedModelInfo(aiUrl, currentModel);
 
-        if (cached?.activeModel?.modelName !== currentModel) {
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Model mismatch. Cached: ${cached?.activeModel?.modelName}, Current: ${currentModel}. Refreshing cache...`);
+        if (!cached?.modelName) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing cached model info for ${currentModel}. Refreshing cache...`);
             await getModelInfo(currentModel, true);
         } else {
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Model info cache is valid for ${currentModel}`);
         }
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to validate model cache:`, err);
+    }
+}
+
+async function refreshModelCatalogueCache(forceRefresh = false) {
+    try {
+        const laiOptions = await getOptions();
+        const aiUrl = laiOptions?.aiUrl;
+        if (!aiUrl) { return null; }
+
+        return await getModelCatalogue(aiUrl, forceRefresh);
+    } catch (error) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to refresh model catalogue cache`, error);
+        return null;
     }
 }
 

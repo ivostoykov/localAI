@@ -4,7 +4,9 @@ document.getElementById('pageTitle').textContent = `${manifest?.name ?? ''} - ${
 
 async function getOptions() {
     const stored = await chrome.storage.sync.get('laiOptions');
-    return stored.laiOptions || {};
+    return {
+        ...(stored.laiOptions || {})
+    };
 }
 
 document.addEventListener('DOMContentLoaded', async (e) => {
@@ -659,7 +661,6 @@ function refreshTarget(gldValues) {
 // utils
 
 async function fillModelList(models = [], selector = '') {
-    if (models.length < 1) { return; }
     if (!selector) {
         showMessage("Missing selector!", "success");
         console.error(`>>> [${getLineNumber()}] - Missing selector! ${selector || 'empty string'}`, models);
@@ -681,10 +682,18 @@ async function fillModelList(models = [], selector = '') {
         op.setAttribute('selected', 'selected');
     }
 
-    for (let i = 0; i < models.length; i++) {
+    const flatModels = Array.isArray(models)
+        ? models
+        : [
+            ...(models?.local || []),
+            ...(models?.cloud || [])
+        ];
+
+    for (let i = 0; i < flatModels.length; i++) {
         op = document.createElement('option');
-        op.value = op.text = models[i].name;
-        if (models[i].name === activeModelName) { op.setAttribute('selected', 'selected'); }
+        op.value = op.text = flatModels[i]?.name || '';
+        op.disabled = !!flatModels[i]?.unavailable || !flatModels[i]?.name;
+        if (flatModels[i]?.name === activeModelName) { op.setAttribute('selected', 'selected'); }
         modelDataList.appendChild(op);
     }
 }
@@ -936,48 +945,17 @@ function copyValue(e) {
 
 async function loadModels(e) {
     showSpinner();
-    const aiUrl = document.querySelector('#aiUrl');
-    if (!aiUrl) {
-        showMessage(`No API endpoint found - ${aiUrl?.value}!`, 'error');
-        hideSpinner();
-        return false;
-    }
-
-    const idx = aiUrl.selectedIndex >= 0 ? aiUrl.selectedIndex : 0;
-    let urlVal = aiUrl.options[idx]?.value?.trim() || '';
-    if (!urlVal) {
-        hideSpinner();
-        return;
-    }
-    if (!urlVal.startsWith('http')) {
-        showMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
-        hideSpinner();
-        return false;
-    }
-
-    if (urlVal.indexOf('/api/') < 0) {
-        hideSpinner();
-        return false;
-    }
-
-    urlVal = urlVal.replace(/\/api\/.+/i, '/api/tags');
     let response;
-    let models;
     let success = false;
     try {
-        response = await fetch(urlVal, {
-            headers: {
-                'Content-Type': 'application/json; charset=utf-8',
-            },
-        });
-
-        models = await response.json();
-        if (models.models && Array.isArray(models.models)) {
-            models.models.sort((a, b) => a.name.localeCompare(b.name));
-            await fillModelList(models.models, '#aiModel');
-            await fillModelList(models.models, '#embeddingModel');
-            await fillModelList(models.models, '#titleGeneratorModel');
+        response = await chrome.runtime.sendMessage({ action: 'getModels', forceRefresh: true });
+        if (response?.status === 'success') {
+            await fillModelList(response.models, '#aiModel');
+            await fillModelList(response.models, '#embeddingModel');
+            await fillModelList(response.models, '#titleGeneratorModel');
             success = true;
+        } else {
+            throw new Error(response?.message || 'Failed to load models');
         }
     } catch (e) {
         console.error(`>>> [${getLineNumber()}] - ${e.message}`, e);

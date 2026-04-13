@@ -142,35 +142,45 @@ async function getAiModel() {
     return laiOptions?.aiModel;
 }
 
-async function modelCanThinkHelper(modelName = '') {
+async function modelCanThinkHelper(modelName = '', options = {}) {
     if (!modelName) { return false; }
+    const throwOnError = options?.throwOnError || false;
 
     try {
         const response = await chrome.runtime.sendMessage({ action: 'modelCanThink', model: modelName });
         if (response?.error) {
+            if (throwOnError) {
+                throw new Error(response.error);
+            }
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response error`, response?.error);
             return false;
         }
 
         return response?.canThink ?? false;
     } catch (err) {
+        if (throwOnError) { throw err; }
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
     }
 }
 
-async function modelCanUseToolsHelper(modelName = '') {
+async function modelCanUseToolsHelper(modelName = '', options = {}) {
     if (!modelName) { return false; }
+    const throwOnError = options?.throwOnError || false;
 
     try {
         const response = await chrome.runtime.sendMessage({ action: 'modelCanUseTools', model: modelName, });
         if (response?.error) {
+            if (throwOnError) {
+                throw new Error(response.error);
+            }
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response error`, response?.error);
             return false;
         }
 
         return response?.canUseTools ?? false;
     } catch (err) {
+        if (throwOnError) { throw err; }
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
         return false;
     }

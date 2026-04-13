@@ -203,6 +203,10 @@ local-ai *,
     background-color: #fff;
 }
 
+.lai-input-text.lai-stream-live {
+    white-space: pre-wrap;
+}
+
 .lai-input-label::first-letter {
     text-transform: uppercase;
 }

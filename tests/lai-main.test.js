@@ -39,10 +39,10 @@ const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\
 
 // Extract the functions we want to test
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
-    isMessagePersistableCode + '\n' + laiMainCode + '; return { laiExtractDataFromResponse, isMessagePersistable };'
+    isMessagePersistableCode + '\n' + laiMainCode + '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable };'
 );
 
-let laiExtractDataFromResponse, isMessagePersistable;
+let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable;
 
 describe('lai-main.js', () => {
     beforeEach(() => {
@@ -57,7 +57,80 @@ describe('lai-main.js', () => {
 
         const exports = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome, global.isMessagePersistable);
         laiExtractDataFromResponse = exports.laiExtractDataFromResponse;
+        composeStreamingPreviewText = exports.composeStreamingPreviewText;
+        appendStreamChunkToRecipient = exports.appendStreamChunkToRecipient;
+        resetStreamTracking = exports.resetStreamTracking;
+        clearStreamingRecipient = exports.clearStreamingRecipient;
+        finaliseStreamRecipient = exports.finaliseStreamRecipient;
         isMessagePersistable = exports.isMessagePersistable;
+    });
+
+    describe('stream preview helpers', () => {
+        it('composes preview text with thinking and content blocks', () => {
+            const result = composeStreamingPreviewText({
+                thinking: 'Reasoning',
+                content: 'Answer'
+            });
+
+            expect(result).toBe('Thinking...\nReasoning\n\nAnswer');
+        });
+
+        it('appends stream chunk text to the recipient', () => {
+            const recipient = document.createElement('span');
+
+            const result = appendStreamChunkToRecipient(recipient, {
+                model: 'test-model',
+                thinkingDelta: 'Thinking',
+                contentDelta: 'Answer',
+                rawChunk: '{"message":{"content":"Answer"}}'
+            });
+
+            expect(result).toBe('Thinking...\nThinking\n\nAnswer');
+            expect(recipient.textContent).toBe(result);
+            expect(recipient.classList.contains('lai-stream-live')).toBe(true);
+            expect(recipient._laiRawResponse).toContain('"content":"Answer"');
+            expect(global.setModelNameLabel).toHaveBeenCalledWith('test-model');
+        });
+
+        it('clears temporary stream tracking without discarding raw debug data', () => {
+            const recipient = document.createElement('span');
+            recipient._laiStreamThinking = 'Thinking';
+            recipient._laiStreamContent = 'Answer';
+            recipient._laiRawResponse = '{"message":{"content":"Answer"}}';
+            recipient.dataset.status = 'streaming';
+            recipient.classList.add('lai-stream-live');
+
+            resetStreamTracking(recipient);
+
+            expect(recipient._laiStreamThinking).toBeUndefined();
+            expect(recipient._laiStreamContent).toBeUndefined();
+            expect(recipient._laiRawResponse).toContain('"content":"Answer"');
+            expect(recipient.dataset.status).toBeUndefined();
+            expect(recipient.classList.contains('lai-stream-live')).toBe(false);
+        });
+
+        it('removes live preview text when the final streamed response has no renderable content', async () => {
+            const recipient = document.createElement('span');
+            recipient.textContent = 'Thinking...\nPlanning a tool call';
+            recipient._laiStreamThinking = 'Planning a tool call';
+            recipient.dataset.status = 'streaming';
+            recipient.classList.add('lai-stream-live');
+
+            await finaliseStreamRecipient(recipient, {
+                response: JSON.stringify({
+                    model: 'thinking-model',
+                    message: {
+                        role: 'assistant',
+                        content: '',
+                        thinking: 'Planning a tool call'
+                    }
+                })
+            });
+
+            expect(recipient.textContent).toBe('');
+            expect(recipient.dataset.status).toBeUndefined();
+            expect(recipient.classList.contains('lai-stream-live')).toBe(false);
+        });
     });
 
     describe('laiExtractDataFromResponse', () => {
