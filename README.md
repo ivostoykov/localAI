@@ -29,6 +29,8 @@ A local AI tool—these are easy to set up, usually just download and run:
 
 * [Ollama](https://ollama.com/) server is used as the API endpoint.
 
+If you use [Ollama Cloud](https://ollama.com/), the current preferred setup is still the local Ollama endpoint. Sign in with the Ollama app or CLI first, then keep the extension pointed at your local `'/api/*'` endpoint. Cloud-tagged models exposed by the signed-in local daemon can then be used without storing API keys in the extension.
+
 >[! Warning]:
 > The following API providers are deprecated for now and will only be reinstated upon request.
 > * [LM Studio](https://lmstudio.ai/) - preffered

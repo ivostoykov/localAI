@@ -114,24 +114,58 @@
     border: 1px solid #999;
     position: absolute;
     top: 23px;
-    padding: 5px 15px;
+    padding: 5px 10px 10px;
     line-height: 25px;
     background-color: #ffe;
     z-index: 100;
     overflow-y: auto;
     height: min-content;
     max-height: 70vh;
+    min-width: 16rem;
 }
 
-.available-model-list div {
+.model-list-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 0 0.35rem;
+    margin-bottom: 0.15rem;
+    border-bottom: 1px solid #c6ba86;
+}
+
+.model-list-refresh {
+    border: 1px solid #b7aa74;
+    border-radius: 0.3rem;
+    background-color: #fffdf2;
+    color: inherit;
+    padding: 0;
+    width: 1.8rem;
+    height: 1.8rem;
+    font: inherit;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.model-list-refresh:hover {
+    background-color: #f5edc5;
+}
+
+.model-list-item {
     padding: 5px 25px;
 }
 
-.available-model-list div:hover {
+.model-list-item:hover {
     cursor: pointer;
     background-color: #eee;
     padding: 5px 25px;
 
+}
+
+.model-list-item.unavailable,
+.model-list-item.unavailable:hover {
+    color: #666;
+    cursor: default;
+    background-color: transparent;
 }
 
 .lai-model {

@@ -1,6 +1,34 @@
 # Local AI - Changelog
 
-## [1.29.37] - 2026-03-30 - latest
+## [1.29.45] - 2026-04-13 - latest
+
+### Models And Ollama Cloud
+
+- Added a provider-aware model catalogue backed by Ollama with cached per-model metadata
+- Added grouped local and cloud model browsing in the sidebar and options page
+- Added remembered local/cloud model-tab state in the sidebar model picker
+- Added a safe cloud fallback state instead of failing when no cloud models are available
+- Documented the signed-in local Ollama path for Ollama Cloud usage without storing API keys in the extension
+
+### Context Window
+
+- Added automatic context selection for local models when the active model exposes a context length and the user has not set it manually
+- Left cloud models on provider defaults for the first pass
+
+### Streaming
+
+- Added streamed Ollama chat response handling in the background worker
+- Added live plain-text progress in the sidebar while a reply is being generated
+- Kept the final rich markdown render as a single completion-step render
+- Kept raw streamed payloads available for debugging when debug mode is enabled
+
+### Validation
+
+- Added unit coverage for the new model catalogue, automatic context window, and streamed response helpers
+- Verified the local/cloud model browser live in Chrome
+- Verified the new streamed response behaviour live in Chrome
+
+## [1.29.37] - 2026-03-30
 
 ### Message Passing Fixes
 

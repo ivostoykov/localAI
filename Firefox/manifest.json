@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local AI helper",
-  "version": "1.29.37",
+  "version": "1.29.45",
   "options_page": "options.html",
   "permissions": [
     "activeTab",
@@ -14,7 +14,9 @@
   "background": {
     "scripts": [
       "jslib/constants.js",
+      "jslib/utils.js",
       "jslib/log.js",
+      "jslib/model-catalogue.js",
       "background-memory.js",
       "jslib/sessions.js",
       "jslib/session-repository.js",
