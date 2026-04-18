@@ -1358,7 +1358,7 @@ async function prepareModels(modelName, remove = false, tab) {
         await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab?.id);
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, response);
     }
-    return response;
+    return { status: response.status, statusText: response.statusText, ok: response.ok };
 }
 
 /////////// other helpers ///////////

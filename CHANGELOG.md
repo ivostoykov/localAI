@@ -1,5 +1,19 @@
 # Local AI - Changelog
 
+## [1.29.59] - 2026-04-18 - latest
+
+### Cloud Model List
+
+- Cloud tab now shows the full Ollama cloud catalogue, not only previously used models
+- Last cloud model list update timestamp stored in local storage
+- Cloud tab title attribute shows staleness: "Cloud models updated today", "last updated N days ago", or "never loaded — click to refresh"
+- Timestamp is written and title updated automatically after every successful cloud fetch
+
+### Model Switch Fix
+
+- Fixed false "Failed to load model" error on every model switch
+- Replaced status checks so any 2xx response is treated as success
+
 ## [1.29.56] - 2026-04-16 - latest
 
 ### Session Rename

@@ -132,6 +132,7 @@ async function initRibbon() {
     ribbon?.querySelector('#refreshCloudModelListBtn')?.addEventListener('click', refreshCloudModelListBtnClick);
     ribbon?.querySelector('#localModelTab')?.addEventListener('click', modelListTabClicked);
     ribbon?.querySelector('#cloudModelTab')?.addEventListener('click', modelListTabClicked);
+    await initCloudModelStatus(ribbon);
 
     ribbon?.querySelector('#modelThinking')?.addEventListener('click', async e => {
         const el = e.target;
@@ -535,6 +536,19 @@ async function modelLabelClicked(e) {
     container.classList.remove('open', 'js-menu-is-open');
 }
 
+async function initCloudModelStatus(ribbon) {
+    const stored = await chrome.storage.local.get(['ollamaCloudModelListUpdate']);
+    const lastUpdate = stored?.ollamaCloudModelListUpdate || 0;
+    const tab = ribbon?.querySelector('#cloudModelTab');
+    if (!tab) { return; }
+    if (!lastUpdate) {
+        tab.title = 'Cloud models never loaded — click refresh to load';
+        return;
+    }
+    const ageDays = Math.floor((Date.now() - lastUpdate) / 86400000);
+    tab.title = ageDays === 0 ? 'Cloud models updated today' : `Cloud models last updated ${ageDays} day${ageDays !== 1 ? 's' : ''} ago`;
+}
+
 async function getAndShowModels(forceRefresh = false) {
     const laiOptions = await getOptions();
     let response;
@@ -548,6 +562,11 @@ async function getAndShowModels(forceRefresh = false) {
         laiOptions.modelList = response.models?.map(m => m.name).filter(Boolean).sort() || [];
         await setOptions(laiOptions);
         await fillAndShowModelList(response);
+        if ((response.groups?.cloud || []).length > 0) {
+            await chrome.storage.local.set({ ollamaCloudModelListUpdate: Date.now() });
+            const tab = getShadowRoot()?.querySelector('#cloudModelTab');
+            if (tab) { tab.title = 'Cloud models updated today'; }
+        }
     } catch (e) {
         showMessage(e.message, 'error');
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: ${e.message}`, e, response);
@@ -705,7 +724,7 @@ async function swapActiveModel(e, modelName) {
             console.error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
             showMessage(`Problem occurred when unloading the ${oldModel} model!`, 'warning');
         }
-        if (response?.status !== 200) {
+        if (response?.ok === false) {
             showMessage(`Problem occurred when unloading the ${oldModel} model!`, 'warning');
         }
 
@@ -714,7 +733,7 @@ async function swapActiveModel(e, modelName) {
         if (chrome.runtime.lastError) {
             throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
         }
-        if (response?.status !== 200) {
+        if (response?.ok === false) {
             showMessage(`Failed to load ${modelName} model! Please choose another model.`, 'error');
             return;
         }
