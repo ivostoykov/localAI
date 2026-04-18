@@ -80,6 +80,22 @@ async function deleteSessionById(sessionId) {
     return deleteSession(sessionId);
 }
 
+async function renameSession(sessionId, newTitle) {
+    if (!sessionId || !newTitle?.trim()) { return false; }
+    try {
+        const sessions = await getAllSessions();
+        const idx = sessions.findIndex(s => s?.id === sessionId);
+        if (idx < 0) { return false; }
+        sessions[idx].title = newTitle.trim();
+        sessions[idx].titleManual = true;
+        await setAllSessions(sessions);
+        return true;
+    } catch (e) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Rename session error: ${e.message}`, e);
+        return false;
+    }
+}
+
 async function deleteActiveSessionId() {
     try {
         await chrome.storage.local.remove(activeSessionIdKey);

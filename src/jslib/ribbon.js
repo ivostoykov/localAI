@@ -129,6 +129,10 @@ async function initRibbon() {
         el.classList.toggle('js-menu-is-open');
     }, false);
 
+    ribbon?.querySelector('#refreshCloudModelListBtn')?.addEventListener('click', refreshCloudModelListBtnClick);
+    ribbon?.querySelector('#localModelTab')?.addEventListener('click', modelListTabClicked);
+    ribbon?.querySelector('#cloudModelTab')?.addEventListener('click', modelListTabClicked);
+
     ribbon?.querySelector('#modelThinking')?.addEventListener('click', async e => {
         const el = e.target;
         const model = await getAiModel();
@@ -243,6 +247,7 @@ async function openCloseSessionHistoryMenu(e) {
     const sessionList = headerSection.querySelector('#sessionHistMenu');
     if (sessionList && !sessionList.classList.contains('invisible')) { // only close it
         el.classList.remove('js-menu-is-open');
+        delete el.dataset.menuId;
         headerSection.querySelector('#sessionHistMenu')?.remove();
         return;
     }
@@ -254,6 +259,7 @@ async function openCloseSessionHistoryMenu(e) {
     }
 
     el.classList.add('js-menu-is-open');
+    el.dataset.menuId = 'sessionHistMenu';
     headerSection.querySelector('#sessionHistMenu')?.remove(); // if hidden remove it
     const template = shadowRoot.getElementById('histMenuTemplate').content.cloneNode(true);
     const sessionHistMenu = template.children[0];
@@ -290,16 +296,40 @@ async function openCloseSessionHistoryMenu(e) {
         let menuItem = document.createElement(userEl.title === '---' ? 'hr' : 'div');
         if (userEl.title !== '---') {
             menuItem.className = 'menu-item';
-            menuItem.textContent = `${(userEl?.title?.substring(0, 35)) || 'Noname'}${userEl?.title?.length > 35 ? '...' : ''}`;
             menuItem.title = userEl?.title || 'Noname';
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'menu-item-title';
+            titleSpan.textContent = `${(userEl?.title?.substring(0, 35)) || 'Noname'}${userEl?.title?.length > 35 ? '...' : ''}`;
+            menuItem.appendChild(titleSpan);
             if (i === l - 1) {
                 menuItem.addEventListener('click', async (e) => deleteAllHistorySessionsClicked(e), false);
             } else {
-                menuItem.addEventListener('click', async (e) => await restoreHistorySessionClicked(e, userEl.id), false);
+                titleSpan.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const shadowRoot = getShadowRoot();
+                    const headerSection = shadowRoot.querySelector('.lai-header');
+                    const btn = headerSection.querySelector('.js-menu-is-open');
+                    btn?.classList.remove('js-menu-is-open');
+                    delete btn?.dataset.menuId;
+                    headerSection.querySelector('#sessionHistMenu')?.remove();
+                    await restoreHistorySessionClicked(null, userEl.id);
+                }, false);
             }
         }
 
         if (i < l - 2) {
+            const renameBtn = buildElements([{
+                "span": {
+                    "class": "hist-btn hist-rename-btn", "data-type": "rename", "title": "Rename",
+                    "children": [{ "img": { "src": chrome.runtime.getURL('img/edit-pen.svg') } }]
+                }
+            }]);
+            renameBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                await startSessionRename(menuItem, userEl.id);
+            }, false);
+            menuItem.appendChild(renameBtn);
             const delBtn = histDelBtn.cloneNode(true);
             delBtn.setAttribute('data-sessionId', userEl.id);
             delBtn.addEventListener('click', async (e) => deleteHistoryMenuItemClicked(e), false);
@@ -517,7 +547,7 @@ async function getAndShowModels(forceRefresh = false) {
         if (response.status !== 'success') { throw new Error(response?.message || 'Unknown error!'); }
         laiOptions.modelList = response.models?.map(m => m.name).filter(Boolean).sort() || [];
         await setOptions(laiOptions);
-        await fillAndShowModelList(response.models || []);
+        await fillAndShowModelList(response);
     } catch (e) {
         showMessage(e.message, 'error');
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: ${e.message}`, e, response);
@@ -525,7 +555,44 @@ async function getAndShowModels(forceRefresh = false) {
 
 }
 
-async function fillAndShowModelList(models = []) {
+function modelListTabClicked(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const tabName = event.composedPath().find(el => el.dataset?.tab)?.dataset.tab;
+    if (!tabName) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: Failed to resolve tab name from event path.`);
+        showMessage('Failed to resolve model list tab.', 'error');
+        return;
+    }
+    const modelList = getShadowRoot().querySelector('#availableModelList');
+    modelList.dataset.activeTab = tabName;
+    modelList.querySelectorAll('.model-list-tab').forEach(button => {
+        button.classList.toggle('active', button.dataset.tab === tabName);
+    });
+    modelList.querySelectorAll('.model-list-panel').forEach(panel => {
+        panel.classList.toggle('invisible', panel.dataset.panel !== tabName);
+    });
+}
+
+async function refreshCloudModelListBtnClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const refreshButton = getShadowRoot().querySelector('#refreshCloudModelListBtn');
+    refreshButton.disabled = true;
+    refreshButton.classList.add('is-spinning');
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Refreshing Cloud Model List`);
+    try {
+        await Promise.all([
+            getAndShowModels(true),
+            new Promise(resolve => setTimeout(resolve, 750))
+        ]);
+    } finally {
+        refreshButton.classList.remove('is-spinning');
+        refreshButton.disabled = false;
+    }
+}
+
+async function fillAndShowModelList(modelPayload = []) {
     const shadowRoot = getShadowRoot();
     const modelList = shadowRoot.querySelector('#availableModelList');
     const modelsDropDown = shadowRoot.querySelector('#modelList');
@@ -539,55 +606,86 @@ async function fillAndShowModelList(models = []) {
     modelsDropDown.replaceChildren();
     modelsDropDown.appendChild(opt);
     const laiOptions = await getOptions();
-    modelList.replaceChildren();
+    const groups = Array.isArray(modelPayload)
+        ? {
+            local: (modelPayload || []).filter(model => (model?.source || 'local') !== 'cloud'),
+            cloud: (modelPayload || []).filter(model => (model?.source || '') === 'cloud')
+        }
+        : (modelPayload?.groups || { local: [], cloud: [] });
+    const errors = Array.isArray(modelPayload) ? {} : (modelPayload?.errors || {});
+    const localGroup = groups?.local || [];
+    const cloudGroup = groups?.cloud || [];
+    const models = [...localGroup, ...cloudGroup];
+    const aiModel = laiOptions.aiModel.replace('-cloud', '');
+    const activeTab = localGroup.some(m => m?.name === aiModel) ? 'local'
+        : cloudGroup.some(m => m?.name === aiModel) ? 'cloud'
+        : (localGroup.length > 0 || errors?.local) ? 'local'
+        : 'cloud';
 
-    const toolbar = document.createElement('div');
-    toolbar.className = 'model-list-toolbar';
-    const refreshButton = document.createElement('button');
-    refreshButton.type = 'button';
-    refreshButton.className = 'model-list-refresh';
-    refreshButton.setAttribute('aria-label', 'Refresh the available models');
-    refreshButton.title = 'Refresh the available models';
-    refreshButton.textContent = '🗘';
-    refreshButton.addEventListener('click', async event => {
-        event.preventDefault();
-        event.stopPropagation();
-        await getAndShowModels(true);
+    modelList.querySelectorAll('.model-list-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === activeTab);
     });
-    toolbar.appendChild(refreshButton);
-    modelList.appendChild(toolbar);
 
     for (let idx = 0; idx < models.length; idx++) {
         const model = models[idx];
-        const item = document.createElement('div');
-        item.className = 'model-list-item';
-        item.dataset.modelName = model?.name || '';
-        item.dataset.modelSource = model?.source || '';
-        item.textContent = `${model?.name || ''}${model?.name === laiOptions.aiModel ? ' ✔' : ''}`;
-
-        if (!model?.name) {
-            item.classList.add('unavailable');
-            modelList.appendChild(item);
-            continue;
-        }
-
-        item.addEventListener('click', async event => {
-            event.stopPropagation();
-            await closeAllDropDownRibbonMenus(event);
-            const matchingOption = Array.from(modelsDropDown.options).findIndex(option => option.value === model.name);
-            if (matchingOption > -1) {
-                modelsDropDown.selectedIndex = matchingOption;
-            }
-            await swapActiveModel(event, model.name);
-        });
-        modelList.appendChild(item);
-
         opt = document.createElement('option');
         opt.text = opt.value = model.name;
-        opt.selected = model.name === laiOptions.aiModel;
+        opt.selected = model.name === aiModel;
         modelsDropDown.appendChild(opt);
     }
 
+    ['local', 'cloud'].forEach(tabName => {
+        const panel = modelList.querySelector(`.model-list-panel[data-panel="${tabName}"]`);
+        if (!panel) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: Failed to find model list panel for tab "${tabName}".`);
+            showMessage(`Failed to find model list panel for tab "${tabName}".`, 'error');
+            return;
+        }
+        panel.replaceChildren();
+        panel.classList.toggle('invisible', tabName !== activeTab);
+
+        const panelModels = tabName === 'local' ? localGroup : cloudGroup;
+
+        if (panelModels.length < 1) {
+            const emptyItem = document.createElement('div');
+            emptyItem.className = 'model-list-item unavailable';
+            emptyItem.textContent = errors?.[tabName]
+                ? `${tabName === 'local' ? 'Local' : 'Cloud'} list unavailable`
+                : `No ${tabName} models found`;
+            panel.appendChild(emptyItem);
+            return;
+        }
+
+        for (let idx = 0; idx < panelModels.length; idx++) {
+            const model = panelModels[idx];
+            const item = document.createElement('div');
+            item.className = 'model-list-item';
+            item.dataset.modelName = model?.name || '';
+            item.dataset.modelSource = model?.source || '';
+
+            if (!model?.name) {
+                item.classList.add('unavailable');
+                panel.appendChild(item);
+                continue;
+            }
+
+            item.textContent = model.name;
+            if (model.name === aiModel) { item.classList.add('active-model-list-item'); }
+
+            item.addEventListener('click', async event => {
+                event.stopPropagation();
+                await closeAllDropDownRibbonMenus(event);
+                const matchingOption = Array.from(modelsDropDown.options).findIndex(option => option.value === model.name);
+                if (matchingOption > -1) {
+                    modelsDropDown.selectedIndex = matchingOption;
+                }
+                await swapActiveModel(event, model.name);
+            });
+            panel.appendChild(item);
+        }
+    });
+
+    modelList.dataset.activeTab = activeTab;
     modelList.classList.remove('invisible');
 }
 
@@ -630,8 +728,7 @@ async function swapActiveModel(e, modelName) {
         setModelNameLabel({ "model": modelName });
         const availableModelList = getShadowRoot()?.querySelector('#availableModelList');
         availableModelList?.querySelectorAll('.model-list-item').forEach(item => {
-            const itemModelName = item.dataset.modelName || item.textContent.replace(/ ✔/g, '');
-            item.textContent = `${itemModelName}${itemModelName === modelName ? ' ✔' : ''}`;
+            item.classList.toggle('active-model-list-item', item.dataset.modelName === modelName);
         });
         availableModelList?.classList.add('invisible');
         const sideBar = getSideBar();
@@ -724,13 +821,60 @@ async function restoreHistorySessionClicked(e = null, sessionIdx = null) {
     showMessage(`session "${session.title}" restored.`, 'info');
 }
 
+async function startSessionRename(menuItem, sessionId) {
+    const titleSpan = menuItem.querySelector('.menu-item-title');
+    if (!titleSpan) { return; }
+    const currentTitle = menuItem.title || titleSpan.textContent;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentTitle;
+    input.className = 'menu-item-rename-input';
+
+    let committed = false;
+    async function commit() {
+        if (committed) { return; }
+        committed = true;
+        const newTitle = input.value.trim();
+        const span = document.createElement('span');
+        span.className = 'menu-item-title';
+        if (newTitle && newTitle !== currentTitle) {
+            await renameSession(sessionId, newTitle);
+            span.textContent = `${newTitle.substring(0, 35)}${newTitle.length > 35 ? '...' : ''}`;
+            menuItem.title = newTitle;
+        } else {
+            span.textContent = titleSpan.textContent;
+        }
+        input.replaceWith(span);
+    }
+
+    function cancel() {
+        if (committed) { return; }
+        committed = true;
+        const span = document.createElement('span');
+        span.className = 'menu-item-title';
+        span.textContent = titleSpan.textContent;
+        input.replaceWith(span);
+    }
+
+    input.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') { e.stopPropagation(); await commit(); }
+        if (e.key === 'Escape') { e.stopPropagation(); cancel(); }
+    });
+    input.addEventListener('blur', commit);
+
+    titleSpan.replaceWith(input);
+    input.focus();
+    input.select();
+}
+
 async function deleteHistoryMenuItemClicked(e) {
     e.stopPropagation();
     e.stopImmediatePropagation();
     const btn = e.currentTarget;
     const sessionId = btn.getAttribute('data-sessionId');
     const menuItem = btn.closest('div.menu-item');
-    const title = menuItem?.textContent.trim() || '';
+    const title = menuItem?.querySelector('.menu-item-title')?.textContent?.trim() || '';
     try {
         await deleteSessionById(sessionId);
         if (menuItem) { menuItem.remove(); }

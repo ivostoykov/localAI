@@ -49,3 +49,11 @@
 .hist-btn img:hover{
   background: #ff000022;
 }
+
+.hist-rename-btn{
+  right: 34px;
+}
+
+.hist-rename-btn img:hover{
+  background: #0000ff22;
+}

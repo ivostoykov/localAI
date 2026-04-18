@@ -6,7 +6,25 @@
             <div id="laiModelName" class="lai-model"></div>
             <img src="" data-type="fold">
         </div>
-        <div id="availableModelList" class="available-model-list ribbon-label invisible"></div>
+        <!-- <div id="availableModelList" class="available-model-list ribbon-label invisible"></div> -->
+        <div id="availableModelList" class="available-model-list ribbon-label invisible" data-active-tab="local">
+            <div class="model-list-toolbar">
+                <div class="model-list-tabs">
+                    <div id="localModelTab" class="model-list-tab active" data-tab="local">Local</div>
+                    <div id="cloudModelTab" class="model-list-tab" data-tab="cloud">
+                        <span>Cloud</span>
+                        <button id="refreshCloudModelListBtn" type="button"
+                            class="model-list-refresh" aria-label="Refresh the available models"
+                            title="Refresh the available models">🗘</button>
+                    </div>
+                </div>
+            </div>
+            <div class="model-list-panel" data-panel="local">
+            </div>
+            <div class="model-list-panel invisible" data-panel="cloud">
+            </div>
+        </div>
+
         <div class="ribbon-sections">
             <div class="rib-section left">
                 <img src="" id="cogBtn" alt="Options" title="Options" data-type="cog" />

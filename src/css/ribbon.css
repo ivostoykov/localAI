@@ -126,16 +126,58 @@
 
 .model-list-toolbar {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.2rem;
     padding: 0 0 0.35rem;
     margin-bottom: 0.15rem;
     border-bottom: 1px solid #c6ba86;
 }
 
+.model-list-tabs {
+    display: flex;
+    gap: 0.25rem;
+    flex-grow: 1;
+    position: relative;
+}
+
+.model-list-tab {
+    border: 1px solid #cbbd86;
+    border-bottom: 0px;
+    border-radius: 0.35rem;
+    background-color: #fff7d6;
+    color: #5d4b17;
+    padding: 0.2rem 0.55rem;
+    font: inherit;
+    cursor: pointer;
+    position: relative;
+    width: 48%;
+    display: inline-block;
+}
+
+.model-list-tab.active {
+    background-color: #e4d39a;
+    border-color: #a68f49;
+    color: #3f320f;
+    font-weight: bold;
+}
+
+.model-list-tab:hover {
+    background-color: #f5edc5;
+}
+
+.model-list-panel {
+    display: block;
+}
+
+.model-list-panel.invisible {
+    display: none;
+}
+
 .model-list-refresh {
-    border: 1px solid #b7aa74;
+    border: none;
     border-radius: 0.3rem;
-    background-color: #fffdf2;
+    background-color: transparent;
     color: inherit;
     padding: 0;
     width: 1.8rem;
@@ -144,10 +186,37 @@
     font-size: 1rem;
     line-height: 1;
     cursor: pointer;
+    position: absolute;
+    right: 0px;
+    top: 50%;
+    transform: translateY(-50%);
 }
 
 .model-list-refresh:hover {
+    border: 1px solid;
+    border-radius: 0.3rem;
     background-color: #f5edc5;
+}
+
+.model-list-refresh.is-spinning {
+    border: none;
+    animation: modelRefreshSpin 0.75s linear infinite;
+}
+
+.model-list-refresh:disabled {
+    border: none;
+    cursor: wait;
+    opacity: 0.7;
+}
+
+@keyframes modelRefreshSpin {
+    from {
+        transform: translateY(-50%) rotate(0deg);
+    }
+
+    to {
+        transform: translateY(-50%) rotate(360deg);
+    }
 }
 
 .model-list-item {
@@ -159,6 +228,14 @@
     background-color: #eee;
     padding: 5px 25px;
 
+}
+
+.model-list-item.active-model-list-item {
+    font-weight: bold;
+}
+
+.model-list-item.active-model-list-item::after {
+    content: ' ✔';
 }
 
 .model-list-item.unavailable,

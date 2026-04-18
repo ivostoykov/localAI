@@ -134,27 +134,56 @@ describe('model-catalogue.js', () => {
     });
 
     it('fetches and caches grouped model catalogue data', async () => {
-        fetchMock.mockResolvedValue({
-            ok: true,
-            json: async () => ({
-                models: [
-                    { name: 'llama3.2:latest', model: 'llama3.2:latest' },
-                    {
-                        name: 'gpt-oss:120b-cloud',
-                        model: 'gpt-oss:120b-cloud',
-                        remote_host: 'https://ollama.com:443',
-                        remote_model: 'gpt-oss:120b'
-                    }
-                ]
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'llama3.2:latest', model: 'llama3.2:latest' }
+                    ]
+                })
             })
-        });
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        {
+                            name: 'gpt-oss:120b-cloud',
+                            model: 'gpt-oss:120b-cloud'
+                        }
+                    ]
+                })
+            });
 
-        const catalogue = await exports.fetchModelCatalogueFromApi('http://127.0.0.1:11434/api/chat');
+        const catalogue = await exports.fetchModelCatalogueFromApi('http://127.0.0.1:11434/api/chat', true);
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(catalogue.groups.local).toHaveLength(1);
         expect(catalogue.groups.cloud).toHaveLength(1);
         expect(storageState.modelCatalogueCache['http://127.0.0.1:11434']).toBeDefined();
+    });
+
+    it('keeps the local catalogue when the cloud catalogue fetch fails', async () => {
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'llama3.2:latest', model: 'llama3.2:latest' }
+                    ]
+                })
+            })
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 503,
+                statusText: 'Service Unavailable'
+            });
+
+        const catalogue = await exports.fetchModelCatalogueFromApi('http://127.0.0.1:11434/api/chat', true);
+
+        expect(catalogue.groups.local.map(model => model.name)).toEqual(['llama3.2:latest']);
+        expect(catalogue.groups.cloud).toEqual([]);
+        expect(catalogue.errors.cloud).toContain('503');
     });
 
     it('reuses cached catalogue data when refresh is not forced', async () => {

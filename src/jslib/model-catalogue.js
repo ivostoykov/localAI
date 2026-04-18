@@ -1,5 +1,6 @@
 const modelCatalogueCacheStorageKey = 'modelCatalogueCache';
 const modelInfoCacheStorageKey = 'modelInfoCache';
+const ollamaCloudTagsUrl = 'https://ollama.com/api/tags';
 
 function getModelEndpointCacheKey(apiUrl = '') {
     if (!apiUrl) { return ''; }
@@ -149,12 +150,24 @@ async function cacheModelInfo(apiUrl = '', modelName = '', modelInfo = null) {
 }
 
 async function fetchModelCataloguePayload(apiUrl = '') {
-    const endpointKey = getModelEndpointCacheKey(apiUrl);
-    if (!endpointKey) {
+    let tagsUrl = '';
+    let endpointKey = '';
+
+    if (/^https?:\/\//i.test(apiUrl) && /\/api\/tags\/?$/i.test(apiUrl)) {
+        tagsUrl = apiUrl;
+        endpointKey = getModelEndpointCacheKey(apiUrl);
+    } else {
+        endpointKey = getModelEndpointCacheKey(apiUrl);
+        if (!endpointKey) {
+            throw new Error(`Invalid API endpoint - ${apiUrl}`);
+        }
+        tagsUrl = new URL('/api/tags', endpointKey).href;
+    }
+
+    if (!endpointKey || !tagsUrl) {
         throw new Error(`Invalid API endpoint - ${apiUrl}`);
     }
 
-    const tagsUrl = new URL('/api/tags', endpointKey).href;
     const response = await fetch(tagsUrl, {
         headers: {
             'Content-Type': 'application/json; charset=utf-8'
@@ -179,19 +192,36 @@ function buildCatalogueFromPayload(endpoint = '', payload = {}, sourceHint = 'lo
     };
 }
 
-async function fetchModelCatalogueFromApi(apiUrl = '') {
+async function fetchModelCatalogueFromApi(apiUrl = '', includeCloud = false) {
     const endpointKey = getModelEndpointCacheKey(apiUrl);
     if (!endpointKey) {
         throw new Error(`Invalid API endpoint - ${apiUrl}`);
     }
 
-    const primaryPayload = await fetchModelCataloguePayload(apiUrl);
-    const groups = groupModelsBySource(primaryPayload.payload?.models || []);
+    const localPayload = await fetchModelCataloguePayload(apiUrl);
+    const groups = {
+        local: groupModelsBySource(localPayload.payload?.models || [], 'local').local,
+        cloud: []
+    };
+    const errors = {};
+
+    if (includeCloud) {
+        try {
+            const cloudPayload = await fetchModelCataloguePayload(ollamaCloudTagsUrl);
+            groups.cloud = groupModelsBySource(cloudPayload.payload?.models || [], 'cloud').cloud;
+        } catch (error) {
+            errors.cloud = error?.message || 'Failed to load cloud models';
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cloud model catalogue unavailable`, error);
+        }
+    }
+
     const catalogue = {
         endpoint: endpointKey,
         updatedAt: new Date().toISOString(),
         groups,
-        models: flattenModelGroups(groups)
+        models: flattenModelGroups(groups),
+        errors,
+        scope: includeCloud ? 'all' : 'local'
     };
 
     await cacheModelCatalogue(apiUrl, catalogue);
@@ -199,21 +229,24 @@ async function fetchModelCatalogueFromApi(apiUrl = '') {
     return catalogue;
 }
 
-async function getModelCatalogue(apiUrl = '', forceRefresh = false) {
+async function getModelCatalogue(apiUrl = '', forceRefresh = false, includeCloud = false) {
     if (!forceRefresh) {
         const cached = await getCachedModelCatalogue(apiUrl);
-        if (cached?.models?.length > 0) {
+        const cachedScope = cached?.scope || 'local';
+        const hasCachedCloudData = (cached?.groups?.cloud || []).length > 0 || typeof cached?.errors?.cloud === 'string';
+        const cacheCoversRequest = !includeCloud || cachedScope === 'all' || hasCachedCloudData;
+        if (cached?.models?.length > 0 && cacheCoversRequest) {
             return cached;
         }
     }
 
-    return fetchModelCatalogueFromApi(apiUrl);
+    return fetchModelCatalogueFromApi(apiUrl, includeCloud);
 }
 
-async function getModelSummary(apiUrl = '', modelName = '', forceRefresh = false) {
+async function getModelSummary(apiUrl = '', modelName = '', forceRefresh = false, includeCloud = false) {
     if (!modelName) { return null; }
 
-    const catalogue = await getModelCatalogue(apiUrl, forceRefresh);
+    const catalogue = await getModelCatalogue(apiUrl, forceRefresh, includeCloud);
     const models = catalogue?.models || [];
 
     return models.find(model => model?.name === modelName) || null;
@@ -236,7 +269,8 @@ async function getModelInfoFromApi(apiUrl = '', modelName = '', forceRefresh = f
         throw new Error(`Invalid API endpoint - ${apiUrl}`);
     }
 
-    const modelSummary = await getModelSummary(apiUrl, modelName, false);
+    const includeCloud = /-cloud$/i.test(modelName);
+    const modelSummary = await getModelSummary(apiUrl, modelName, false, includeCloud);
     const showUrl = new URL('/api/show', endpointKey).href;
     const response = await fetch(showUrl, {
         method: 'POST',

@@ -108,7 +108,7 @@ local-ai *,
     background-color: #fff;
     border: 1px solid #ccc;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    width: 300px;
+    width: 350px;
     max-height: 50vh;
     z-index: 100;
 }
@@ -137,6 +137,15 @@ local-ai *,
 
 .menu-item:hover {
     background-color: #f6f6f6;
+}
+
+.menu-item-rename-input {
+    width: calc(100% - 65px);
+    font: inherit;
+    padding: 0 2px;
+    border: 1px solid #aaa;
+    border-radius: 2px;
+    outline: none;
 }
 
 /* Chat */

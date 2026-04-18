@@ -29,6 +29,7 @@ const parsePositiveIntegerCode = backgroundCode.match(/function parsePositiveInt
 const getAutomaticContextWindowCode = backgroundCode.match(/async function getAutomaticContextWindow\([\s\S]*?\n}\n/)[0];
 const applyAutomaticModelOptionsCode = backgroundCode.match(/async function applyAutomaticModelOptions\([\s\S]*?\n}\n/)[0];
 const handleResponseCode = backgroundCode.match(/async function handleResponse\([\s\S]*?\n}\n/)[0];
+const normaliseGeneratedTitleCode = backgroundCode.match(/function normaliseGeneratedTitle\([\s\S]*?\n}\n/)[0];
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
 const modelCanUseToolsCode = backgroundCode.match(/async function modelCanUseTools\([\s\S]*?\n}\n/)[0];
 
@@ -46,15 +47,16 @@ ${parsePositiveIntegerCode}
 ${getAutomaticContextWindowCode}
 ${applyAutomaticModelOptionsCode}
 ${handleResponseCode}
+${normaliseGeneratedTitleCode}
 ${modelCanThinkCode}
 ${modelCanUseToolsCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, modelCanThink, modelCanUseTools };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, normaliseGeneratedTitle, modelCanThink, modelCanUseTools };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, modelCanThink, modelCanUseTools;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, normaliseGeneratedTitle, modelCanThink, modelCanUseTools;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -72,6 +74,7 @@ describe('background.js', () => {
         getAutomaticContextWindow = exports.getAutomaticContextWindow;
         applyAutomaticModelOptions = exports.applyAutomaticModelOptions;
         handleResponse = exports.handleResponse;
+        normaliseGeneratedTitle = exports.normaliseGeneratedTitle;
         modelCanThink = exports.modelCanThink;
         modelCanUseTools = exports.modelCanUseTools;
     });
@@ -555,6 +558,20 @@ describe('background.js', () => {
             expect(global.chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
                 action: 'streamEnd'
             });
+        });
+    });
+
+    describe('normaliseGeneratedTitle', () => {
+        it('keeps a plain short title', () => {
+            expect(normaliseGeneratedTitle('Browser session summary')).toBe('Browser session summary');
+        });
+
+        it('strips labels, punctuation, and extra words', () => {
+            expect(normaliseGeneratedTitle('Title: Review the model-picker, please.')).toBe('Review the model-picker please');
+        });
+
+        it('uses the first non-empty line only', () => {
+            expect(normaliseGeneratedTitle('\nModel list refresh\nExtra explanation')).toBe('Model list refresh');
         });
     });
 

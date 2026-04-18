@@ -1,6 +1,74 @@
 # Local AI - Changelog
 
-## [1.29.45] - 2026-04-13 - latest
+## [1.29.56] - 2026-04-16 - latest
+
+### Session Rename
+
+- Added inline rename button to each session history menu item
+- Separated session title to handle properly the click, confirmed on Enter or blur
+- Added `renameSession` — saves the new title and prevent later auto-title overwriting
+- Session element structure refactored to accommodate the rename button
+- Added separate styles for the buttons to distinguish it from each other
+
+### Session Title Generation
+
+- Title generation is now fire-and-forget so it no longer blocks the UI after the first turn
+- No longer appends a stale session fragment — the generated title replaces it wholesale
+- Added clean raw model output: strips leading `title:` labels, removes punctuation and quotes, limits to 5 words
+- Title generation prompt rewritten for plain-word, no-punctuation output
+- Title generation temperature lowered to `0.1` and `top_p` to `0.2` for more deterministic title output
+- `-cloud` suffix is no longer stripped before the title API call — Ollama uses the full name (e.g. `gpt-oss:120b-cloud`) to route cloud models
+- Auto-title is now skipped when `titleManual` is set
+
+### Model Catalogue
+
+- `getModelCatalogue` now accepts an `includeCloud` flag; cloud fetch is isolated so a cloud failure does not block local models
+- Catalogue response now carries an `errors` map so callers can distinguish partial failures
+- `scope` field added to the cached catalogue (`'local'` or `'all'`) to avoid cache misses when cloud was not originally requested
+- `fetchModelCataloguePayload` now accepts a direct `https://.../api/tags` URL in addition to a base API URL
+- Cloud model list can be independently refreshed via the new button
+- `getModelSummary` and `getModelInfoFromApi` propagate `includeCloud` based on the `-cloud` suffix
+
+### Stream Handling
+
+- Stream Response now accepts an `AbortSignal` and checks `signal.aborted` on each iteration, throwing `AbortError` immediately
+- `streamFinished` flag added so the block only cancels the reader on premature exit, not on normal completion
+- Early-return guard removed — abort message now always reaches the background
+
+### Debug Helpers
+
+- Added `globalThis.localAIHelpers.getLastRawResponse` and `dumpLastRawResponse` for in-browser debugging
+- Now raw response is kept in sync after each chunk and reset
+- Noisy stream-chunk debug log replaced with a commented-out block
+
+## [1.29.53] - 2026-04-16
+
+### Abort Handling Fixes
+
+- Fixed abort button having no effect during streaming — early-return guard which is set from the first chunk, blocking the abort message from ever reaching the background
+- Fixed `streamAbort` switch case falling due to incorrect case ordering
+- Fixed returning early with no content on abort — added fallback when response body carries no content (as abort messages do)
+- Fixed Stream Response continuing to process buffered chunks after abort
+- Fixed cancelling the reader on normal completion instead of premature exit
+- Fixed `streamEnd` being delayed until after title generation — title generation is now fire-and-forget so it no longer blocks the UI notification
+- Fixed "no such model" error in session title generation for cloud models — `-cloud` suffix is now stripped before the title-generator API call
+
+## [1.29.50] - 2026-04-14
+
+### Model List Refactor
+
+- The static model-list structure is no longer recreated on every open
+- Extracted tab-click and refresh-button handlers into standalone functions and registered them properly
+- Model List now receives the full response payload and splits models into local/cloud group once; both panels are targeted and repopulated in place instead of being recreated
+- Active tab is now always derived from where the active model lives
+- Active Tab is now synced on every list open, not only on tab click
+- Bug fixed with refresh button location - now it is resolved from the shadow DOM
+- The model list tab resolves now properly on click
+- Active model indicator refactored to be consistent
+- Guard for missing model name moved before filling the name
+- Refresh button spin animation fixed
+
+## [1.29.45] - 2026-04-13
 
 ### Models And Ollama Cloud
 
@@ -157,7 +225,7 @@
 - Removed obsolete userPrompt message flow and related functions (storeLastGeneratedPrompt, dumpRawContent)
 - Added titleGenerated flag to sessions to prevent repeated title generation
 - Cleaned up legacy pre-session-handling code
-- Added navigation fcilitation shortcuts in the optionts page
+- Added navigation facilitation shortcuts in the options page
 
 ### Options Page Enhancements
 - Added Title Generator model selector to allow using a different model for generating session titles
@@ -369,7 +437,7 @@
 - fixed Recycle Current Session Btn event listener to avoid errors when element is missing.
 - Spinner ensure side bar exists before operations, and improved error logging.
 - Show Message now catches errors from asynchronously opening the sidebar when displaying messages and logs them to avoid silent failures.
-- Resoring Options now displays an error message and falls back to default options if loading stored options fails.
+- Restoring Options now displays an error message and falls back to default options if loading stored options fails.
 - Extension Main Button now guards against undefined button elements, logs an error, and returns early to avoid appending `undefined`.
 - Improved menu close behaviour.
 - Fixed session creation logic to correctly identify when no session exists.
@@ -379,7 +447,7 @@
 
 ## [1.27.45] 2025-04-14
 
-- fixed ordered liks rendering bug
+- fixed ordered links rendering bug
 - transformed the version label
 - fixed rendering event bug
 - fixed normalization of markdown source
@@ -394,12 +462,12 @@
 
 ## [1.27.30] 2025-04-06
 
-- Improved event raised by the markdow parser
+- Improved event raised by the markdown parser
 - Added built-in function allowing to query the active tab URL and loaded page content
 - fixed some bugs related to function calls
 - optimised function calls
 - optimised messages shown to the user for better understanding
-- Added dynamic enabling and disabling of the tools for optimisation of the interaction wtih the AI
+- Added dynamic enabling and disabling of the tools for optimisation of the interaction with the AI
 - fixed some bugs with chat parts buttons
 
 ## [1.27.22] 2025-04-06
@@ -438,7 +506,7 @@
 ## [1.22.58] 2025-01-30
 - Attachments bug fixes
 - Custom commands bug fixes
-- Accepts selection of mupliple page snippets
+- Accepts selection of multiple page snippets
 
 ## [1.22.47] 2024-12-16
 - `Select and Send Element` now separate image from text elements and prompt them accordingly. Processing images required LLM that supports it, like llama3.2-vision
@@ -470,7 +538,7 @@
 
 - added a new predefined user command - `udump` - sending the raw content to the console with the generated prompt combining all included resources
 - added check if any broken extension prevents loading
-- added a finitive (5) attempts to rebuilt the extension in case anything external breaks it.
+- added a finite (5) attempts to rebuilt the extension in case anything external breaks it.
 - several small bugs fixed
 
 ## [1.17.33] 2024-08-27
@@ -479,19 +547,19 @@
 - AI response now stored as a row content and could be reviewed in the console
 - added new predefined user command - `dump` - sending the raw content to the console
 - minor bugs fixed
-- added information specific for the Firefox speach settings in case of problems
+- added information specific for the Firefox speech settings in case of problems
 
 ## [1.16.36] 2024-08-20
 
-- Added Speech recognition (sount-to-text or STT)
+- Added Speech recognition (sound-to-text or STT)
 - Updated documentation
 
 ## [1.15.86] 2024-08-15
 
 - Fixed file type check when dropped
-- Refactored request JSON composition reducing the itterations
+- Refactored request JSON composition reducing the iterations
 - Improved error reporting
-- Extgernal resource missing content bug fixed
+- External resource missing content bug fixed
 - Facilitated model change for Ollama API
 - Added more menus in the cog button.
 - Added `/hook` command to list the available functions available on the given webHook server
@@ -535,8 +603,8 @@
 * added model list - automatically populated with all available models related with `Ollama`
 
 ### UI
-* added menu to switch AI API andpoints and models
-* added support for custom commands - predefined prompts labled from the user
+* added menu to switch AI API endpoints and models
+* added support for custom commands - predefined prompts labelled from the user
 * added dynamic help options
 * added attachments
 * added custom commands related actions - edit, delete, paste, execute

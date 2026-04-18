@@ -131,6 +131,22 @@ describe('lai-main.js', () => {
             expect(recipient.dataset.status).toBeUndefined();
             expect(recipient.classList.contains('lai-stream-live')).toBe(false);
         });
+
+        it('exposes the last raw response through the console helper', () => {
+            document.body.innerHTML = `
+                <div id="shadowRoot">
+                    <div class="lai-ai-input">
+                        <span class="lai-input-text"></span>
+                    </div>
+                </div>
+            `;
+
+            const recipient = document.querySelector('.lai-input-text');
+            recipient._laiRawResponse = '{"message":{"content":"Answer"}}';
+
+            expect(globalThis.localAIHelpers.getLastRawResponse()).toContain('"content":"Answer"');
+            expect(globalThis.localAIHelpers.dumpLastRawResponse()).toContain('"content":"Answer"');
+        });
     });
 
     describe('laiExtractDataFromResponse', () => {

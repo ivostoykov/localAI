@@ -117,7 +117,7 @@ describe('ribbon.js model list', () => {
         expect(modelNameContainer.click).toHaveBeenCalledOnce();
     });
 
-    it('renders a single model list with a refresh control', async () => {
+    it('renders local and cloud tabs with a refresh control', async () => {
         await exports.fillAndShowModelList([
             { name: 'llama3.2', source: 'local' },
             { name: 'gpt-oss:120b-cloud', source: 'cloud' }
@@ -126,10 +126,15 @@ describe('ribbon.js model list', () => {
         const shadowRoot = getShadowRoot();
         const modelList = shadowRoot.querySelector('#availableModelList');
         const refreshButton = modelList.querySelector('.model-list-refresh');
-        const items = Array.from(modelList.querySelectorAll('.model-list-item'));
+        const tabs = Array.from(modelList.querySelectorAll('.model-list-tab'));
+        const localItems = Array.from(modelList.querySelectorAll('.model-list-panel[data-panel="local"] .model-list-item'));
+        const cloudItems = Array.from(modelList.querySelectorAll('.model-list-panel[data-panel="cloud"] .model-list-item'));
 
         expect(refreshButton).not.toBeNull();
-        expect(items.map(item => item.dataset.modelName)).toEqual(['llama3.2', 'gpt-oss:120b-cloud']);
+        expect(tabs.map(tab => tab.textContent)).toEqual(['Local', 'Cloud']);
+        expect(tabs.find(tab => tab.classList.contains('active'))?.dataset.tab).toBe('local');
+        expect(localItems.map(item => item.dataset.modelName)).toEqual(['llama3.2']);
+        expect(cloudItems.map(item => item.dataset.modelName)).toEqual(['gpt-oss:120b-cloud']);
         expect(modelList.classList.contains('invisible')).toBe(false);
     });
 
@@ -145,6 +150,26 @@ describe('ribbon.js model list', () => {
         );
 
         expect(getAndShowModels).toHaveBeenCalledWith(true);
+    });
+
+    it('switches to the cloud tab when clicked', async () => {
+        await exports.fillAndShowModelList([
+            { name: 'llama3.2', source: 'local' },
+            { name: 'gpt-oss:120b-cloud', source: 'cloud' }
+        ]);
+
+        const shadowRoot = getShadowRoot();
+        const cloudTab = shadowRoot.querySelector('.model-list-tab[data-tab="cloud"]');
+        const localPanel = shadowRoot.querySelector('.model-list-panel[data-panel="local"]');
+        const cloudPanel = shadowRoot.querySelector('.model-list-panel[data-panel="cloud"]');
+
+        await cloudTab.dispatchEvent(
+            new document.defaultView.MouseEvent('click', { bubbles: true })
+        );
+
+        expect(cloudTab.classList.contains('active')).toBe(true);
+        expect(localPanel.classList.contains('invisible')).toBe(true);
+        expect(cloudPanel.classList.contains('invisible')).toBe(false);
     });
 
     it('selects a model item through swapActiveModel', async () => {

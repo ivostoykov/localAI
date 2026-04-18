@@ -1023,8 +1023,6 @@ function laiOnRibbonButtonClick(e) {
 }
 
 async function laiAbortRequest(e) {
-    const renderingEl = laiGetRecipient();
-    if (renderingEl && renderingEl?.dataset?.status) { return; } // ai generation completed and rendering has started
     if (checkExtensionState()) {
         try {
             await chrome.runtime.sendMessage({ action: "abortFetch" });
@@ -1151,6 +1149,17 @@ function composeStreamingPreviewText({ thinking = '', content = '' } = {}) {
     return blocks.join('\n\n');
 }
 
+function syncRawResponseAttribute(recipient) {
+    if (!recipient) { return; }
+
+    const rawResponse = typeof recipient._laiRawResponse === 'string' ? recipient._laiRawResponse : '';
+    if (rawResponse) {
+        recipient.setAttribute('data-lai-raw-response', rawResponse);
+    } else {
+        recipient.removeAttribute('data-lai-raw-response');
+    }
+}
+
 function appendStreamChunkToRecipient(recipient, response = {}) {
     if (!recipient) { return ''; }
 
@@ -1164,6 +1173,7 @@ function appendStreamChunkToRecipient(recipient, response = {}) {
     recipient._laiStreamContent = accumulatedContent;
     if (rawChunk) {
         recipient._laiRawResponse = `${recipient._laiRawResponse || ''}${rawChunk}\n`;
+        syncRawResponseAttribute(recipient);
     }
 
     if (response?.model) {
@@ -1189,6 +1199,7 @@ function resetStreamTracking(recipient, keepRawResponse = true) {
     if (!keepRawResponse) {
         delete recipient._laiRawResponse;
     }
+    syncRawResponseAttribute(recipient);
 
     recipient.classList.remove('lai-stream-live');
     delete recipient.dataset.status;
@@ -1206,13 +1217,23 @@ async function finaliseStreamRecipient(recipient, response = {}) {
 
     if (typeof response?.rawResponse === 'string' && response.rawResponse) {
         recipient._laiRawResponse = response.rawResponse;
+        syncRawResponseAttribute(recipient);
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Raw streamed response kept for debug`, {
             rawResponseLength: response.rawResponse.length,
             rawResponse: response.rawResponse
         });
     }
 
-    const finalContent = laiExtractDataFromResponse(response);
+    let finalContent = laiExtractDataFromResponse(response);
+    if (!finalContent) {
+        const ac = recipient._laiStreamContent || '';
+        const at = recipient._laiStreamThinking || '';
+        if (at && ac.trim().length > 0) {
+            finalContent = `<think>\n${at}\n</think>\n\n${ac}`;
+        } else {
+            finalContent = ac || at;
+        }
+    }
     clearStreamingRecipient(recipient, !!recipient._laiRawResponse);
 
     if (!finalContent) {
@@ -1306,6 +1327,10 @@ function onRuntimeMessage(response, sender, sendResponse) {
 
 async function messageProcessor(response, sender) {
 
+    if (response?.action === 'callContentExtractor') {
+        return { result: await handleContentExtractorCall(response) };
+    }
+
     // All other actions require shadowRoot
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
@@ -1355,18 +1380,20 @@ async function messageProcessor(response, sender) {
                 const previewText = appendStreamChunkToRecipient(rootRecipient, response);
                 if (!previewText) { return; }
                 scrollChatHistoryContainer({ target: rootRecipient });
-                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Stream chunk appended`, {
-                    responseAction: response.action,
-                    contentLength: previewText.length,
-                    aiCardCount: shadowRoot.querySelectorAll('.lai-ai-input').length,
-                    recipientChildCount: rootRecipient.childNodes.length,
-                    recipientTextLength: rootRecipient.innerText?.length ?? 0
-                });
+                // console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Stream chunk appended`, {
+                //     responseAction: response.action,
+                //     contentLength: previewText.length,
+                //     aiCardCount: shadowRoot.querySelectorAll('.lai-ai-input').length,
+                //     recipientChildCount: rootRecipient.childNodes.length,
+                //     recipientTextLength: rootRecipient.innerText?.length ?? 0
+                // });
             } catch (err) {
                 streamDataError = err;
                 console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, response);
             }
             break;
+        case "streamAbort":
+        // falls through to streamEnd to render whatever was received before the abort
         case "streamEnd":
             try {
                 await finaliseStreamRecipient(recipient, response);
@@ -1377,9 +1404,6 @@ async function messageProcessor(response, sender) {
             break;
         case "streamError":
             laiHandleStreamActions("Stream Error", recipient);
-            break;
-        case "streamAbort":
-            laiHandleStreamActions("Stream Aborted", recipient, '... Aborted');
             break;
         case "toggleSidebar":
             await laiSwapSidebarWithButton(true);
@@ -1986,3 +2010,40 @@ function dumpInConsole(message = '', obj, consoleAction = 'log') {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing JSON or logging message: ${error.message}`, error);
     }
 }
+
+function getLastRawResponseRecipient() {
+    const shadowRoot = typeof getShadowRoot === 'function'
+        ? getShadowRoot()
+        : document.getElementById('shadowRoot');
+    if (!shadowRoot) { return null; }
+
+    const recipients = Array.from(shadowRoot.querySelectorAll('.lai-ai-input .lai-input-text'));
+    for (let index = recipients.length - 1; index >= 0; index--) {
+        if (typeof recipients[index]?._laiRawResponse === 'string' && recipients[index]._laiRawResponse.trim()) {
+            return recipients[index];
+        }
+    }
+
+    return null;
+}
+
+function getLastRawResponse() {
+    return getLastRawResponseRecipient()?._laiRawResponse || '';
+}
+
+function dumpLastRawResponse() {
+    const rawResponse = getLastRawResponse();
+    if (!rawResponse) {
+        console.warn('No raw AI response is currently available.');
+        return '';
+    }
+
+    console.log(rawResponse);
+    return rawResponse;
+}
+
+globalThis.localAIHelpers = {
+    ...(globalThis.localAIHelpers || {}),
+    getLastRawResponse,
+    dumpLastRawResponse
+};

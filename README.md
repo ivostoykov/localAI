@@ -31,6 +31,13 @@ A local AI tool—these are easy to set up, usually just download and run:
 
 If you use [Ollama Cloud](https://ollama.com/), the current preferred setup is still the local Ollama endpoint. Sign in with the Ollama app or CLI first, then keep the extension pointed at your local `'/api/*'` endpoint. Cloud-tagged models exposed by the signed-in local daemon can then be used without storing API keys in the extension.
 
+The model picker now loads two catalogues:
+
+* **Local** models are fetched from your configured Ollama endpoint `'/api/tags'`.
+* **Cloud** models are fetched from `https://ollama.com/api/tags`.
+
+If Ollama Cloud access is a concern in your environment, note that refreshing the model catalogue will make that external request for the cloud tab.
+
 >[! Warning]:
 > The following API providers are deprecated for now and will only be reinstated upon request.
 > * [LM Studio](https://lmstudio.ai/) - preffered

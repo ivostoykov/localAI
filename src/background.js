@@ -410,7 +410,7 @@ async function sendStreamChunkToUi(senderTabId, payload = {}, debugEnabled = fal
     if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
 }
 
-async function consumeStreamResponse(response, senderTabId, debugEnabled = false) {
+async function consumeStreamResponse(response, senderTabId, debugEnabled = false, signal = null) {
     if (!response?.body || typeof response.body.getReader !== 'function') {
         const responseText = await response.clone().text();
         return {
@@ -424,33 +424,51 @@ async function consumeStreamResponse(response, senderTabId, debugEnabled = false
     let buffer = '';
     let responseText = '';
     let body = {};
+    let streamFinished = false;
 
-    while (true) {
-        const { value, done } = await reader.read();
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    try {
+        while (true) {
+            if (signal?.aborted) {
+                throw new DOMException('The operation was aborted.', 'AbortError');
+            }
+            const { value, done } = await reader.read();
+            buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
 
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-        for (let index = 0; index < lines.length; index++) {
-            const line = normaliseStreamLine(lines[index]);
-            if (!line) { continue; }
+            for (let index = 0; index < lines.length; index++) {
+                const line = normaliseStreamLine(lines[index]);
+                if (!line) { continue; }
 
-            responseText += `${line}\n`;
-            const chunk = JSON.parse(line);
-            body = mergeStreamChunkBody(body, chunk);
-            await sendStreamChunkToUi(senderTabId, getStreamChunkUiPayload(chunk, line), debugEnabled);
+                responseText += `${line}\n`;
+                const chunk = JSON.parse(line);
+                body = mergeStreamChunkBody(body, chunk);
+                await sendStreamChunkToUi(senderTabId, getStreamChunkUiPayload(chunk, line), debugEnabled);
+
+                if (chunk?.done === true) {
+                    streamFinished = true;
+                }
+            }
+
+            if (done || streamFinished) { break; }
         }
 
-        if (done) { break; }
-    }
-
-    const trailingLine = normaliseStreamLine(buffer);
-    if (trailingLine) {
-        responseText += `${trailingLine}\n`;
-        const chunk = JSON.parse(trailingLine);
-        body = mergeStreamChunkBody(body, chunk);
-        await sendStreamChunkToUi(senderTabId, getStreamChunkUiPayload(chunk, trailingLine), debugEnabled);
+        const trailingLine = normaliseStreamLine(buffer);
+        if (trailingLine) {
+            responseText += `${trailingLine}\n`;
+            const chunk = JSON.parse(trailingLine);
+            body = mergeStreamChunkBody(body, chunk);
+            await sendStreamChunkToUi(senderTabId, getStreamChunkUiPayload(chunk, trailingLine), debugEnabled);
+        }
+    } finally {
+        if (!streamFinished) {
+            try {
+                await reader.cancel();
+            } catch (error) {
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Stream reader cancel skipped`, error);
+            }
+        }
     }
 
     return {
@@ -934,7 +952,7 @@ async function fetchDataAction(request, sender) {
             reqOpt.body = JSON.stringify(request.data);
             response = await fetch(url, reqOpt);
             if (request.data.stream && response.ok) {
-                const streamedResponse = await consumeStreamResponse(response, sender?.tab?.id, laiOptions?.debug ?? false);
+                const streamedResponse = await consumeStreamResponse(response, sender?.tab?.id, laiOptions?.debug ?? false, controller.signal);
                 responseText = streamedResponse.responseText;
                 body = streamedResponse.body;
             } else {
@@ -1012,15 +1030,6 @@ async function fetchDataAction(request, sender) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store turn in memory:`, memoryError);
         }
 
-        if (turnNumber === 1 && !activeSession?.titleGenerated) {
-            const titleWasGenerated = await generateAndUpdateSessionTitle(cleanedUserInput, sender.tab);
-            if (titleWasGenerated) {
-                activeSession = await getActiveSession();
-                activeSession.titleGenerated = true;
-                await setActiveSession(activeSession);
-            }
-        }
-
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] -  - response body message`, body?.message);
         await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response body message`, body?.message, 'info', sender?.tab?.id);
         // Only send response to frontend if it has content or tool calls
@@ -1039,6 +1048,16 @@ async function fetchDataAction(request, sender) {
                 await handleResponse(body, sender?.tab?.id);
             }
         // }
+
+        if (turnNumber === 1 && !activeSession?.titleGenerated && !activeSession?.titleManual) {
+            generateAndUpdateSessionTitle(cleanedUserInput, sender.tab).then(titleWasGenerated => {
+                if (!titleWasGenerated) { return; }
+                getActiveSession().then(session => {
+                    session.titleGenerated = true;
+                    setActiveSession(session);
+                });
+            });
+        }
     }
     catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
@@ -1271,11 +1290,12 @@ async function getModels(forceRefresh = false) {
     if (urlVal.indexOf('/api/') < 0) { return; }
 
     try {
-        const catalogue = await getModelCatalogue(urlVal, forceRefresh);
+        const catalogue = await getModelCatalogue(urlVal, forceRefresh, true);
         return {
             "status": "success",
             "models": catalogue?.models || [],
-            "groups": catalogue?.groups || { local: [], cloud: [] }
+            "groups": catalogue?.groups || { local: [], cloud: [] },
+            "errors": catalogue?.errors || {}
         };
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
@@ -1391,10 +1411,33 @@ async function generateAndUpdateSessionTitle(text, tab) {
     const titleSeed = await generateSessionTitle(text, tab);
     if (!titleSeed) { return false; }
     const activeSession = await getActiveSession();
-    let oldTitle = activeSession?.title?.replace(/session/ig, '');
-    activeSession["title"] = `${titleSeed}${oldTitle}`;
+    activeSession["title"] = titleSeed;
     await setActiveSession(activeSession);
     return true;
+}
+
+function normaliseGeneratedTitle(rawTitle = '') {
+    if (!rawTitle) { return null; }
+
+    const lines = `${rawTitle}`
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+    const candidate = (lines[0] || rawTitle || '')
+        .replace(/^title\s*:\s*/i, '')
+        .replace(/[`"'“”‘’]/g, ' ')
+        .replace(/[^a-z0-9\s-]/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const words = candidate
+        .split(/\s+/)
+        .map(word => word.trim())
+        .filter(Boolean)
+        .slice(0, 5);
+
+    if (words.length < 1) { return null; }
+
+    return words.join(' ');
 }
 
 async function generateSessionTitle(text, tab) {
@@ -1406,23 +1449,36 @@ async function generateSessionTitle(text, tab) {
     await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`, null, 'debug', tab?.id);
 
     url = new URL(url);
-    url = `${url.protocol}//${url.host}/api/generate`;
+    url = `${url.protocol}//${url.host}/api/chat`;
     let jsonPrompt = {
         "model": model,
         "stream": false,
-        "raw": true,
         "options": {
-            "temperature": 0.2,
-            "top_p": 0.4,
+            "temperature": 0.1,
+            "top_p": 0.2,
             "repeat_penalty": 1.15,
             "presence_penalty": 0.0,
             "max_tokens": 6
         },
-        "prompt": `Create the shortest possibe meaningful title (maximum 5 words). Remove all punctuation. Your response must be **only** the title. This limit must be strictly followed.
+        "messages": [
+            {
+                "role": "user",
+                "content": `Write a concise session title for the following first user prompt.
 
-Text_to_describe:
-“{{${text}}}”
+Rules:
+- respond with one line only
+- use plain words only
+- no punctuation
+- no quotes
+- no labels
+- maximum 5 words
+- capture the main topic, not an instruction verb
+
+First user prompt:
+${`${text}`.replace(/\s+/g, ' ').trim()}
 `
+            }
+        ]
     };
 
     if (await modelCanThink(model)) { jsonPrompt["think"] = false; }
@@ -1440,14 +1496,8 @@ Text_to_describe:
         data = await res.json();
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, data);
         await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, data, 'debug', tab?.id);
-        title = data?.response?.split('\n')?.map(x => x?.trim())?.filter(Boolean)?.slice(-1)?.[0]?.trim() ?? null;
+        title = normaliseGeneratedTitle(data?.message?.content || '');
         if(!title)  {  return null;  }
-        title = title?.replace(/^\n?title:\s{1,}/i, '');
-        title = title?.replace(/[^a-z0-9\s]/gi, '')
-        ?.trim()
-        ?.split(/\s+/)
-        ?.slice(0, 5)
-        ?.join(' ');
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - title: ${title}`);
         return title;
     } catch (err) {
@@ -1502,7 +1552,7 @@ async function refreshModelCatalogueCache(forceRefresh = false) {
         const aiUrl = laiOptions?.aiUrl;
         if (!aiUrl) { return null; }
 
-        return await getModelCatalogue(aiUrl, forceRefresh);
+        return await getModelCatalogue(aiUrl, forceRefresh, false);
     } catch (error) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to refresh model catalogue cache`, error);
         return null;
