@@ -1,6 +1,34 @@
 # Local AI - Changelog
 
-## [1.29.59] - 2026-04-18 - latest
+## [1.29.65] - 2026-04-21 - latest
+
+### Element Attachments
+
+- Fixed `Select And Attach Element` so newly attached snippets are sent in full to the model even on later turns
+- Current attachments are now included directly with the model-facing final user message for better model attention
+- Separated transient model context from persisted UI chat history so restored sessions show only the user prompt and model answer
+- Added a compatibility filter for older sessions that may already contain model-only page or attachment context blocks
+
+### Validation
+
+- Focused background-memory and background regression suites pass at `89/89`
+
+## [1.29.63] - 2026-04-19
+
+### Cloud Model Picker
+
+- Cloud models are now fetched live from `ollama.com/api/tags` whenever the picker opens
+- Cached cloud data is now used only as a fallback when the live cloud fetch fails
+- Cloud tab shows the active model by default when the active model is cloud-routed
+- Cloud rows already known by the local daemon are badged without duplicating them in Local
+- Removed a stale commented model-switch handler from the ribbon code
+
+### Validation
+
+- Verified live in Chrome against the pinned LinkedIn sidebar: full remote cloud list visible, locally available cloud models badged, active model ticked, and model switching plus prompting working end-to-end
+- Focused regression suite now passes at `87/87`
+
+## [1.29.59] - 2026-04-18
 
 ### Cloud Model List
 
@@ -14,7 +42,7 @@
 - Fixed false "Failed to load model" error on every model switch
 - Replaced status checks so any 2xx response is treated as success
 
-## [1.29.56] - 2026-04-16 - latest
+## [1.29.56] - 2026-04-16
 
 ### Session Rename
 
@@ -526,7 +554,7 @@
 - `Select and Send Element` now separate image from text elements and prompt them accordingly. Processing images required LLM that supports it, like llama3.2-vision
 - Some bugs were fixed.
 
-## [1.22.37] 2024-12-09 - latest
+## [1.22.37] 2024-12-09
 ### Options page
 - Added `test connection` button
 - Added converting binary to text service and point

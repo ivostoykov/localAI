@@ -155,6 +155,7 @@ class BackgroundMemory {
     const budget = 3200;
     let used = 0;
     const deduplicatedAttachments = this.getDeduplicatedAttachments(attachments, pageContent);
+    const currentAttachmentIds = new Set(deduplicatedAttachments.map(att => att?.id).filter(Boolean));
 
     if (systemInstructions) {
       context.push({ role: 'system', content: systemInstructions });
@@ -200,10 +201,11 @@ class BackgroundMemory {
       sessionContext?.attachments,
       pageContent || sessionContext?.pageContent
     );
+    const historicalAttachments = contextAttachments.filter(att => !currentAttachmentIds.has(att?.id));
 
-    if (contextAttachments.length > 0) {
+    if (historicalAttachments.length > 0) {
       if (turnNumber <= 2) {
-        contextAttachments.forEach(att => {
+        historicalAttachments.forEach(att => {
           const header = `[ATTACHMENT ${att.type?.toUpperCase()}]` +
             (att.filename ? ` (${att.filename})` : '') +
             (att.sourceUrl ? ` (from ${att.sourceUrl.split('/').slice(-2).join('/')})` : '');
@@ -214,7 +216,7 @@ class BackgroundMemory {
           used += this.estimateTokens(att.content);
         });
       } else if (sessionContext.attachmentSummaries?.length > 0) {
-        const summaries = contextAttachments
+        const summaries = historicalAttachments
           .map(att => this.extractAttachmentSummary(att))
           .join('\n');
         context.push({ role: 'system', content: `[ATTACHMENTS]: ${summaries}` });
@@ -255,7 +257,7 @@ class BackgroundMemory {
     }
 
     context.push(...recentMessages);
-    context.push({ role: 'user', content: newMessage });
+    context.push({ role: 'user', content: this.composeFinalUserMessage(newMessage, deduplicatedAttachments) });
 
     return context;
   }
@@ -734,6 +736,30 @@ class BackgroundMemory {
   extractAttachmentSummary(attachment) {
     const preview = (attachment.content || '').substring(0, 150).replace(/\n/g, ' ');
     return `[${attachment.type}: ${attachment.filename || 'unknown'}] ${preview}...`;
+  }
+
+  formatAttachmentForPrompt(attachment) {
+    const header = `[ATTACHMENT ${attachment.type?.toUpperCase()}]` +
+      (attachment.filename ? ` (${attachment.filename})` : '') +
+      (attachment.sourceUrl ? ` (from ${attachment.sourceUrl.split('/').slice(-2).join('/')})` : '');
+
+    return `${header}:\n${attachment.content || ''}`;
+  }
+
+  composeFinalUserMessage(newMessage, attachments = []) {
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+      return newMessage;
+    }
+
+    const attachmentBlocks = attachments
+      .filter(att => att?.content)
+      .map(att => this.formatAttachmentForPrompt(att));
+
+    if (attachmentBlocks.length === 0) {
+      return newMessage;
+    }
+
+    return `${attachmentBlocks.join('\n\n')}\n\n[USER PROMPT]:\n${newMessage}`;
   }
 
   estimateTokens(text) {

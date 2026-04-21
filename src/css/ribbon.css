@@ -220,6 +220,9 @@
 }
 
 .model-list-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     padding: 5px 25px;
 }
 
@@ -236,6 +239,22 @@
 
 .model-list-item.active-model-list-item::after {
     content: ' ✔';
+}
+
+.model-list-item-label {
+    min-width: 0;
+}
+
+.model-list-item-badge {
+    margin-left: auto;
+    border: 1px solid #bfa65a;
+    border-radius: 999px;
+    background-color: #fff4c3;
+    color: #6a5418;
+    padding: 0.05rem 0.45rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: nowrap;
 }
 
 .model-list-item.unavailable,

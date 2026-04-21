@@ -90,7 +90,7 @@ async function handleRuntimeMessage(request, sender) {
             return { tabId: sender?.tab?.id };
 
         case 'getModels':
-            return await getModels(request?.forceRefresh || false);
+            return await getModels(request?.forceRefresh || false, request?.refreshCloud || false);
 
         case 'fetchData':
             return await fetchDataAction(request, sender);
@@ -136,7 +136,7 @@ async function handleRuntimeMessage(request, sender) {
 
         case "prepareModels":
             response = await prepareModels(request.modelName, request.unload, sender?.tab);
-            return { status: response?.status ?? 500, text: response?.statusText ?? 'Unknown error' };
+            return { status: response?.status ?? 500, text: response?.statusText ?? 'Unknown error', ok: response?.ok ?? false };
 
         case "storeImage":
             return await storeImageHandler(request.base64, request.filename, request.mimeType);
@@ -239,6 +239,8 @@ async function init() {
         await cleanupOrphanedSessions();
         await refreshModelCatalogueCache();
         await validateModelInfoCache();
+        // Added v1.29.60 — remove orphaned activeModel key left by pre-v1.29 builds. Remove this block in v1.30.
+        await chrome.storage.local.remove('activeModel');
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - Failed to initialise memory system:`, e);
     }
@@ -867,8 +869,10 @@ async function fetchDataAction(request, sender) {
     const controller = new AbortController();
     if (tabId != null) { controllers.set(tabId, controller); }
 
-    let model = await getAiModel()
-    if (model) { request.data['model'] = model; }
+    let model = await getAiModel();
+    if (model) {
+        request.data['model'] = await resolveModelNameForRequest(model, false, sender?.tab);
+    }
     await applyAutomaticModelOptions(request.data, model);
 
     request.data["stream"] = true;
@@ -923,7 +927,10 @@ async function fetchDataAction(request, sender) {
     }
 
     request.data.messages = optimisedMessages;
-    activeSession.messages = structuredClone(request.data.messages);
+    activeSession.messages = [
+        ...getVisibleSessionMessages(activeSession.messages),
+        { role: 'user', content: userInput }
+    ];
     await setActiveSession(activeSession);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - updated request`, request.data);
 
@@ -1086,6 +1093,20 @@ async function fetchDataAction(request, sender) {
     }
 
     return { "status": "success", "message": "Request sent. Awaiting response." };
+}
+
+function getVisibleSessionMessages(messages = []) {
+    if (!Array.isArray(messages)) { return []; }
+
+    return messages.filter(msg => {
+        if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) { return false; }
+        if (!msg.content || msg.content.trim() === '') { return false; }
+        if (msg.tool_calls) { return false; }
+        if (msg.content.startsWith('[PAGE CONTENT]:')) { return false; }
+        if (msg.content.startsWith('[ATTACHMENT ')) { return false; }
+        if (msg.content.startsWith('[ATTACHMENTS]:')) { return false; }
+        return true;
+    });
 }
 
 async function checkResponseTextAndBody(params){
@@ -1274,7 +1295,7 @@ async function getCurrentTab() {
     return tab;
 }
 
-async function getModels(forceRefresh = false) {
+async function getModels(forceRefresh = false, refreshCloud = false) {
     const laiOptions = await getLaiOptions();
     let urlVal = laiOptions?.aiUrl;
     if (!urlVal) {
@@ -1290,12 +1311,13 @@ async function getModels(forceRefresh = false) {
     if (urlVal.indexOf('/api/') < 0) { return; }
 
     try {
-        const catalogue = await getModelCatalogue(urlVal, forceRefresh, true);
+        const catalogue = await getModelCatalogue(urlVal, forceRefresh, true, refreshCloud);
         return {
             "status": "success",
             "models": catalogue?.models || [],
             "groups": catalogue?.groups || { local: [], cloud: [] },
-            "errors": catalogue?.errors || {}
+            "errors": catalogue?.errors || {},
+            "cloudCatalogueFallbackSource": catalogue?.cloudCatalogueFallbackSource || ''
         };
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
@@ -1337,13 +1359,18 @@ async function storeImageHandler(base64, filename, mimeType) {
 async function prepareModels(modelName, remove = false, tab) {
     let response;
     const laiOptions = await getLaiOptions();
-    const data = {
-        "model": modelName,
-        "messages": [],
-    };
+    const chatUrl = laiOptions?.aiUrl;
+    if (!chatUrl) {
+        const msg = 'Missing API endpoint — cannot load/unload model';
+        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg}`, null, 'error', tab?.id);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg}`);
+        return { status: 500, statusText: msg, ok: false };
+    }
+    const resolvedModelName = await resolveModelNameForRequest(modelName, true, tab);
+    const data = { "model": resolvedModelName, "messages": [] };
     if (remove) { data["keep_alive"] = 0; }
     try {
-        response = await fetch(laiOptions?.aiUrl, {
+        response = await fetch(chatUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -1351,15 +1378,16 @@ async function prepareModels(modelName, remove = false, tab) {
     } catch (err) {
         await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, "error", tab?.id);
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
-        return { status: 500, statusText: err.message || 'Failed to prepare model' };
+        return { status: 500, statusText: err.message || 'Failed to prepare model', ok: false };
     }
 
     if (response) {
-        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${modelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab?.id);
+        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${resolvedModelName} ${remove ? 'un' : ''}loaded successfully.`, response, "log", tab?.id);
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, response);
     }
     return { status: response.status, statusText: response.statusText, ok: response.ok };
 }
+
 
 /////////// other helpers ///////////
 
@@ -1376,6 +1404,24 @@ async function getModelInfo(modelName, forceRefresh = false) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
         return { model: modelName, error: err.message };
     }
+}
+
+async function resolveModelNameForRequest(modelName, forceRefresh = false, tab = null) {
+    if (!modelName) { return null; }
+
+    const modelData = await getModelInfo(modelName, forceRefresh);
+    if (modelData?.error) {
+        throw new Error(modelData.error);
+    }
+
+    const resolvedModelName = modelData?.resolvedModelName || modelName;
+    if (resolvedModelName !== modelName) {
+        const msg = `Resolved model ${modelName} -> ${resolvedModelName}`;
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg}`);
+        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg}`, null, 'debug', tab?.id);
+    }
+
+    return resolvedModelName;
 }
 
 async function modelCanUseTools(modelName, tab) {
@@ -1445,6 +1491,7 @@ async function generateSessionTitle(text, tab) {
     let url = await getAiUrl();
     let model = await getTitleGenerator() ?? await getAiModel();
     if (!model) {   return null;   }
+    model = await resolveModelNameForRequest(model, false, tab);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`);
     await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${model} model will be used for generating the Session title`, null, 'debug', tab?.id);
 

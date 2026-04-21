@@ -17,10 +17,15 @@ const executeModelCatalogueCode = new Function(
     `${modelCatalogueCode}; return {
         getModelEndpointCacheKey,
         getModelSource,
+        inferModelSourceFromName,
         normaliseModelSummary,
         groupModelsBySource,
         extractContextWindow,
         sanitiseModelInfo,
+        getModelNameVariants,
+        modelSummaryMatchesName,
+        findMatchingModelSummary,
+        buildModelNameCandidates,
         getCachedModelCatalogue,
         fetchModelCatalogueFromApi,
         getModelCatalogue,
@@ -139,7 +144,13 @@ describe('model-catalogue.js', () => {
                 ok: true,
                 json: async () => ({
                     models: [
-                        { name: 'llama3.2:latest', model: 'llama3.2:latest' }
+                        { name: 'llama3.2:latest', model: 'llama3.2:latest' },
+                        {
+                            name: 'gpt-oss:120b-cloud',
+                            model: 'gpt-oss:120b-cloud',
+                            remote_host: 'https://ollama.com:443',
+                            remote_model: 'gpt-oss:120b'
+                        }
                     ]
                 })
             })
@@ -147,10 +158,8 @@ describe('model-catalogue.js', () => {
                 ok: true,
                 json: async () => ({
                     models: [
-                        {
-                            name: 'gpt-oss:120b-cloud',
-                            model: 'gpt-oss:120b-cloud'
-                        }
+                        { name: 'gpt-oss:120b', model: 'gpt-oss:120b' },
+                        { name: 'deepseek-v3.1:671b', model: 'deepseek-v3.1:671b' }
                     ]
                 })
             });
@@ -159,17 +168,46 @@ describe('model-catalogue.js', () => {
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
         expect(catalogue.groups.local).toHaveLength(1);
-        expect(catalogue.groups.cloud).toHaveLength(1);
+        expect(catalogue.groups.cloud).toHaveLength(2);
+        expect(catalogue.groups.cloud.map(model => model.name)).toEqual(['deepseek-v3.1:671b', 'gpt-oss:120b']);
+        expect(catalogue.groups.cloud.find(model => model.name === 'gpt-oss:120b')?.availableLocally).toBe(true);
+        expect(catalogue.groups.cloud.find(model => model.name === 'deepseek-v3.1:671b')?.availableLocally).toBe(false);
         expect(storageState.modelCatalogueCache['http://127.0.0.1:11434']).toBeDefined();
     });
 
-    it('keeps the local catalogue when the cloud catalogue fetch fails', async () => {
+    it('falls back to cached cloud models when the live cloud fetch fails', async () => {
+        storageState.modelCatalogueCache = {
+            'http://127.0.0.1:11434': {
+                endpoint: 'http://127.0.0.1:11434',
+                updatedAt: '2026-04-19T00:00:00.000Z',
+                groups: {
+                    local: [{ name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' }],
+                    cloud: [
+                        { name: 'deepseek-v3.1:671b', model: 'deepseek-v3.1:671b', source: 'cloud' },
+                        { name: 'gpt-oss:120b', model: 'gpt-oss:120b', source: 'cloud' }
+                    ]
+                },
+                models: [
+                    { name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' },
+                    { name: 'deepseek-v3.1:671b', model: 'deepseek-v3.1:671b', source: 'cloud' },
+                    { name: 'gpt-oss:120b', model: 'gpt-oss:120b', source: 'cloud' }
+                ],
+                scope: 'all',
+                cloudCatalogueLoaded: true
+            }
+        };
         fetchMock
             .mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({
                     models: [
-                        { name: 'llama3.2:latest', model: 'llama3.2:latest' }
+                        { name: 'llama3.2:latest', model: 'llama3.2:latest' },
+                        {
+                            name: 'deepseek-v3.1:671b-cloud',
+                            model: 'deepseek-v3.1:671b-cloud',
+                            remote_host: 'https://ollama.com:443',
+                            remote_model: 'deepseek-v3.1:671b'
+                        }
                     ]
                 })
             })
@@ -179,11 +217,50 @@ describe('model-catalogue.js', () => {
                 statusText: 'Service Unavailable'
             });
 
-        const catalogue = await exports.fetchModelCatalogueFromApi('http://127.0.0.1:11434/api/chat', true);
+        const catalogue = await exports.getModelCatalogue('http://127.0.0.1:11434/api/chat', false, true, true);
 
         expect(catalogue.groups.local.map(model => model.name)).toEqual(['llama3.2:latest']);
-        expect(catalogue.groups.cloud).toEqual([]);
-        expect(catalogue.errors.cloud).toContain('503');
+        expect(catalogue.groups.cloud.map(model => model.name)).toEqual(['deepseek-v3.1:671b', 'gpt-oss:120b']);
+        expect(catalogue.groups.cloud[0].availableLocally).toBe(true);
+        expect(catalogue.errors.cloud).toBe('Failed to load models (503: Service Unavailable)');
+        expect(catalogue.cloudCatalogueLoaded).toBe(false);
+        expect(catalogue.cloudCatalogueFallback).toBe(true);
+        expect(catalogue.cloudCatalogueFallbackSource).toBe('cache');
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls back to locally known cloud models when no cached cloud catalogue exists', async () => {
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'llama3.2:latest', model: 'llama3.2:latest' },
+                        {
+                            name: 'deepseek-v3.1:671b-cloud',
+                            model: 'deepseek-v3.1:671b-cloud',
+                            remote_host: 'https://ollama.com:443',
+                            remote_model: 'deepseek-v3.1:671b'
+                        }
+                    ]
+                })
+            })
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 503,
+                statusText: 'Service Unavailable'
+            });
+
+        const catalogue = await exports.getModelCatalogue('http://127.0.0.1:11434/api/chat', false, true, true);
+
+        expect(catalogue.groups.local.map(model => model.name)).toEqual(['llama3.2:latest']);
+        expect(catalogue.groups.cloud.map(model => model.name)).toEqual(['deepseek-v3.1:671b-cloud']);
+        expect(catalogue.groups.cloud[0].availableLocally).toBe(true);
+        expect(catalogue.errors.cloud).toBe('Failed to load models (503: Service Unavailable)');
+        expect(catalogue.cloudCatalogueLoaded).toBe(false);
+        expect(catalogue.cloudCatalogueFallback).toBe(true);
+        expect(catalogue.cloudCatalogueFallbackSource).toBe('local');
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it('reuses cached catalogue data when refresh is not forced', async () => {
@@ -195,7 +272,8 @@ describe('model-catalogue.js', () => {
                     local: [{ name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' }],
                     cloud: []
                 },
-                models: [{ name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' }]
+                models: [{ name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' }],
+                scope: 'daemon'
             }
         };
 
@@ -203,6 +281,143 @@ describe('model-catalogue.js', () => {
 
         expect(fetchMock).not.toHaveBeenCalled();
         expect(catalogue.models[0].name).toBe('llama3.2:latest');
+    });
+
+    it('refreshes the cloud catalogue on demand even when a current cache exists', async () => {
+        storageState.modelCatalogueCache = {
+            'http://127.0.0.1:11434': {
+                endpoint: 'http://127.0.0.1:11434',
+                updatedAt: '2026-04-19T00:00:00.000Z',
+                groups: {
+                    local: [{ name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' }],
+                    cloud: [{ name: 'gpt-oss:120b', model: 'gpt-oss:120b', source: 'cloud' }]
+                },
+                models: [
+                    { name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' },
+                    { name: 'gpt-oss:120b', model: 'gpt-oss:120b', source: 'cloud' }
+                ],
+                scope: 'all',
+                cloudCatalogueLoaded: true
+            }
+        };
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'llama3.2:latest', model: 'llama3.2:latest' }
+                    ]
+                })
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'deepseek-v3.1:671b', model: 'deepseek-v3.1:671b' }
+                    ]
+                })
+            });
+
+        const catalogue = await exports.getModelCatalogue('http://127.0.0.1:11434/api/chat', false, true, true);
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(catalogue.groups.cloud.map(model => model.name)).toEqual(['deepseek-v3.1:671b']);
+        expect(catalogue.cloudCatalogueLoaded).toBe(true);
+    });
+
+    it('does not treat a daemon-only cached catalogue as a full cloud catalogue', async () => {
+        storageState.modelCatalogueCache = {
+            'http://127.0.0.1:11434': {
+                endpoint: 'http://127.0.0.1:11434',
+                updatedAt: '2026-04-13T00:00:00.000Z',
+                groups: {
+                    local: [{ name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' }],
+                    cloud: [{ name: 'gpt-oss:120b-cloud', model: 'gpt-oss:120b-cloud', source: 'cloud', availableLocally: true }]
+                },
+                models: [
+                    { name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' },
+                    { name: 'gpt-oss:120b-cloud', model: 'gpt-oss:120b-cloud', source: 'cloud', availableLocally: true }
+                ],
+                scope: 'daemon'
+            }
+        };
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'llama3.2:latest', model: 'llama3.2:latest' },
+                        {
+                            name: 'gpt-oss:120b-cloud',
+                            model: 'gpt-oss:120b-cloud',
+                            remote_host: 'https://ollama.com:443',
+                            remote_model: 'gpt-oss:120b'
+                        }
+                    ]
+                })
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'gpt-oss:120b', model: 'gpt-oss:120b' }
+                    ]
+                })
+            });
+
+        const catalogue = await exports.getModelCatalogue('http://127.0.0.1:11434/api/chat', false, true);
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(catalogue.groups.cloud.map(model => model.name)).toEqual(['gpt-oss:120b']);
+        expect(catalogue.groups.cloud[0].availableLocally).toBe(true);
+    });
+
+    it('re-fetches stale pre-metadata cloud catalogues cached with scope all', async () => {
+        storageState.modelCatalogueCache = {
+            'http://127.0.0.1:11434': {
+                endpoint: 'http://127.0.0.1:11434',
+                updatedAt: '2026-04-18T00:00:00.000Z',
+                groups: {
+                    local: [{ name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' }],
+                    cloud: [{ name: 'gpt-oss:120b-cloud', model: 'gpt-oss:120b-cloud', source: 'cloud' }]
+                },
+                models: [
+                    { name: 'llama3.2:latest', model: 'llama3.2:latest', source: 'local' },
+                    { name: 'gpt-oss:120b-cloud', model: 'gpt-oss:120b-cloud', source: 'cloud' }
+                ],
+                scope: 'all'
+            }
+        };
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'llama3.2:latest', model: 'llama3.2:latest' },
+                        {
+                            name: 'gpt-oss:120b-cloud',
+                            model: 'gpt-oss:120b-cloud',
+                            remote_host: 'https://ollama.com:443',
+                            remote_model: 'gpt-oss:120b'
+                        }
+                    ]
+                })
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    models: [
+                        { name: 'gpt-oss:120b', model: 'gpt-oss:120b' },
+                        { name: 'deepseek-v3.1:671b', model: 'deepseek-v3.1:671b' }
+                    ]
+                })
+            });
+
+        const catalogue = await exports.getModelCatalogue('http://127.0.0.1:11434/api/chat', false, true);
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(catalogue.cloudCatalogueLoaded).toBe(true);
+        expect(catalogue.groups.cloud.map(model => model.name)).toEqual(['deepseek-v3.1:671b', 'gpt-oss:120b']);
     });
 
     it('loads model info, enriches it, and caches it by endpoint and name', async () => {
@@ -251,5 +466,142 @@ describe('model-catalogue.js', () => {
         expect(modelInfo.source).toBe('cloud');
         expect(modelInfo.contextWindow).toBe(131072);
         expect(storageState.modelInfoCache['http://127.0.0.1:11434']['gpt-oss:120b-cloud']).toBeDefined();
+    });
+
+    it('resolves stripped cloud aliases through daemon catalogue matches', async () => {
+        storageState.modelCatalogueCache = {
+            'http://127.0.0.1:11434': {
+                endpoint: 'http://127.0.0.1:11434',
+                updatedAt: '2026-04-13T00:00:00.000Z',
+                groups: {
+                    local: [],
+                    cloud: [{
+                        name: 'gpt-oss:120b-cloud',
+                        model: 'gpt-oss:120b-cloud',
+                        source: 'cloud',
+                        remoteHost: 'https://ollama.com:443',
+                        remoteModel: 'gpt-oss:120b'
+                    }]
+                },
+                models: [{
+                    name: 'gpt-oss:120b-cloud',
+                    model: 'gpt-oss:120b-cloud',
+                    source: 'cloud',
+                    remoteHost: 'https://ollama.com:443',
+                    remoteModel: 'gpt-oss:120b'
+                }]
+            }
+        };
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                capabilities: ['completion', 'tools'],
+                model_info: {
+                    'gptoss.context_length': 131072
+                }
+            })
+        });
+
+        const modelInfo = await exports.getModelInfoFromApi(
+            'http://127.0.0.1:11434/api/chat',
+            'gpt-oss:120b'
+        );
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('gpt-oss:120b-cloud');
+        expect(modelInfo.modelName).toBe('gpt-oss:120b');
+        expect(modelInfo.resolvedModelName).toBe('gpt-oss:120b-cloud');
+        expect(modelInfo.source).toBe('cloud');
+    });
+
+    it('falls back to :cloud when the daemon catalogue does not expose the model yet', async () => {
+        storageState.modelCatalogueCache = {
+            'http://127.0.0.1:11434': {
+                endpoint: 'http://127.0.0.1:11434',
+                updatedAt: '2026-04-13T00:00:00.000Z',
+                groups: { local: [], cloud: [] },
+                models: []
+            }
+        };
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+                statusText: 'Not Found'
+            })
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+                statusText: 'Not Found'
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    capabilities: ['completion'],
+                    model_info: {
+                        'deepseek2.context_length': 163840
+                    }
+                })
+            });
+
+        const modelInfo = await exports.getModelInfoFromApi(
+            'http://127.0.0.1:11434/api/chat',
+            'deepseek-v3.1:671b'
+        );
+
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(fetchMock.mock.calls[0][0]).toBe('http://127.0.0.1:11434/api/tags');
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe('deepseek-v3.1:671b');
+        expect(JSON.parse(fetchMock.mock.calls[2][1].body).model).toBe('deepseek-v3.1:671b:cloud');
+        expect(modelInfo.resolvedModelName).toBe('deepseek-v3.1:671b:cloud');
+        expect(modelInfo.source).toBe('cloud');
+    });
+
+    it('re-resolves stale cached model info entries that predate resolvedModelName', async () => {
+        storageState.modelCatalogueCache = {
+            'http://127.0.0.1:11434': {
+                endpoint: 'http://127.0.0.1:11434',
+                updatedAt: '2026-04-13T00:00:00.000Z',
+                groups: { local: [], cloud: [] },
+                models: []
+            }
+        };
+        storageState.modelInfoCache = {
+            'http://127.0.0.1:11434': {
+                'deepseek-v3.1:671b': {
+                    modelName: 'deepseek-v3.1:671b',
+                    source: 'local',
+                    capabilities: ['completion']
+                }
+            }
+        };
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+                statusText: 'Not Found'
+            })
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+                statusText: 'Not Found'
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    capabilities: ['completion'],
+                    model_info: {
+                        'deepseek2.context_length': 163840
+                    }
+                })
+            });
+
+        const modelInfo = await exports.getModelInfoFromApi(
+            'http://127.0.0.1:11434/api/chat',
+            'deepseek-v3.1:671b'
+        );
+
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(modelInfo.resolvedModelName).toBe('deepseek-v3.1:671b:cloud');
     });
 });

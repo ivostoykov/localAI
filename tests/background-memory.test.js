@@ -217,6 +217,33 @@ describe('background-memory.js', () => {
             expect(context.some(msg => msg.content === 'First message')).toBe(true);
             expect(context.some(msg => msg.content === 'First response')).toBe(true);
         });
+
+        it('includes current attachments in full with the final user prompt on later turns', async () => {
+            const attachmentContent = 'Firm A\nLondon\nfirm-a@example.com\n\nFirm B\nLondon\nfirm-b@example.com';
+            const context = await backgroundMemory.buildOptimisedContext(
+                'session-attachment-late',
+                'Extract the firms and email addresses.',
+                3,
+                null,
+                null,
+                [
+                    {
+                        id: 'selected-tbody',
+                        type: 'snippet',
+                        filename: 'Selected Element',
+                        content: attachmentContent,
+                        sourceUrl: 'https://example.test/results'
+                    }
+                ]
+            );
+
+            const finalMessage = context[context.length - 1];
+
+            expect(finalMessage.role).toBe('user');
+            expect(finalMessage.content).toContain('[ATTACHMENT SNIPPET] (Selected Element)');
+            expect(finalMessage.content).toContain(attachmentContent);
+            expect(finalMessage.content).toContain('[USER PROMPT]:\nExtract the firms and email addresses.');
+        });
     });
 
     describe('deleteSession', () => {

@@ -29,7 +29,9 @@ const parsePositiveIntegerCode = backgroundCode.match(/function parsePositiveInt
 const getAutomaticContextWindowCode = backgroundCode.match(/async function getAutomaticContextWindow\([\s\S]*?\n}\n/)[0];
 const applyAutomaticModelOptionsCode = backgroundCode.match(/async function applyAutomaticModelOptions\([\s\S]*?\n}\n/)[0];
 const handleResponseCode = backgroundCode.match(/async function handleResponse\([\s\S]*?\n}\n/)[0];
+const getVisibleSessionMessagesCode = backgroundCode.match(/function getVisibleSessionMessages\([\s\S]*?\n}\n/)[0];
 const normaliseGeneratedTitleCode = backgroundCode.match(/function normaliseGeneratedTitle\([\s\S]*?\n}\n/)[0];
+const resolveModelNameForRequestCode = backgroundCode.match(/async function resolveModelNameForRequest\([\s\S]*?\n}\n/)[0];
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
 const modelCanUseToolsCode = backgroundCode.match(/async function modelCanUseTools\([\s\S]*?\n}\n/)[0];
 
@@ -47,16 +49,18 @@ ${parsePositiveIntegerCode}
 ${getAutomaticContextWindowCode}
 ${applyAutomaticModelOptionsCode}
 ${handleResponseCode}
+${getVisibleSessionMessagesCode}
 ${normaliseGeneratedTitleCode}
+${resolveModelNameForRequestCode}
 ${modelCanThinkCode}
 ${modelCanUseToolsCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, normaliseGeneratedTitle, modelCanThink, modelCanUseTools };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, normaliseGeneratedTitle, modelCanThink, modelCanUseTools;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -74,7 +78,9 @@ describe('background.js', () => {
         getAutomaticContextWindow = exports.getAutomaticContextWindow;
         applyAutomaticModelOptions = exports.applyAutomaticModelOptions;
         handleResponse = exports.handleResponse;
+        getVisibleSessionMessages = exports.getVisibleSessionMessages;
         normaliseGeneratedTitle = exports.normaliseGeneratedTitle;
+        resolveModelNameForRequest = exports.resolveModelNameForRequest;
         modelCanThink = exports.modelCanThink;
         modelCanUseTools = exports.modelCanUseTools;
     });
@@ -225,6 +231,25 @@ describe('background.js', () => {
             const result = replaceCommandPlaceholders(input);
 
             expect(result).toBe('[see page content attachment] and [see page content attachment] again');
+        });
+    });
+
+    describe('getVisibleSessionMessages', () => {
+        it('keeps visible user and assistant messages only', () => {
+            const result = getVisibleSessionMessages([
+                { role: 'system', content: 'System instructions' },
+                { role: 'user', content: '[PAGE CONTENT]:\nPage text' },
+                { role: 'user', content: '[ATTACHMENT SNIPPET]:\nSelected text' },
+                { role: 'user', content: 'User prompt' },
+                { role: 'assistant', content: 'Assistant reply' },
+                { role: 'assistant', content: 'Tool request', tool_calls: [{ function: { name: 'tool' } }] },
+                { role: 'tool', content: 'Tool result' }
+            ]);
+
+            expect(result).toEqual([
+                { role: 'user', content: 'User prompt' },
+                { role: 'assistant', content: 'Assistant reply' }
+            ]);
         });
     });
 
@@ -754,6 +779,37 @@ describe('background.js', () => {
 
             expect(result).toBe(false);
             expect(global.console.error).toHaveBeenCalled();
+        });
+    });
+
+    describe('resolveModelNameForRequest', () => {
+        beforeEach(() => {
+            global.getModelInfo = vi.fn();
+            global.dumpInFrontConsole = vi.fn();
+            global.console = {
+                debug: vi.fn(),
+                error: vi.fn()
+            };
+            global.manifest = { name: 'Test' };
+        });
+
+        it('returns the resolved model name when an alias was mapped', async () => {
+            global.getModelInfo.mockResolvedValue({
+                resolvedModelName: 'deepseek-v3.1:671b:cloud'
+            });
+
+            const result = await resolveModelNameForRequest('deepseek-v3.1:671b', false, { id: 123 });
+
+            expect(result).toBe('deepseek-v3.1:671b:cloud');
+            expect(global.dumpInFrontConsole).toHaveBeenCalled();
+        });
+
+        it('throws when model info resolution fails', async () => {
+            global.getModelInfo.mockResolvedValue({
+                error: 'Model not found'
+            });
+
+            await expect(resolveModelNameForRequest('missing-model')).rejects.toThrow('Model not found');
         });
     });
 });

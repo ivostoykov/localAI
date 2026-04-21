@@ -300,7 +300,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 2
     },
     {
@@ -314,7 +314,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 2
     },
     {
@@ -328,7 +328,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 1
     },
     {
@@ -342,7 +342,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 1
     },
     {
@@ -356,7 +356,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 1
     },
     {
@@ -370,7 +370,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 1
     },
     {
@@ -384,7 +384,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 2
     },
     {
@@ -398,7 +398,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 1
     },
     {
@@ -417,7 +417,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool"
+        "type": "function"
     },
     {
         "function": {
@@ -457,7 +457,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 3
     },
     {
@@ -477,7 +477,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 1
     },
     {
@@ -498,7 +498,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 1
     },
     {
@@ -512,7 +512,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 2
     },
     {
@@ -532,7 +532,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 2
     },
     {
@@ -552,7 +552,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 2
     },
     {
@@ -572,7 +572,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 2
     },
     {
@@ -586,7 +586,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 3
     },
     {
@@ -605,7 +605,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 5
     },
     {
@@ -619,7 +619,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
             }
         },
         "strict": true,
-        "type": "tool",
+        "type": "function",
         "usage_cost": 2
     }
 ];

@@ -347,28 +347,6 @@ async function openCloseSessionHistoryMenu(e) {
     sessionHistMenu.style.cssText = `top: ${e.clientY + 10}px;; left: ${e.clientX - (sessionHistMenu.offsetWidth / 4)}px;`;
 }
 
-// duplicated functionality by `swapActiveModel`
-// TODO: To be removed ? awaiting confirmation
-// async function modelChanged(e) {
-//     const laiOptions = await getOptions();
-//     const oldModelName = laiOptions.aiModel;
-//     const newModelName = e.target.options[e.target.selectedIndex].value;
-//     try {
-//         await chrome.runtime.sendMessage({ action: "prepareModels", modelName: oldModelName, unload: true });
-//         if (chrome.runtime.lastError) {
-//             console.error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
-//         }
-//         await chrome.runtime.sendMessage({ action: "prepareModels", modelName: newModelName, unload: false });
-//         if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-//     } catch (err) {
-//         console.log(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}]`, err);
-//     }
-//     laiOptions.aiModel = newModelName;
-//     await setOptions(laiOptions);
-//     await chrome.runtime.sendMessage({ action: "getModelInfo", modelName: newModelName, forceRefresh: true });
-//     setModelNameLabel({ "model": laiOptions.aiModel });
-// }
-
 async function selectMenuChanged(e) {
     const laiOptions = await getOptions();
     const id = e.target.id;
@@ -554,7 +532,7 @@ async function getAndShowModels(forceRefresh = false) {
     let response;
     updateStatusBar(forceRefresh ? 'Refreshing model list...' : 'Loading model list...')
     try {
-        response = await chrome.runtime.sendMessage({ action: "getModels", forceRefresh });
+        response = await chrome.runtime.sendMessage({ action: "getModels", forceRefresh, refreshCloud: true });
         if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         if (typeof (response) === 'boolean') { return; }
         if (!response) { throw new Error(`[${getLineNumber()}] - Server does not respond!`); }
@@ -562,10 +540,17 @@ async function getAndShowModels(forceRefresh = false) {
         laiOptions.modelList = response.models?.map(m => m.name).filter(Boolean).sort() || [];
         await setOptions(laiOptions);
         await fillAndShowModelList(response);
-        if ((response.groups?.cloud || []).length > 0) {
+        if ((response.groups?.cloud || []).length > 0 && !response.errors?.cloud) {
             await chrome.storage.local.set({ ollamaCloudModelListUpdate: Date.now() });
             const tab = getShadowRoot()?.querySelector('#cloudModelTab');
             if (tab) { tab.title = 'Cloud models updated today'; }
+        } else if (response.errors?.cloud) {
+            const tab = getShadowRoot()?.querySelector('#cloudModelTab');
+            if (tab) {
+                tab.title = response.cloudCatalogueFallbackSource === 'cache'
+                    ? 'Cloud catalogue unavailable - showing cached cloud models'
+                    : 'Cloud catalogue unavailable - showing locally known cloud models only';
+            }
         }
     } catch (e) {
         showMessage(e.message, 'error');
@@ -615,6 +600,35 @@ async function fillAndShowModelList(modelPayload = []) {
     const shadowRoot = getShadowRoot();
     const modelList = shadowRoot.querySelector('#availableModelList');
     const modelsDropDown = shadowRoot.querySelector('#modelList');
+    const buildComparableNames = (modelName = '') => {
+        const variants = [];
+        const push = value => {
+            if (!value || variants.includes(value)) { return; }
+            variants.push(value);
+        };
+
+        push(modelName);
+        push(modelName.replace(/:latest$/i, ''));
+        push(modelName.replace(/-cloud$/i, ''));
+        push(modelName.replace(/:cloud$/i, ''));
+
+        return variants.filter(Boolean);
+    };
+    const getComparableModelNames = (model = {}) => {
+        const matchNames = new Set(Array.isArray(model?.matchNames) ? model.matchNames.filter(Boolean) : []);
+
+        [model?.name, model?.model, model?.remoteModel].forEach(value => {
+            buildComparableNames(value).forEach(name => matchNames.add(name));
+        });
+
+        return [...matchNames];
+    };
+    const modelMatchesName = (model = {}, modelName = '') => {
+        if (!modelName) { return false; }
+
+        const modelNames = new Set(getComparableModelNames(model));
+        return buildComparableNames(modelName).some(name => modelNames.has(name));
+    };
     let opt = modelsDropDown.options[0];
     if (!modelList) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ERROR: Failed to find model list!`, modelList);
@@ -635,9 +649,10 @@ async function fillAndShowModelList(modelPayload = []) {
     const localGroup = groups?.local || [];
     const cloudGroup = groups?.cloud || [];
     const models = [...localGroup, ...cloudGroup];
-    const aiModel = laiOptions.aiModel.replace('-cloud', '');
-    const activeTab = localGroup.some(m => m?.name === aiModel) ? 'local'
-        : cloudGroup.some(m => m?.name === aiModel) ? 'cloud'
+    const aiModel = laiOptions.aiModel;
+    const selectedModelName = models.find(model => modelMatchesName(model, aiModel))?.name || aiModel;
+    const activeTab = localGroup.some(model => model?.name === selectedModelName) ? 'local'
+        : cloudGroup.some(model => model?.name === selectedModelName) ? 'cloud'
         : (localGroup.length > 0 || errors?.local) ? 'local'
         : 'cloud';
 
@@ -649,7 +664,7 @@ async function fillAndShowModelList(modelPayload = []) {
         const model = models[idx];
         opt = document.createElement('option');
         opt.text = opt.value = model.name;
-        opt.selected = model.name === aiModel;
+        opt.selected = model.name === selectedModelName;
         modelsDropDown.appendChild(opt);
     }
 
@@ -688,8 +703,19 @@ async function fillAndShowModelList(modelPayload = []) {
                 continue;
             }
 
-            item.textContent = model.name;
-            if (model.name === aiModel) { item.classList.add('active-model-list-item'); }
+            const label = document.createElement('span');
+            label.className = 'model-list-item-label';
+            label.textContent = model.name;
+            item.appendChild(label);
+
+            if (tabName === 'cloud' && model?.availableLocally) {
+                const badge = document.createElement('span');
+                badge.className = 'model-list-item-badge';
+                badge.textContent = 'Available locally';
+                item.appendChild(badge);
+            }
+
+            if (model.name === selectedModelName) { item.classList.add('active-model-list-item'); }
 
             item.addEventListener('click', async event => {
                 event.stopPropagation();
@@ -710,55 +736,21 @@ async function fillAndShowModelList(modelPayload = []) {
 
 async function swapActiveModel(e, modelName) {
     e.stopPropagation();
-    const activatedModel = e.target;
     const laiOptions = await getOptions();
     const oldModel = laiOptions.aiModel;
-    if (!activatedModel) { return; }
+    if (modelName === oldModel) { return; }
 
-    try {
-        showSpinner();
+    laiOptions.aiModel = modelName;
+    await setOptions(laiOptions);
 
-        updateStatusBar(`Trying to remove ${oldModel} from the memory...`);
-        let response = await chrome.runtime.sendMessage({ action: "prepareModels", modelName: oldModel, unload: true });
-        if (chrome.runtime.lastError) {
-            console.error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`, chrome.runtime.lastError);
-            showMessage(`Problem occurred when unloading the ${oldModel} model!`, 'warning');
-        }
-        if (response?.ok === false) {
-            showMessage(`Problem occurred when unloading the ${oldModel} model!`, 'warning');
-        }
-
-        updateStatusBar(`Trying to load ${modelName} into the memory...`);
-        response = await chrome.runtime.sendMessage({ action: "prepareModels", modelName: modelName, unload: false });
-        if (chrome.runtime.lastError) {
-            throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`);
-        }
-        if (response?.ok === false) {
-            showMessage(`Failed to load ${modelName} model! Please choose another model.`, 'error');
-            return;
-        }
-
-        laiOptions.aiModel = modelName;
-        await setOptions(laiOptions);
-        const modelData = await chrome.runtime.sendMessage({ action: "getModelInfo", modelName: modelName, forceRefresh: true });
-        await adjustThinkingStatus();
-        await adjustToolsStatus();
-
-        setModelNameLabel({ "model": modelName });
-        const availableModelList = getShadowRoot()?.querySelector('#availableModelList');
-        availableModelList?.querySelectorAll('.model-list-item').forEach(item => {
-            item.classList.toggle('active-model-list-item', item.dataset.modelName === modelName);
-        });
-        availableModelList?.classList.add('invisible');
-        const sideBar = getSideBar();
-        sideBar.querySelector('div#modelNameContainer')?.classList.remove('open')
-        showMessage(`${oldModel} model was replaced with ${modelName}.`, 'success');
-    } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error occurred whilst changing the model`, error);
-        showMessage(`Failed to load ${modelName} model! Please choose another model.`, 'error');
-    } finally {
-        hideSpinner();
-    }
+    setModelNameLabel({ "model": modelName });
+    const availableModelList = getShadowRoot()?.querySelector('#availableModelList');
+    availableModelList?.querySelectorAll('.model-list-item').forEach(item => {
+        item.classList.toggle('active-model-list-item', item.dataset.modelName === modelName);
+    });
+    availableModelList?.classList.add('invisible');
+    getSideBar().querySelector('div#modelNameContainer')?.classList.remove('open');
+    showMessage(`${oldModel} replaced with ${modelName}.`, 'success');
 }
 
 async function onToolFunctionsBtnClick(e) {
