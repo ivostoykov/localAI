@@ -6,6 +6,7 @@
 *.log
 CLAUDE.md
 AGENTS.md
+SOURCEMEM.md
 .mcp.json
 .continuerules
 *.json.*
@@ -24,6 +25,7 @@ Chrome_changes/
 .vscode/
 .issues/
 .continue/
+.project-map/
 
 # Test and dependencies
 node_modules/
