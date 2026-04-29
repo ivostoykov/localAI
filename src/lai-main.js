@@ -36,15 +36,17 @@ async function initSidebar(deadline) {
 
     shadowRoot.querySelector('#feedbackMessage').addEventListener('click', e => {
         e.stopPropagation();
-        let feedbackMessage = e.target;
-        if (feedbackMessage?.id !== 'feedbackMessage') {
-            feedbackMessage = e.target.closest('div#feedbackMessage');
+        const path = e.composedPath();
+        const feedbackMessage = path.find(el => el?.id === 'feedbackMessage');
+        if (!feedbackMessage) {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - feedbackMessage not found`, {path, e});
+            return;
         }
-        lastRegisteredErrorMessage = Array.from(e.target.children).map(el => el.textContent);
+        lastRegisteredErrorMessage = Array.from(feedbackMessage.children).map(el => el.textContent);
         handleErrorButton();
         feedbackMessage.replaceChildren();
         feedbackMessage.classList.remove('feedback-message-active')
-    }, true);
+    });
 
     shadowRoot.addEventListener('click', async e => await closeAllDropDownRibbonMenus(e));
 

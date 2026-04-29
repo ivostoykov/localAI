@@ -11,9 +11,14 @@ const ribbonCode = fs.readFileSync(
 );
 
 const closeAllDropDownRibbonMenusCode = ribbonCode.match(/async function closeAllDropDownRibbonMenus\([\s\S]*?\n}\n/)[0];
+const closeRibbonMenuElementCode = ribbonCode.match(/function closeRibbonMenuElement\([\s\S]*?\n}\n/)[0];
+const closeModelListMenuCode = ribbonCode.match(/function closeModelListMenu\([\s\S]*?\n}\n/)[0];
+const closeSessionHistoryMenuCode = ribbonCode.match(/function closeSessionHistoryMenu\([\s\S]*?\n}\n/)[0];
 const modelListTabClickedCode = ribbonCode.match(/function modelListTabClicked\([\s\S]*?\n}\n/)[0];
 const refreshCloudModelListBtnClickCode = ribbonCode.match(/async function refreshCloudModelListBtnClick\([\s\S]*?\n}\n/)[0];
 const fillAndShowModelListCode = ribbonCode.match(/async function fillAndShowModelList\([\s\S]*?\n}\n/)[0];
+const deleteHistoryMenuItemClickedCode = ribbonCode.match(/async function deleteHistoryMenuItemClicked\([\s\S]*?\n}\n/)[0];
+const deleteAllHistorySessionsClickedCode = ribbonCode.match(/async function deleteAllHistorySessionsClicked\([\s\S]*?\n}\n/)[0];
 
 const executeRibbonCode = new Function(
     'document',
@@ -25,13 +30,22 @@ const executeRibbonCode = new Function(
     'closeAllDropDownRibbonMenus',
     'swapActiveModel',
     'getAndShowModels',
+    'deleteSessionById',
+    'updateStatusBar',
+    'resetStatusbar',
+    'recycleAllSessions',
     `
 ${closeAllDropDownRibbonMenusCode}
+${closeRibbonMenuElementCode}
+${closeModelListMenuCode}
+${closeSessionHistoryMenuCode}
 ${modelListTabClickedCode}
 ${refreshCloudModelListBtnClickCode}
 ${fillAndShowModelListCode}
+${deleteHistoryMenuItemClickedCode}
+${deleteAllHistorySessionsClickedCode}
 
-return { closeAllDropDownRibbonMenus, modelListTabClicked, refreshCloudModelListBtnClick, fillAndShowModelList };
+return { closeAllDropDownRibbonMenus, modelListTabClicked, refreshCloudModelListBtnClick, fillAndShowModelList, deleteHistoryMenuItemClicked, deleteAllHistorySessionsClicked };
 `
 );
 
@@ -44,6 +58,10 @@ describe('ribbon.js model list', () => {
     let closeAllDropDownRibbonMenus;
     let swapActiveModel;
     let getAndShowModels;
+    let deleteSessionById;
+    let updateStatusBar;
+    let resetStatusbar;
+    let recycleAllSessions;
     let exports;
 
     beforeEach(() => {
@@ -83,6 +101,10 @@ describe('ribbon.js model list', () => {
         closeAllDropDownRibbonMenus = vi.fn(async () => undefined);
         swapActiveModel = vi.fn(async () => undefined);
         getAndShowModels = vi.fn(async () => undefined);
+        deleteSessionById = vi.fn(async () => undefined);
+        updateStatusBar = vi.fn();
+        resetStatusbar = vi.fn();
+        recycleAllSessions = vi.fn(async () => undefined);
 
         exports = executeRibbonCode(
             document,
@@ -93,7 +115,11 @@ describe('ribbon.js model list', () => {
             getLineNumber,
             closeAllDropDownRibbonMenus,
             swapActiveModel,
-            getAndShowModels
+            getAndShowModels,
+            deleteSessionById,
+            updateStatusBar,
+            resetStatusbar,
+            recycleAllSessions
         );
     });
 
@@ -117,7 +143,30 @@ describe('ribbon.js model list', () => {
         expect(modelNameContainer.click).not.toHaveBeenCalled();
     });
 
-    it('closes the open menu when clicking outside the related panel', async () => {
+    it('closes the model menu state when clicking outside the related panel', async () => {
+        const shadowRoot = getShadowRoot();
+        const modelNameContainer = document.createElement('div');
+        modelNameContainer.id = 'modelNameContainer';
+        modelNameContainer.dataset.menuId = 'availableModelList';
+        modelNameContainer.classList.add('open', 'js-menu-is-open');
+        modelNameContainer.click = vi.fn();
+        shadowRoot.appendChild(modelNameContainer);
+
+        const availableModelList = shadowRoot.querySelector('#availableModelList');
+        availableModelList.classList.remove('invisible');
+        const outsideElement = document.createElement('div');
+
+        await exports.closeAllDropDownRibbonMenus({
+            composedPath: () => [outsideElement, shadowRoot]
+        });
+
+        expect(modelNameContainer.click).not.toHaveBeenCalled();
+        expect(modelNameContainer.classList.contains('open')).toBe(false);
+        expect(modelNameContainer.classList.contains('js-menu-is-open')).toBe(false);
+        expect(availableModelList.classList.contains('invisible')).toBe(true);
+    });
+
+    it('clears stale model menu state without reopening the model list', async () => {
         const shadowRoot = getShadowRoot();
         const modelNameContainer = document.createElement('div');
         modelNameContainer.id = 'modelNameContainer';
@@ -126,13 +175,17 @@ describe('ribbon.js model list', () => {
         modelNameContainer.click = vi.fn();
         shadowRoot.appendChild(modelNameContainer);
 
-        const outsideElement = document.createElement('div');
+        const availableModelList = shadowRoot.querySelector('#availableModelList');
+        availableModelList.classList.add('invisible');
+        const userInput = document.createElement('textarea');
 
         await exports.closeAllDropDownRibbonMenus({
-            composedPath: () => [outsideElement, shadowRoot]
+            composedPath: () => [userInput, shadowRoot]
         });
 
-        expect(modelNameContainer.click).toHaveBeenCalledOnce();
+        expect(modelNameContainer.click).not.toHaveBeenCalled();
+        expect(modelNameContainer.classList.contains('js-menu-is-open')).toBe(false);
+        expect(availableModelList.classList.contains('invisible')).toBe(true);
     });
 
     it('renders local and cloud tabs with a refresh control', async () => {
@@ -238,7 +291,11 @@ describe('ribbon.js model list', () => {
             getLineNumber,
             closeAllDropDownRibbonMenus,
             swapActiveModel,
-            getAndShowModels
+            getAndShowModels,
+            deleteSessionById,
+            updateStatusBar,
+            resetStatusbar,
+            recycleAllSessions
         );
 
         await exports.fillAndShowModelList({
@@ -265,5 +322,75 @@ describe('ribbon.js model list', () => {
         expect(activeTab?.dataset.tab).toBe('cloud');
         expect(activeCloudItem?.dataset.modelName).toBe('gpt-oss:120b');
         expect(selectedOption?.value).toBe('gpt-oss:120b');
+    });
+
+    it('closes the session history menu when the last session row is deleted', async () => {
+        const shadowRoot = getShadowRoot();
+        const header = document.createElement('header');
+        header.className = 'lai-header';
+        const historyButton = document.createElement('img');
+        historyButton.id = 'sessionHistory';
+        historyButton.classList.add('js-menu-is-open');
+        historyButton.dataset.menuId = 'sessionHistMenu';
+        const menu = document.createElement('div');
+        menu.id = 'sessionHistMenu';
+        const scrollable = document.createElement('div');
+        scrollable.className = 'scrollable';
+        const menuItem = document.createElement('div');
+        menuItem.className = 'menu-item';
+        const title = document.createElement('span');
+        title.className = 'menu-item-title';
+        title.textContent = 'Only session';
+        const deleteButton = document.createElement('span');
+        deleteButton.setAttribute('data-sessionId', 'session-1');
+        menuItem.appendChild(title);
+        menuItem.appendChild(deleteButton);
+        scrollable.appendChild(menuItem);
+        menu.appendChild(scrollable);
+        header.appendChild(historyButton);
+        header.appendChild(menu);
+        shadowRoot.appendChild(header);
+
+        await exports.deleteHistoryMenuItemClicked({
+            stopPropagation: vi.fn(),
+            stopImmediatePropagation: vi.fn(),
+            currentTarget: deleteButton
+        });
+
+        expect(deleteSessionById).toHaveBeenCalledWith('session-1');
+        expect(header.querySelector('#sessionHistMenu')).toBeNull();
+        expect(historyButton.classList.contains('js-menu-is-open')).toBe(false);
+        expect(historyButton.dataset.menuId).toBeUndefined();
+    });
+
+    it('clears session history menu state after deleting all sessions', async () => {
+        const shadowRoot = getShadowRoot();
+        const header = document.createElement('header');
+        header.className = 'lai-header';
+        const historyButton = document.createElement('img');
+        historyButton.id = 'sessionHistory';
+        historyButton.classList.add('js-menu-is-open');
+        historyButton.dataset.menuId = 'sessionHistMenu';
+        const menu = document.createElement('div');
+        menu.id = 'sessionHistMenu';
+        const deleteAllItem = document.createElement('div');
+        deleteAllItem.className = 'menu-item';
+        menu.appendChild(deleteAllItem);
+        header.appendChild(historyButton);
+        header.appendChild(menu);
+        shadowRoot.appendChild(header);
+
+        await exports.deleteAllHistorySessionsClicked({
+            composedPath: () => [deleteAllItem, menu, header, shadowRoot],
+            stopImmediatePropagation: vi.fn(),
+            preventDefault: vi.fn(),
+            stopPropagation: vi.fn(),
+            target: deleteAllItem
+        });
+
+        expect(recycleAllSessions).toHaveBeenCalled();
+        expect(header.querySelector('#sessionHistMenu')).toBeNull();
+        expect(historyButton.classList.contains('js-menu-is-open')).toBe(false);
+        expect(historyButton.dataset.menuId).toBeUndefined();
     });
 });

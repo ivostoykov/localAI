@@ -1057,13 +1057,7 @@ async function fetchDataAction(request, sender) {
         // }
 
         if (turnNumber === 1 && !activeSession?.titleGenerated && !activeSession?.titleManual) {
-            generateAndUpdateSessionTitle(cleanedUserInput, sender.tab).then(titleWasGenerated => {
-                if (!titleWasGenerated) { return; }
-                getActiveSession().then(session => {
-                    session.titleGenerated = true;
-                    setActiveSession(session);
-                });
-            });
+            await generateAndUpdateSessionTitle(cleanedUserInput, activeSession.id, sender.tab);
         }
     }
     catch (e) {
@@ -1453,13 +1447,23 @@ async function getTitleGenerator() {
     return model && model.trim() ? model : null;
 }
 
-async function generateAndUpdateSessionTitle(text, tab) {
+async function generateAndUpdateSessionTitle(text, sessionId, tab) {
+    if (!sessionId) { return false; }
     const titleSeed = await generateSessionTitle(text, tab);
     if (!titleSeed) { return false; }
-    const activeSession = await getActiveSession();
-    activeSession["title"] = titleSeed;
-    await setActiveSession(activeSession);
-    return true;
+    const sessions = await getAllSessions();
+    const sessionIndex = sessions.findIndex(session => session?.id === sessionId);
+    if (sessionIndex < 0) { return false; }
+
+    const session = sessions[sessionIndex];
+    if (session?.titleManual) { return false; }
+
+    sessions[sessionIndex] = {
+        ...session,
+        title: titleSeed,
+        titleGenerated: true
+    };
+    return await setAllSessions(sessions);
 }
 
 function normaliseGeneratedTitle(rawTitle = '') {

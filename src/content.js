@@ -77,20 +77,15 @@ async function allDOMContentLoaded(e) {
     }
 
     await closeAllDropDownRibbonMenus(event);
-    const localAI = document.getElementById('localAI');
-    if (localAI === event.target) { return; }
-    const laiShadowRoot = localAI?.shadowRoot
-    if (!laiShadowRoot) { return; }
-    const pluginContainer = laiShadowRoot.getElementById('laiSidebar');
+    const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
+    if (path.find(el => el?.id === 'localAI')) { return; }
 
-    if (!pluginContainer) { return; }
-    if (pluginContainer.contains(event.target)) { return; }
-    if (window.innerWidth - pluginContainer.getBoundingClientRect().right < 0) {
-      return;
-    }
+    const sideBar = getSideBar();
+    if (!sideBar?.classList.contains('active')) { return; }
 
     const options = await getOptions()
-    if (options.closeOnClickOut && !isPinned()) { await laiSwapSidebarWithButton(event); }
+    if (!options.closeOnClickOut || isPinned()) { return; }
+    await laiSwapSidebarWithButton(true);
   }, true);
 
   document.addEventListener('keydown', async function (e) {
@@ -106,13 +101,10 @@ async function allDOMContentLoaded(e) {
     const laiOptions = await getOptions()
     if (!laiOptions.closeOnClickOut) { return; }
 
-    const pluginContainer = document.getElementById('localAI')?.shadowRoot?.getElementById('laiSidebar');
+    const sideBar = getSideBar();
+    if (!sideBar?.classList.contains('active')) { return; }
 
-    if (window.innerWidth - pluginContainer.getBoundingClientRect().right < 0) {
-      return;
-    }
-
-    await laiSwapSidebarWithButton();
+    await laiSwapSidebarWithButton(true);
   }, true);
 
   document.addEventListener('mouseover', function (event) {

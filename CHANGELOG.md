@@ -1,6 +1,33 @@
 # Local AI - Changelog
 
-## [1.29.65] - 2026-04-21 - latest
+## [1.29.70] - 2026-04-29 - latest
+
+### Ribbon Menus
+
+- Replaced generic dropdown close clicks with explicit menu close helpers for the model picker and session history
+- Fixed stale model-list state so clicking the active model closes the picker reliably
+- Fixed session-history cleanup so deleting the final session row closes the menu instead of leaving an empty misplaced list
+- Simplified sidebar click-out detection around the shadow-root host using the composed event path
+
+### Session Titles
+
+- Moved first-turn title generation to run after `streamEnd` so the user sees the response before title work starts
+- Title updates now target the original session id instead of whichever session is active later
+- Manual session titles are still protected from automatic overwrites
+
+### Markdown Rendering
+
+- Fixed pipe-table normalisation so one Markdown table renders as one HTML table instead of one table per row
+- Table headers and cells now render inline Markdown such as bold labels, italic values, links, and code spans
+- Improved inline italic handling for emphasis at the start or end of a text fragment
+
+### Validation
+
+- Added focused `solomd2html` regression coverage for table grouping and inline formatting
+- Focused suites pass for `tests/background.test.js`, `tests/ribbon.test.js`, and `tests/solomd2html.test.js`
+- Live Chrome sidebar validation confirmed the LinkedIn extraction table renders as one table with the expected rows
+
+## [1.29.65] - 2026-04-21
 
 ### Element Attachments
 

@@ -364,7 +364,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         const headerRow = document.createElement('tr');
         headerCells.forEach((cell, i) => {
             const th = document.createElement('th');
-            th.textContent = cell;
+            th.appendChild(renderInline(cell));
             if (alignInfo[i]?.startsWith(':') && alignInfo[i]?.endsWith(':')) th.style.textAlign = 'center';
             else if (alignInfo[i]?.endsWith(':')) th.style.textAlign = 'right';
             else if (alignInfo[i]?.startsWith(':')) th.style.textAlign = 'left';
@@ -377,7 +377,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             const row = document.createElement('tr');
             rowLine.split('|').map(c => c.trim()).filter(Boolean).forEach(cellText => {
                 const td = document.createElement('td');
-                td.textContent = cellText;
+                td.appendChild(renderInline(cellText));
                 row.appendChild(td);
             });
             tbody.appendChild(row);
@@ -433,8 +433,8 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             .replace(/(?<!\])\b(https?:\/\/[^\s&]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/__(.*?)__/g, '<strong>$1</strong>')
-            .replace(/\s\*(.*?)\*\s/g, '<em>$1</em>')
-            .replace(/\s_(.*?)_\s/g, '<em>$1</em>')
+            .replace(/(^|\s)\*([^*]+)\*(?=\s|$)/g, '$1<em>$2</em>')
+            .replace(/(^|\s)_([^_]+)_(?=\s|$)/g, '$1<em>$2</em>')
             .replace(/~~(.*?)~~/g, '<del>$1</del>');
         return span;
     }
@@ -512,12 +512,26 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
     }
 
     function normaliseMd(text) {
-        return text
+        return separateTablesFromText(text
             .replace(/([^\n])\n([`']{3,}.*?\n)([^\n])/g, '$1\n\n$2\n$3')
             .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
             .replace(/([^\n])\n(>)/g, '$1\n\n$2')
-            .replace(/([^\n])\n(\|.*\|)/g, '$1\n\n$2')
-            .replace(/([^\n])\n(<[a-zA-Z])/g, '$1\n\n$2');
+            .replace(/([^\n])\n(<[a-zA-Z])/g, '$1\n\n$2'));
+    }
+
+    function separateTablesFromText(text) {
+        return text.split('\n').reduce((lines, line) => {
+            const previous = lines[lines.length - 1] ?? '';
+            if (isPipeTableLine(line) && previous.trim() && !isPipeTableLine(previous)) {
+                lines.push('');
+            }
+            lines.push(line);
+            return lines;
+        }, []).join('\n');
+    }
+
+    function isPipeTableLine(line) {
+        return /^\s*\|.*\|\s*$/.test(line);
     }
 }
 

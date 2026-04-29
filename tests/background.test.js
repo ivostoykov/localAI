@@ -30,6 +30,7 @@ const getAutomaticContextWindowCode = backgroundCode.match(/async function getAu
 const applyAutomaticModelOptionsCode = backgroundCode.match(/async function applyAutomaticModelOptions\([\s\S]*?\n}\n/)[0];
 const handleResponseCode = backgroundCode.match(/async function handleResponse\([\s\S]*?\n}\n/)[0];
 const getVisibleSessionMessagesCode = backgroundCode.match(/function getVisibleSessionMessages\([\s\S]*?\n}\n/)[0];
+const generateAndUpdateSessionTitleCode = backgroundCode.match(/async function generateAndUpdateSessionTitle\([\s\S]*?\n}\n/)[0];
 const normaliseGeneratedTitleCode = backgroundCode.match(/function normaliseGeneratedTitle\([\s\S]*?\n}\n/)[0];
 const resolveModelNameForRequestCode = backgroundCode.match(/async function resolveModelNameForRequest\([\s\S]*?\n}\n/)[0];
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
@@ -50,17 +51,18 @@ ${getAutomaticContextWindowCode}
 ${applyAutomaticModelOptionsCode}
 ${handleResponseCode}
 ${getVisibleSessionMessagesCode}
+${generateAndUpdateSessionTitleCode}
 ${normaliseGeneratedTitleCode}
 ${resolveModelNameForRequestCode}
 ${modelCanThinkCode}
 ${modelCanUseToolsCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -79,6 +81,7 @@ describe('background.js', () => {
         applyAutomaticModelOptions = exports.applyAutomaticModelOptions;
         handleResponse = exports.handleResponse;
         getVisibleSessionMessages = exports.getVisibleSessionMessages;
+        generateAndUpdateSessionTitle = exports.generateAndUpdateSessionTitle;
         normaliseGeneratedTitle = exports.normaliseGeneratedTitle;
         resolveModelNameForRequest = exports.resolveModelNameForRequest;
         modelCanThink = exports.modelCanThink;
@@ -597,6 +600,68 @@ describe('background.js', () => {
 
         it('uses the first non-empty line only', () => {
             expect(normaliseGeneratedTitle('\nModel list refresh\nExtra explanation')).toBe('Model list refresh');
+        });
+    });
+
+    describe('generateAndUpdateSessionTitle', () => {
+        beforeEach(() => {
+            global.console = {
+                error: vi.fn()
+            };
+        });
+
+        it('updates the requested session by id', async () => {
+            let sessions = [
+                {
+                    id: 'session-1',
+                    title: 'New session',
+                    messages: [{ role: 'user', content: 'First prompt' }]
+                },
+                {
+                    id: 'session-2',
+                    title: 'Current session',
+                    messages: [{ role: 'user', content: 'Other prompt' }]
+                }
+            ];
+            global.generateSessionTitle = vi.fn(async () => 'Generated topic');
+            global.getAllSessions = vi.fn(async () => sessions);
+            global.setAllSessions = vi.fn(async updatedSessions => {
+                sessions = updatedSessions;
+                return true;
+            });
+            global.getActiveSession = vi.fn();
+
+            const result = await generateAndUpdateSessionTitle('First prompt', 'session-1', { id: 123 });
+
+            expect(result).toBe(true);
+            expect(global.generateSessionTitle).toHaveBeenCalledWith('First prompt', { id: 123 });
+            expect(global.getActiveSession).not.toHaveBeenCalled();
+            expect(sessions[0]).toMatchObject({
+                id: 'session-1',
+                title: 'Generated topic',
+                titleGenerated: true
+            });
+            expect(sessions[1].title).toBe('Current session');
+        });
+
+        it('does not overwrite a session that was manually renamed while the title was generated', async () => {
+            const sessions = [
+                {
+                    id: 'session-1',
+                    title: 'Manual title',
+                    titleManual: true,
+                    messages: [{ role: 'user', content: 'First prompt' }]
+                }
+            ];
+            global.generateSessionTitle = vi.fn(async () => 'Generated topic');
+            global.getAllSessions = vi.fn(async () => sessions);
+            global.setAllSessions = vi.fn(async () => true);
+
+            const result = await generateAndUpdateSessionTitle('First prompt', 'session-1', { id: 123 });
+
+            expect(result).toBe(false);
+            expect(global.setAllSessions).not.toHaveBeenCalled();
+            expect(sessions[0].title).toBe('Manual title');
         });
     });
 

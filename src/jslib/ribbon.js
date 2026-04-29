@@ -209,8 +209,36 @@ async function closeAllDropDownRibbonMenus(e) {
         if (compPath?.findIndex(p => p === el) > 0) { return; } // clicked inside the menu
         const relatedMenuId = el?.dataset?.menuId;
         if (relatedMenuId && compPath?.findIndex(p => p?.id === relatedMenuId) > -1) { return; }
-        el?.click();
+        closeRibbonMenuElement(el, shadowRoot);
     });
+}
+
+function closeRibbonMenuElement(el, shadowRoot = getShadowRoot()) {
+    if (!el) { return; }
+    if (el.id === 'modelNameContainer' || el.dataset?.menuId === 'availableModelList') {
+        closeModelListMenu(el, shadowRoot);
+        return;
+    }
+    if (el.id === 'sessionHistory' || el.dataset?.menuId === 'sessionHistMenu') {
+        closeSessionHistoryMenu(shadowRoot?.querySelector('.lai-header'));
+        return;
+    }
+    el?.click();
+}
+
+function closeModelListMenu(container = null, shadowRoot = getShadowRoot()) {
+    const modelContainer = container || shadowRoot?.querySelector('#modelNameContainer');
+    shadowRoot?.querySelector('#availableModelList')?.classList.add('invisible');
+    modelContainer?.classList.remove('open', 'js-menu-is-open');
+}
+
+function closeSessionHistoryMenu(headerSection = null) {
+    const shadowRoot = getShadowRoot();
+    const header = headerSection || shadowRoot?.querySelector('.lai-header');
+    const historyButton = header?.querySelector('#sessionHistory');
+    historyButton?.classList.remove('js-menu-is-open');
+    if (historyButton) { delete historyButton.dataset.menuId; }
+    header?.querySelector('#sessionHistMenu')?.remove();
 }
 
 
@@ -247,9 +275,7 @@ async function openCloseSessionHistoryMenu(e) {
     const headerSection = shadowRoot.querySelector('.lai-header');
     const sessionList = headerSection.querySelector('#sessionHistMenu');
     if (sessionList && !sessionList.classList.contains('invisible')) { // only close it
-        el.classList.remove('js-menu-is-open');
-        delete el.dataset.menuId;
-        headerSection.querySelector('#sessionHistMenu')?.remove();
+        closeSessionHistoryMenu(headerSection);
         return;
     }
 
@@ -509,9 +535,7 @@ async function modelLabelClicked(e) {
     }
 
     const shadowRoot = getShadowRoot();
-    const availableModelsList = shadowRoot.querySelector('#availableModelList');
-    availableModelsList?.classList.add('invisible');
-    container.classList.remove('open', 'js-menu-is-open');
+    closeModelListMenu(container, shadowRoot);
 }
 
 async function initCloudModelStatus(ribbon) {
@@ -738,7 +762,10 @@ async function swapActiveModel(e, modelName) {
     e.stopPropagation();
     const laiOptions = await getOptions();
     const oldModel = laiOptions.aiModel;
-    if (modelName === oldModel) { return; }
+    if (modelName === oldModel) {
+        closeModelListMenu();
+        return;
+    }
 
     laiOptions.aiModel = modelName;
     await setOptions(laiOptions);
@@ -748,8 +775,7 @@ async function swapActiveModel(e, modelName) {
     availableModelList?.querySelectorAll('.model-list-item').forEach(item => {
         item.classList.toggle('active-model-list-item', item.dataset.modelName === modelName);
     });
-    availableModelList?.classList.add('invisible');
-    getSideBar().querySelector('div#modelNameContainer')?.classList.remove('open');
+    closeModelListMenu(getSideBar()?.querySelector('div#modelNameContainer'));
     showMessage(`${oldModel} replaced with ${modelName}.`, 'success');
 }
 
@@ -889,6 +915,9 @@ async function deleteHistoryMenuItemClicked(e) {
     try {
         await deleteSessionById(sessionId);
         if (menuItem) { menuItem.remove(); }
+        if (!btn.closest('#sessionHistMenu')?.querySelector('.scrollable .menu-item')) {
+            closeSessionHistoryMenu();
+        }
         updateStatusBar(`Deleted session "${title}"`);
         setTimeout(() => resetStatusbar(), 1500);
     } catch (error) {
@@ -906,7 +935,7 @@ async function deleteAllHistorySessionsClicked(e) {
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
     }
-    el.closest('div#sessionHistMenu').remove();
+    closeSessionHistoryMenu(el.closest('.lai-header'));
     showMessage('All sessions deleted.');
 }
 
