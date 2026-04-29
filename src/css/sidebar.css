@@ -419,6 +419,11 @@ local-ai *,
 
 .user-input-ribbon {
     display: flex;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 34px;
+    z-index: 2;
     justify-content: flex-start;
     align-items: center;
     gap: 10px;

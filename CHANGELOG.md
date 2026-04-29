@@ -1,6 +1,19 @@
 # Local AI - Changelog
 
-## [1.29.70] - 2026-04-29 - latest
+## [1.29.72] - 2026-04-29 - latest
+
+### User Input Controls
+
+- Fixed the mic toggle becoming unreachable while the user input has focus
+- Kept the status bar visible during focused input so the existing mic control remains available
+- Positioned the user-input ribbon above the left side of the status bar while reserving space for the mic button
+- Prevented mouseleave from hiding the user-input ribbon while the textarea still has focus
+
+### Validation
+
+- Live Chrome sidebar validation confirmed the focused input ribbon remains visible and the mic button stays accessible
+
+## [1.29.70] - 2026-04-29
 
 ### Ribbon Menus
 

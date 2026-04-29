@@ -79,6 +79,7 @@ async function allDOMContentLoaded(e) {
     await closeAllDropDownRibbonMenus(event);
     const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
     if (path.find(el => el?.id === 'localAI')) { return; }
+    if(event?.target?.id === 'localAI') { return; }
 
     const sideBar = getSideBar();
     if (!sideBar?.classList.contains('active')) { return; }

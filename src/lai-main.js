@@ -519,7 +519,6 @@ async function userInputFocused(e) {
 function showUserInputRibbon() {
     const shadowRoot = getShadowRoot();
     shadowRoot?.querySelector('.user-input-ribbon')?.classList.remove('invisible');
-    shadowRoot?.querySelector('.statusbar')?.classList.add('invisible');
 }
 
 function userInputBlurred(e) {
@@ -532,6 +531,8 @@ function userInputBlurred(e) {
 
 function hideUserInputRibbon(e) {
     const shadowRoot = getShadowRoot();
+    if (shadowRoot?.activeElement?.id === 'laiUserInput') { return; }
+
     shadowRoot?.querySelector('.statusbar')?.classList.remove('invisible');
     shadowRoot?.querySelector('.user-input-ribbon')?.classList.add('invisible');
 }
