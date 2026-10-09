@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -36,6 +36,12 @@ const load = (code, exportsList) => new Function(
 const li = load(liCode, 'isLinkedInJobsPage, isLinkedInProfilePage, extractLinkedInJobContent');
 const withLi = load(`${liCode}\n${ceCode}`, 'getEnhancedPageContent');
 const withoutLi = load(ceCode, 'getEnhancedPageContent');
+const withThrowingLi = load(
+    `function isLinkedInJobsPage() { return true; }
+function extractLinkedInJobContent() { throw new Error('extractor failure'); }
+${ceCode}`,
+    'getEnhancedPageContent'
+);
 
 const SUMMARY = `<div><p>Atos</p>
 <p>Chief Technology Officer - Digital Applications</p>
@@ -144,6 +150,13 @@ describe('li-extractor.js LinkedIn jobs', () => {
             expect(li.extractLinkedInJobContent()).toBeNull();
         });
 
+        it('returns null when about the job holds only its heading and controls', () => {
+            renderJob({ about: '<div id="JobDetails_AboutTheJob_1"><h2>About the job</h2></div>' });
+            expect(li.extractLinkedInJobContent()).toBeNull();
+            renderJob({ about: '<div id="JobDetails_AboutTheJob_1"><h2>About the job</h2>\n<a href="#">Show all</a>\n<button>… more</button></div>' });
+            expect(li.extractLinkedInJobContent()).toBeNull();
+        });
+
         it('does not click controls or navigate', () => {
             renderJob();
             let clicks = 0;
@@ -169,6 +182,23 @@ describe('li-extractor.js LinkedIn jobs', () => {
             const result = await withLi.getEnhancedPageContent();
             expect(result).toContain('Use AI to assess');
             expect(result).not.toContain('\n\n---\n\n');
+        });
+
+        it('falls back to generic extraction when about the job is only a heading', async () => {
+            renderJob({ about: '<div id="JobDetails_AboutTheJob_1"><h2>About the job</h2></div>' });
+            const result = await withLi.getEnhancedPageContent();
+            expect(result).toContain('Use AI to assess');
+            expect(result).not.toContain('\n\n---\n\n');
+        });
+
+        it('falls back to generic extraction when the jobs helper throws', async () => {
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            renderJob();
+            const result = await withThrowingLi.getEnhancedPageContent();
+            expect(result).toContain('Use AI to assess');
+            expect(result).not.toContain('\n\n---\n\n');
+            expect(warn).toHaveBeenCalledTimes(1);
+            warn.mockRestore();
         });
 
         it('falls back to generic extraction when the jobs helper is unavailable', async () => {

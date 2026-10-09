@@ -44,15 +44,16 @@ function isLinkedInJobsPage() {
 /**
  * Builds the focused LinkedIn job advert text: summary header, optional
  * "People you can reach out to", then "About the job".
- * Returns null when "About the job" is missing or empty, so the caller can
- * fall back to generic extraction.
+ * Returns null when "About the job" is missing or holds no description beyond
+ * its heading and controls (e.g. partially loaded), so the caller can fall
+ * back to generic extraction.
  */
 function extractLinkedInJobContent() {
     const about = document.querySelector('[id*="AboutTheJob"]');
     const aboutText = _cleanJobLines(_getVisibleText(about), /^(?:Show all|Show less)$/i)
         .replace(/\n*(?:…|\.\.\.)\s*more\s*$/i, '')
         .trim();
-    if (!aboutText) return null;
+    if (!_hasJobDescription(about, aboutText)) return null;
 
     const people = document.querySelector('[id*="PeopleWhoCanHelp"]');
     const peopleText = _cleanJobLines(_getVisibleText(people), /^Show all$/i);
@@ -125,6 +126,18 @@ function _cleanJobLines(text, controlLineRe) {
         .join('\n')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
+}
+
+function _hasJobDescription(about, aboutText) {
+    const headings = new Set(
+        [...about?.querySelectorAll('h1, h2, h3, [role="heading"]') ?? []]
+            .map(h => _getVisibleText(h).trim().toLowerCase())
+    );
+    headings.add('about the job');
+    return aboutText
+        .split('\n')
+        .map(line => line.trim())
+        .some(line => line && !headings.has(line.toLowerCase()));
 }
 
 /**
