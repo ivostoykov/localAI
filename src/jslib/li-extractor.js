@@ -1,6 +1,10 @@
 /**
- * LinkedIn Profile Experience Extractor
+ * LinkedIn Extractors
  *
+ * Jobs: on /jobs/ pages, extractLinkedInJobContent() returns the focused job
+ * advert (summary header, "People you can reach out to", "About the job").
+ *
+ * Profile Experience:
  * Handles the LinkedIn-specific "Experience" section which renders in multiple
  * DOM layouts depending on whether roles are grouped under a company header or
  * listed as standalone entries.
@@ -10,8 +14,9 @@
  *   Standalone — each entry is a single block with role title first, then
  *                company/employment info, dates, and optional location
  *
- * Entry point called from content-extractor.js:
+ * Entry points called from content-extractor.js:
  *   replaceLinkedInExperienceSection(formattedPageContent) -> string
+ *   extractLinkedInJobContent() -> string | null
  *
  * Stable selectors used (avoids minified class names):
  *   section[componentkey*="ExperienceTopLevelSection"]
@@ -26,6 +31,39 @@ const _LI_DATE_RE = /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}
 function isLinkedInProfilePage() {
     return /linkedin\.com/.test(window.location.hostname) &&
            /\/in\//.test(window.location.pathname);
+}
+
+const _LI_JOBS_SEPARATOR = '\n\n---\n\n';
+
+function isLinkedInJobsPage() {
+    const host = window.location.hostname.toLowerCase();
+    const isLinkedInHost = host === 'linkedin.com' || host.endsWith('.linkedin.com');
+    return isLinkedInHost && window.location.pathname.startsWith('/jobs/');
+}
+
+/**
+ * Builds the focused LinkedIn job advert text: summary header, optional
+ * "People you can reach out to", then "About the job".
+ * Returns null when "About the job" is missing or empty, so the caller can
+ * fall back to generic extraction.
+ */
+function extractLinkedInJobContent() {
+    const about = document.querySelector('[id*="AboutTheJob"]');
+    const aboutText = _cleanJobLines(_getVisibleText(about), /^(?:Show all|Show less)$/i)
+        .replace(/\n*(?:…|\.\.\.)\s*more\s*$/i, '')
+        .trim();
+    if (!aboutText) return null;
+
+    const people = document.querySelector('[id*="PeopleWhoCanHelp"]');
+    const peopleText = _cleanJobLines(_getVisibleText(people), /^Show all$/i);
+
+    const column = document.querySelector('[data-component-type="LazyColumn"]');
+    const summary = _findLinkedInJobSummary(column, [people, about]);
+    const summaryText = _cleanJobLines(_getVisibleText(summary), /^(?:Apply|Easy Apply|Save|Saved)$/i);
+
+    return [summaryText, peopleText, aboutText]
+        .filter(Boolean)
+        .join(_LI_JOBS_SEPARATOR);
 }
 
 /**
@@ -69,6 +107,42 @@ function _extractLinkedInExperienceSection() {
     }
 
     return parts.join('\n');
+}
+
+function _getVisibleText(el) {
+    if (!el) return '';
+    return (typeof el.innerText === 'string' ? el.innerText : el.textContent) || '';
+}
+
+/**
+ * Drops whole lines that are only a UI control label (e.g. a standalone
+ * "Apply" button), keeping the same words inside substantive text.
+ */
+function _cleanJobLines(text, controlLineRe) {
+    return text
+        .split('\n')
+        .filter(line => !controlLineRe.test(line.trim()))
+        .join('\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+/**
+ * The summary is the job header block among the LazyColumn's element
+ * children. Text/comment nodes are ignored, and the manage-job banner, empty
+ * blocks and blocks holding headed sections (People/About/Premium) are
+ * skipped, rather than relying on a fixed childNodes index.
+ */
+function _findLinkedInJobSummary(column, sectionEls) {
+    if (!column) return null;
+    for (const child of column.children) {
+        if (/ManageJobBanner/i.test(child.id || '')) continue;
+        if (sectionEls.some(section => section && child.contains(section))) continue;
+        if (child.querySelector('h2, [id^="JobDetails"]')) continue;
+        if (!_getVisibleText(child).trim()) continue;
+        return child;
+    }
+    return null;
 }
 
 function _getCleanText(el) {

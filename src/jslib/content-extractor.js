@@ -17,6 +17,14 @@
  */
 async function getEnhancedPageContent() {
   const metadata = extractPageMetadata();
+
+  const jobContent = getLinkedInJobContentSafely();
+  if (jobContent) {
+    return formatEnhancedPageContent([{
+      title: '', images: [], content: [jobContent], lists: [], tables: [], codeBlocks: []
+    }], metadata);
+  }
+
   const cleanedDOM = await getDocumentContentFiltered();
   const mainContent = detectMainContent(cleanedDOM);
   const structure = extractEnhancedTextStructure(mainContent || cleanedDOM);
@@ -27,6 +35,24 @@ async function getEnhancedPageContent() {
   }
 
   return result;
+}
+
+/**
+ * Returns the focused LinkedIn job advert, or null to use generic extraction
+ * (not a jobs page, helper not loaded, core content missing, or helper error).
+ */
+function getLinkedInJobContentSafely() {
+  if (typeof extractLinkedInJobContent !== 'function' ||
+      typeof isLinkedInJobsPage !== 'function' ||
+      !isLinkedInJobsPage()) {
+    return null;
+  }
+  try {
+    return extractLinkedInJobContent() || null;
+  } catch (err) {
+    console.warn(`>>> ${manifest?.name ?? ''} - LinkedIn job extraction failed; using generic extraction:`, err);
+    return null;
+  }
 }
 
 /**
