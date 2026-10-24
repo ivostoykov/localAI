@@ -25,6 +25,7 @@ importBackgroundScript('jslib/session-repository.js');
 importBackgroundScript('jslib/internal-tools.js');
 importBackgroundScript('jslib/search-engines.js');
 importBackgroundScript('jslib/web-search.js');
+importBackgroundScript('jslib/page-navigation.js');
 
 init();
 clearLegacyPageContentStorage();
@@ -52,6 +53,12 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onUpdateAvailable.addListener(tryReloadExtension);
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+    const ctrl = controllers.get(tabId);
+    if (ctrl) {
+        ctrl.abort('Originating tab closed.');
+        controllers.delete(tabId);
+    }
+    await handleNavigationTabRemoved(tabId);
     await removeActiveSessionPageData(tabId);
 
     const allTabs = await chrome.tabs.query({});
@@ -642,7 +649,7 @@ async function validateToolCall(call = {}, availableTools) {
     return { isValid: true };
 }
 
-async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
+async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, navigationSession = null) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolveToolCalls tab:`, tab, 'tab?.id:', tab?.id);
     // const availableTools = await getPromptTools();
 
@@ -672,7 +679,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
                         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab for internal tool execution`);
                     }
                 }
-                data = await execInternalTool(toolCall, validatedTabId);
+                data = await execInternalTool(toolCall, validatedTabId, { navigationSession });
                 break;
             case 'function':
                 res = await fetchExtResponse(funcUrl, {
@@ -954,6 +961,7 @@ async function fetchDataAction(request, sender) {
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
     };
+    const navigationSession = createNavigationSession(tabId, controller.signal);
     try {
         while(true) {
             reqOpt.body = JSON.stringify(request.data);
@@ -983,7 +991,7 @@ async function fetchDataAction(request, sender) {
                 const toolNamesUsed = tool?.function?.name ?? "";
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - requested tools`, toolNamesUsed);
 
-                const toolData = await resolveToolCalls(tool, laiOptions.toolFunc, sender?.tab, activeSession?.id);
+                const toolData = await resolveToolCalls(tool, laiOptions.toolFunc, sender?.tab, activeSession?.id, navigationSession);
                 const newMessages = { role: 'tool', tool_name: toolNamesUsed, content: toolData }
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolved tool call`, newMessages);
                 request.data.messages.push(newMessages);
@@ -1083,7 +1091,8 @@ async function fetchDataAction(request, sender) {
         }
     }
     finally {
-        if (tabId != null) {  controllers.delete(tabId);  }
+        await disposeNavigationSession(navigationSession);
+        if (tabId != null && controllers.get(tabId) === controller) {  controllers.delete(tabId);  }
     }
 
     return { "status": "success", "message": "Request sent. Awaiting response." };
@@ -1224,7 +1233,8 @@ async function getLaiOptions() {
         "loadHistoryOnStart": false,
         "systemInstructions": 'You are a helpful assistant.',
         "personalInfo": '',
-        "debug": false
+        "debug": false,
+        "allowNavigation": false
     };
 
     try {

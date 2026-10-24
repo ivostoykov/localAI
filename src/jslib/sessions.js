@@ -379,7 +379,8 @@ async function getOptions() {
         "loadHistoryOnStart": false,
         "systemInstructions": 'You are a helpful assistant.',
         "personalInfo": '',
-        "debug": false
+        "debug": false,
+        "allowNavigation": false
     };
 
     try {

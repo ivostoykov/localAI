@@ -280,6 +280,16 @@ This will send the content of the page from current active tab to the AI with a 
 
 <img src="media/default_temp.png" width="250" alt="Temperature" title="Temperature"/> Use temperature slider to set default temperature, adjustable anytime from the [Ribbon](#ribbon). The short description is: the lower the value, the stricter the response; conversely, a higher value allows for a more relaxed and creative outcome. If you're interested in learning more about temperature, here is a [helpful article](https://www.hopsworks.ai/dictionary/llm-temperature), or you can simply Google it.
 
+### Allow navigation
+
+Off by default. The built-in `browse_url` tool lets the model open a link in a separate, inactive background tab and read its content; your current tab, its form state and the chat are not changed. While this option is off, the chat asks before every page the model wants to open:
+
+- `Allow` opens the page and turns this option on, so later pages open without asking.
+- `Allow only this time` opens this one page only.
+- `Cancel` (or `Escape`) declines; no page is loaded.
+
+`Enter` chooses `Allow only this time` unless another button has focus. One background tab is reused for all pages opened while answering a prompt and is closed when the answer is complete, aborted or fails, or when the originating tab is closed. Only absolute `http` and `https` URLs are accepted. Content is read once it has settled, within a bounded wait; if it is still changing, the result is marked as possibly incomplete.
+
 ### End Points
 
 Add the end point used to query the LLM. Use the buttons to `add` ( <img src="Chrome/img/add.svg" height="25" alt="Add" title="Add"/> ), `delete` ( <img src="Chrome/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), `delete all` ( <img src="Chrome/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ) `sort ascending` ( <img src="Chrome/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or `descending` ( <img src="Chrome/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ), and `copy` ( <img src="Chrome/img/copy.svg" height="25" alt="Copy" title="Copy"/> ).

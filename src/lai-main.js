@@ -721,6 +721,14 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
             }
         }
     ];
+    const arrAiButtons = [
+        {
+            "span": {
+                "class": "lai-chat-item-button", "data-type": "copy-md", "title": "Copy as Markdown",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/copy-md.svg') } }]
+            }
+        }
+    ];
     const arrEditButton = [{
         "span": {
             "class": "lai-chat-item-button", "data-type": "edit", "data-index": index, "title": "Edit",
@@ -735,7 +743,7 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
 
     const actionIconsDiv = document.createElement('div');
     actionIconsDiv.classList.add('lai-action-icons', 'invisible');
-    actionIconsDiv.appendChild(buildElements(type !== 'ai' ? [...arrButtons, ...arrEditButton] : arrButtons));
+    actionIconsDiv.appendChild(buildElements(type !== 'ai' ? [...arrButtons, ...arrEditButton] : [arrButtons[0], ...arrAiButtons, ...arrButtons.slice(1)]));
     lastChatElement.appendChild(lastChatlabel)
     lastChatElement.appendChild(lastChatText)
     lastChatElement.appendChild(actionIconsDiv);
@@ -798,6 +806,9 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
                     break;
                 case 'copy':
                     await copyChatElementContent(e, type);
+                    break;
+                case 'copy-md':
+                    await copyChatElementContentAsMarkdown(e, type);
                     break;
                 case 'edit':
                     await editUserInput(e, type);
@@ -930,6 +941,48 @@ async function copyChatElementContent(e, type) {
         laiShowCopyHint(evt)
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err);
+    }
+}
+
+function setMarkdownSource(element, markdown = '') {
+    if (!element) { return; }
+    if (typeof markdown === 'string' && markdown.trim()) {
+        element._laiMarkdownSource = markdown;
+    } else {
+        delete element._laiMarkdownSource;
+    }
+}
+
+function getMarkdownSource(element) {
+    if (typeof element?._laiMarkdownSource === 'string' && element._laiMarkdownSource.trim()) {
+        return element._laiMarkdownSource;
+    }
+
+    const rawChunks = element?._laiRawResponse || element?.dataset?.laiRawResponse || '';
+    return rawChunks.trim().split('\n')
+        .reduce((acc, line) => {
+            try {
+                const chunk = JSON.parse(line);
+                return acc + (chunk?.message?.content || '');
+            } catch {
+                return acc;
+            }
+        }, '');
+}
+
+async function copyChatElementContentAsMarkdown(e, type) {
+    const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
+    const markdown = getMarkdownSource(element);
+    if (!markdown.trim()) {
+        showMessage('Markdown source is not available for this response.', 'warning');
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(markdown);
+        laiShowCopyHint(e);
+    } catch (err) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy markdown: ${err.message}`, err);
     }
 }
 
@@ -1215,6 +1268,18 @@ function clearStreamingRecipient(recipient, keepRawResponse = true) {
     resetStreamTracking(recipient, keepRawResponse);
 }
 
+function parseFinalStreamResponse(response = {}) {
+    if (typeof response?.response !== 'string' || !response.response) { return null; }
+
+    try {
+        const parsed = JSON.parse(response.response);
+        return parsed?.message && typeof parsed.message === 'object' ? parsed : null;
+    } catch (err) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Final streamed response could not be parsed; using streamed content`, err);
+        return null;
+    }
+}
+
 async function finaliseStreamRecipient(recipient, response = {}) {
     if (!recipient) { return; }
 
@@ -1227,8 +1292,15 @@ async function finaliseStreamRecipient(recipient, response = {}) {
         });
     }
 
-    let finalContent = laiExtractDataFromResponse(response);
-    if (!finalContent) {
+    // A valid thinking-only final response is deliberately not rendered; only a missing,
+    // malformed or aborted final falls back to the content streamed so far.
+    const finalResponse = parseFinalStreamResponse(response);
+    let finalContent = '';
+    let markdownSource = '';
+    if (finalResponse) {
+        finalContent = laiExtractDataFromResponse(response);
+        markdownSource = typeof finalResponse.message.content === 'string' ? finalResponse.message.content : '';
+    } else {
         const ac = recipient._laiStreamContent || '';
         const at = recipient._laiStreamThinking || '';
         if (at && ac.trim().length > 0) {
@@ -1236,8 +1308,10 @@ async function finaliseStreamRecipient(recipient, response = {}) {
         } else {
             finalContent = ac || at;
         }
+        markdownSource = ac;
     }
     clearStreamingRecipient(recipient, !!recipient._laiRawResponse);
+    setMarkdownSource(recipient, finalContent ? markdownSource : '');
 
     if (!finalContent) {
         return;
@@ -1253,6 +1327,94 @@ async function finaliseStreamRecipient(recipient, response = {}) {
         laiHandleStreamActions("Streaming response render fallback", recipient);
         throw error;
     }
+}
+
+const pendingNavigationConsents = new Map();
+
+function isNavigationConsentPending() {
+    return pendingNavigationConsents.size > 0;
+}
+
+function dismissNavigationConsent(requestId) {
+    pendingNavigationConsents.get(requestId)?.('cancel');
+}
+
+async function showNavigationConsent(request = {}) {
+    const shadowRoot = getShadowRoot();
+    const chatList = shadowRoot?.getElementById('laiChatMessageList');
+    if (!chatList || !request?.url) {
+        return { choice: 'unavailable' };
+    }
+
+    const sideBar = shadowRoot.getElementById('laiSidebar');
+    if (sideBar && !sideBar.classList.contains('active')) {
+        await laiSwapSidebarWithButton();
+    }
+
+    const requestId = request.requestId || crypto.randomUUID();
+    return new Promise(resolve => {
+        const dialogue = document.createElement('div');
+        dialogue.className = 'lai-navigation-consent';
+        dialogue.setAttribute('role', 'alertdialog');
+        dialogue.setAttribute('aria-labelledby', `laiNavConsentTitle-${requestId}`);
+        dialogue.tabIndex = -1;
+
+        const title = Object.assign(document.createElement('p'), {
+            id: `laiNavConsentTitle-${requestId}`,
+            className: 'lai-navigation-consent-title',
+            textContent: 'The model wants to open this page in a background tab:'
+        });
+        const url = Object.assign(document.createElement('code'), {
+            className: 'lai-navigation-consent-url',
+            textContent: request.url
+        });
+        const note = Object.assign(document.createElement('p'), {
+            className: 'lai-navigation-consent-note',
+            textContent: '"Allow" also turns on "Allow navigation" in the options, so later pages open without asking. "Allow only this time" opens this page only.'
+        });
+
+        const buttons = document.createElement('div');
+        buttons.className = 'lai-navigation-consent-buttons';
+        const choices = [
+            { choice: 'allow', label: 'Allow' },
+            { choice: 'once', label: 'Allow only this time' },
+            { choice: 'cancel', label: 'Cancel' }
+        ];
+        let onceButton;
+        for (const { choice, label } of choices) {
+            const btn = Object.assign(document.createElement('button'), { type: 'button', textContent: label });
+            btn.dataset.choice = choice;
+            btn.addEventListener('click', () => finish(choice));
+            if (choice === 'once') { onceButton = btn; }
+            buttons.appendChild(btn);
+        }
+
+        function onKeyDown(e) {
+            e.stopPropagation();
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                finish('cancel');
+            } else if (e.key === 'Enter' && e.target?.tagName !== 'BUTTON') {
+                e.preventDefault();
+                finish('once');
+            }
+        }
+
+        function finish(choice) {
+            if (!pendingNavigationConsents.has(requestId)) { return; }
+            pendingNavigationConsents.delete(requestId);
+            dialogue.removeEventListener('keydown', onKeyDown);
+            dialogue.remove();
+            resolve({ choice });
+        }
+
+        dialogue.addEventListener('keydown', onKeyDown);
+        dialogue.append(title, url, note, buttons);
+        pendingNavigationConsents.set(requestId, finish);
+        chatList.appendChild(dialogue);
+        chatList.scrollTop = chatList.scrollHeight;
+        onceButton.focus();
+    });
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {
@@ -1407,6 +1569,11 @@ async function messageProcessor(response, sender) {
             break;
         case "streamError":
             laiHandleStreamActions("Stream Error", recipient);
+            break;
+        case "requestNavigationConsent":
+            return await showNavigationConsent(response);
+        case "dismissNavigationConsent":
+            dismissNavigationConsent(response?.requestId);
             break;
         case "toggleSidebar":
             await laiSwapSidebarWithButton(true);

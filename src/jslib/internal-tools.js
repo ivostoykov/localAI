@@ -172,7 +172,7 @@ async function searchConversationHistory(args, tabId) {
  * @param {Object} call - Tool call object from LLM
  * @returns {Object} Result object with status and content
  */
-async function execInternalTool(call = {}, tabId = null) {
+async function execInternalTool(call = {}, tabId = null, context = {}) {
     const funcName = call?.function?.name.toLowerCase();
     if(!funcName || !isInternalTool(funcName)){
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Unrecognised tool: '${funcName}'. Available:`, getInternalToolNames());
@@ -247,6 +247,9 @@ async function execInternalTool(call = {}, tabId = null) {
 
         case "search_web":
             return await searchWeb(call?.function?.arguments?.query);
+
+        case "browse_url":
+            return await browseUrl(context?.navigationSession, call?.function?.arguments?.url);
     }
 }
 
@@ -601,6 +604,25 @@ const INTERNAL_TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["query"],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "function",
+        "usage_cost": 5
+    },
+    {
+        "function": {
+            "description": "Open an absolute http or https URL in a separate background browser tab and return its final URL, title and enhanced page content, including links in [text](url) format. Use when the user supplies a link or asks you to follow a link returned by another tool. The user's current tab is not changed; current-page tools keep reading the user's tab, not this page. Relative links must be resolved against the URL of the page they came from before calling. The user may be asked for permission first; if navigation is declined, do not retry unless the user asks.",
+            "name": "browse_url",
+            "parameters": {
+                "properties": {
+                    "url": {
+                        "description": "Absolute http or https URL to open, e.g. https://example.com/page",
+                        "type": "string"
+                    }
+                },
+                "required": ["url"],
                 "type": "object"
             }
         },

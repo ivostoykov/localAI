@@ -39,10 +39,11 @@ const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\
 
 // Extract the functions we want to test
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
-    isMessagePersistableCode + '\n' + laiMainCode + '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable };'
+    isMessagePersistableCode + '\n' + laiMainCode + '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, showNavigationConsent, dismissNavigationConsent, isNavigationConsentPending };'
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable;
+let setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, showNavigationConsent, dismissNavigationConsent, isNavigationConsentPending;
 
 describe('lai-main.js', () => {
     beforeEach(() => {
@@ -55,6 +56,11 @@ describe('lai-main.js', () => {
         // Mock setModelNameLabel
         global.setModelNameLabel = vi.fn();
 
+        // Content-script globals defined in content.js and solomd2html.js
+        global.getShadowRoot = vi.fn(() => document);
+        global.getOptions = vi.fn(async () => ({}));
+        global.parseAndRender = vi.fn(async (markdown, element) => { element.textContent = markdown; });
+
         const exports = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome, global.isMessagePersistable);
         laiExtractDataFromResponse = exports.laiExtractDataFromResponse;
         composeStreamingPreviewText = exports.composeStreamingPreviewText;
@@ -63,6 +69,13 @@ describe('lai-main.js', () => {
         clearStreamingRecipient = exports.clearStreamingRecipient;
         finaliseStreamRecipient = exports.finaliseStreamRecipient;
         isMessagePersistable = exports.isMessagePersistable;
+        setMarkdownSource = exports.setMarkdownSource;
+        getMarkdownSource = exports.getMarkdownSource;
+        copyChatElementContent = exports.copyChatElementContent;
+        copyChatElementContentAsMarkdown = exports.copyChatElementContentAsMarkdown;
+        showNavigationConsent = exports.showNavigationConsent;
+        dismissNavigationConsent = exports.dismissNavigationConsent;
+        isNavigationConsentPending = exports.isNavigationConsentPending;
     });
 
     describe('stream preview helpers', () => {
@@ -394,6 +407,206 @@ Third line of thinking`;
 
             // Tool calls are persisted, so thinking should not be shown (content is empty)
             expect(result).toBe('');
+        });
+    });
+
+    describe('stream finalisation and Markdown source', () => {
+        const finalResponse = (message) => ({ response: JSON.stringify({ model: 'm', message: { role: 'assistant', ...message } }) });
+
+        it('keeps a valid thinking-only final response unrendered even when thinking was streamed', async () => {
+            const recipient = document.createElement('span');
+            recipient._laiStreamThinking = 'Planning a tool call';
+
+            await finaliseStreamRecipient(recipient, finalResponse({ content: '', thinking: 'Planning a tool call' }));
+
+            expect(global.parseAndRender).not.toHaveBeenCalled();
+            expect(recipient.textContent).toBe('');
+            expect(getMarkdownSource(recipient)).toBe('');
+        });
+
+        it('records the assistant Markdown without the synthetic thinking wrapper', async () => {
+            const recipient = document.createElement('span');
+            const content = '## Result\n\nUse `<think>` tags like this:\n\n```html\n<think>example</think>\n```';
+
+            await finaliseStreamRecipient(recipient, finalResponse({ content, thinking: 'Reasoning' }));
+
+            expect(global.parseAndRender.mock.calls[0][0]).toBe(`<think>\nReasoning\n</think>\n\n${content}`);
+            expect(recipient._laiMarkdownSource).toBe(content);
+        });
+
+        it('keeps partial answer content after an abort without a final response', async () => {
+            const recipient = document.createElement('span');
+            recipient._laiStreamThinking = 'Reasoning';
+            recipient._laiStreamContent = '**Partial** answer';
+
+            await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
+
+            expect(global.parseAndRender.mock.calls[0][0]).toBe('<think>\nReasoning\n</think>\n\n**Partial** answer');
+            expect(recipient._laiMarkdownSource).toBe('**Partial** answer');
+            expect(global.showMessage).not.toHaveBeenCalled();
+        });
+
+        it('falls back to streamed content for a malformed final response', async () => {
+            const recipient = document.createElement('span');
+            recipient._laiStreamContent = '- item';
+
+            await finaliseStreamRecipient(recipient, { response: '{not json' });
+
+            expect(global.parseAndRender.mock.calls[0][0]).toBe('- item');
+            expect(recipient._laiMarkdownSource).toBe('- item');
+        });
+    });
+
+    describe('Copy as Markdown', () => {
+        let writeText;
+
+        const buildCard = () => {
+            document.body.innerHTML = `
+                <div class="lai-ai-input">
+                    <span class="lai-input-text"><h2>Title</h2><p><strong>bold</strong> text</p></span>
+                    <span class="lai-chat-item-button" data-type="copy-md"><img></span>
+                </div>`;
+            const element = document.querySelector('.lai-input-text');
+            Object.defineProperty(element, 'innerText', { value: 'Title\nbold text', configurable: true });
+            return { element, event: { target: document.querySelector('img'), clientX: 0 } };
+        };
+
+        beforeEach(() => {
+            writeText = vi.fn(async () => undefined);
+            Object.defineProperty(global.navigator, 'clipboard', { value: { writeText }, configurable: true });
+        });
+
+        it('copies the recorded Markdown source with debug data absent', async () => {
+            const { element, event } = buildCard();
+            setMarkdownSource(element, '## Title\n\n**bold** text');
+
+            await copyChatElementContentAsMarkdown(event, 'ai');
+
+            expect(writeText).toHaveBeenCalledWith('## Title\n\n**bold** text');
+        });
+
+        it('uses raw debug chunks when no source was recorded', async () => {
+            const { element, event } = buildCard();
+            element._laiRawResponse = '{"message":{"content":"## Ti"}}\n{"message":{"content":"tle"}}\n';
+
+            await copyChatElementContentAsMarkdown(event, 'ai');
+
+            expect(writeText).toHaveBeenCalledWith('## Title');
+        });
+
+        it('leaves the clipboard untouched and warns when no Markdown is available', async () => {
+            const { event } = buildCard();
+
+            await copyChatElementContentAsMarkdown(event, 'ai');
+
+            expect(writeText).not.toHaveBeenCalled();
+            expect(global.showMessage).toHaveBeenCalledWith(expect.stringMatching(/Markdown source is not available/), 'warning');
+        });
+
+        it('clears an empty source instead of storing it', () => {
+            const element = document.createElement('span');
+            setMarkdownSource(element, 'text');
+            setMarkdownSource(element, '  ');
+            expect(element._laiMarkdownSource).toBeUndefined();
+        });
+
+        it('leaves the existing Copy action on rendered text', async () => {
+            const { element, event } = buildCard();
+            setMarkdownSource(element, '## Title');
+
+            await copyChatElementContent(event, 'ai');
+
+            expect(writeText).toHaveBeenCalledWith('Title\nbold text');
+        });
+    });
+
+    describe('navigation consent dialogue', () => {
+        let root;
+
+        const press = (target, key) => target.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+        const openDialogue = (requestId = 'req-1') => {
+            const promise = showNavigationConsent({ requestId, url: 'https://example.com/jobs/1' });
+            return { promise, dialogue: () => root.querySelector('.lai-navigation-consent') };
+        };
+
+        beforeEach(() => {
+            document.body.innerHTML = '<div id="root"><div id="laiSidebar" class="active"></div><div id="laiMainButton"></div><div id="laiChatMessageList"></div></div>';
+            root = document.getElementById('root');
+            global.getShadowRoot = vi.fn(() => ({
+                getElementById: (id) => root.querySelector(`#${id}`)
+            }));
+        });
+
+        it('shows the destination and explains that Allow persists, with allow once focused', async () => {
+            const { dialogue } = openDialogue();
+            await Promise.resolve();
+
+            expect(dialogue().textContent).toContain('https://example.com/jobs/1');
+            expect(dialogue().textContent).toMatch(/"Allow" also turns on "Allow navigation"/);
+            expect([...dialogue().querySelectorAll('button')].map(b => b.textContent)).toEqual(['Allow', 'Allow only this time', 'Cancel']);
+            expect(document.activeElement?.dataset?.choice).toBe('once');
+            expect(isNavigationConsentPending()).toBe(true);
+        });
+
+        it.each([
+            ['allow'], ['once'], ['cancel']
+        ])('resolves %s from its button and removes the dialogue', async (choice) => {
+            const { promise, dialogue } = openDialogue();
+            await Promise.resolve();
+            dialogue().querySelector(`button[data-choice="${choice}"]`).click();
+
+            await expect(promise).resolves.toEqual({ choice });
+            expect(dialogue()).toBeNull();
+            expect(isNavigationConsentPending()).toBe(false);
+        });
+
+        it('Enter outside a button defaults to allow once', async () => {
+            const { promise, dialogue } = openDialogue();
+            await Promise.resolve();
+            press(dialogue().querySelector('code'), 'Enter');
+            await expect(promise).resolves.toEqual({ choice: 'once' });
+        });
+
+        it('Enter on an explicitly focused button is left to the button', async () => {
+            const { promise, dialogue } = openDialogue();
+            await Promise.resolve();
+            const cancel = dialogue().querySelector('button[data-choice="cancel"]');
+            cancel.focus();
+            const event = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+            cancel.dispatchEvent(event);
+
+            expect(event.defaultPrevented).toBe(false);
+            expect(isNavigationConsentPending()).toBe(true);
+            cancel.click();
+            await expect(promise).resolves.toEqual({ choice: 'cancel' });
+        });
+
+        it('Escape cancels', async () => {
+            const { promise, dialogue } = openDialogue();
+            await Promise.resolve();
+            press(dialogue(), 'Escape');
+            await expect(promise).resolves.toEqual({ choice: 'cancel' });
+        });
+
+        it('background dismissal cancels the matching dialogue', async () => {
+            const { promise, dialogue } = openDialogue('req-9');
+            await Promise.resolve();
+            dismissNavigationConsent('other');
+            expect(dialogue()).not.toBeNull();
+            dismissNavigationConsent('req-9');
+            await expect(promise).resolves.toEqual({ choice: 'cancel' });
+        });
+
+        it('opens a closed sidebar so the question is visible', async () => {
+            root.querySelector('#laiSidebar').classList.remove('active');
+            const { dialogue } = openDialogue();
+            await vi.waitFor(() => expect(dialogue()).not.toBeNull());
+            expect(root.querySelector('#laiSidebar').classList.contains('active')).toBe(true);
+        });
+
+        it('reports an unavailable UI without rendering anything', async () => {
+            global.getShadowRoot = vi.fn(() => null);
+            await expect(showNavigationConsent({ url: 'https://example.com/' })).resolves.toEqual({ choice: 'unavailable' });
         });
     });
 });
