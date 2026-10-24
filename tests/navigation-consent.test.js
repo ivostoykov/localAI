@@ -97,6 +97,7 @@ describe('navigation-consent page', () => {
             await init();
 
             expect([...document.querySelectorAll('#consentButtons button')].every(b => b.disabled)).toBe(true);
+            expect(document.getElementById('consentWait').classList.contains('invisible')).toBe(false);
             key(window, document.body, 'Enter');
             document.getElementById('consentAllow').click();
             await vi.advanceTimersByTimeAsync(INPUT_DELAY_MS - 50);
@@ -105,6 +106,7 @@ describe('navigation-consent page', () => {
 
             await vi.advanceTimersByTimeAsync(50);
             expect(document.activeElement?.id).toBe('consentOnce');
+            expect(document.getElementById('consentWait').classList.contains('invisible')).toBe(true);
             key(window, document.body, 'Escape');
             await vi.advanceTimersByTimeAsync(0);
             expect(responses(chrome).map(r => r.choice)).toEqual(['cancel']);
@@ -116,6 +118,7 @@ describe('navigation-consent page', () => {
             window.dispatchEvent(new window.Event('focus'));
             key(window, document.body, 'Enter');
             expect(responses(chrome)).toHaveLength(0);
+            expect(document.getElementById('consentWait').classList.contains('invisible')).toBe(false);
 
             await vi.advanceTimersByTimeAsync(INPUT_DELAY_MS);
             key(window, document.body, 'Enter');

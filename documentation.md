@@ -292,7 +292,7 @@ Off by default. The built-in `browse_url` tool lets the model open a link in a s
 - `Allow only this time` opens this one page only.
 - `Cancel`, `Escape` or closing the window declines; no page is loaded. An unanswered request is declined after two minutes.
 
-`Enter` chooses `Allow only this time` unless another button has focus. The window ignores clicks and keys for a moment after it opens or regains focus, so typing meant for another window cannot answer it.
+`Enter` chooses `Allow only this time` unless another button has focus. For 0.75 seconds after the window opens or regains focus, its buttons are dimmed with a short notice and clicks and keys are ignored, so typing meant for another window cannot answer it; after that, `Enter` works as described.
 
 How the browsing tab behaves:
 

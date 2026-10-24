@@ -19,6 +19,10 @@ function setConsentButtonsDisabled(disabled) {
     document.querySelectorAll('#consentButtons button').forEach(btn => { btn.disabled = disabled; });
 }
 
+function setConsentWaitVisible(visible) {
+    document.getElementById('consentWait')?.classList.toggle('invisible', !visible);
+}
+
 // The window takes focus when it opens, so a key press or click meant for another window could
 // otherwise answer it; input is ignored until the window has been shown for a moment, and again
 // whenever it regains focus.
@@ -26,15 +30,18 @@ function armConsentInput() {
     if (consentAnswered) { return; }
     consentInputReadyAt = Date.now() + NAVIGATION_CONSENT_INPUT_DELAY_MS;
     setConsentButtonsDisabled(true);
+    setConsentWaitVisible(true);
     clearTimeout(consentInputTimer);
     consentInputTimer = setTimeout(() => {
         if (consentAnswered) { return; }
         setConsentButtonsDisabled(false);
+        setConsentWaitVisible(false);
         document.getElementById('consentOnce')?.focus();
     }, NAVIGATION_CONSENT_INPUT_DELAY_MS);
 }
 
 function showConsentError() {
+    setConsentWaitVisible(false);
     document.getElementById('consentError')?.classList.remove('invisible');
     document.getElementById('consentButtons')?.classList.add('invisible');
 }
