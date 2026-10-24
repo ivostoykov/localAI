@@ -36,6 +36,9 @@ npm run test:coverage
 
 - `tests/setup.js` - Global test setup, mocks Chrome APIs
 - `tests/sessions.test.js` - Tests for session management functions
+- `tests/page-navigation.test.js` - `browse_url` consent, browsing-tab ownership, loading and readiness
+- `tests/navigation-consent.test.js` - The navigation permission pop-up page
+- `tests/background-navigation.test.js` - Browsing-session lifecycle in the background tool loop
 - `vitest.config.js` - Vitest configuration
 
 ## Writing Tests

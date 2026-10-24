@@ -344,6 +344,26 @@ describe('page-navigation.js', () => {
             await expect(helpers.answerConsent(requestId, 'allow')).resolves.toEqual({ status: 'rejected' });
         });
 
+        it('closes the pop-up of every loop from a closed origin tab, including an older loop for the same tab', async () => {
+            helpers.consentChoice = null;
+            const older = nav.createNavigationSession(1, new AbortController().signal);
+            const newer = nav.createNavigationSession(1, new AbortController().signal);
+            const olderConsent = nav.requestNavigationConsent(older, 'https://a.example/');
+            const newerConsent = nav.requestNavigationConsent(newer, 'https://b.example/');
+            olderConsent.catch(() => {});
+            newerConsent.catch(() => {});
+            await vi.advanceTimersByTimeAsync(0);
+            expect(helpers.windows.size).toBe(2);
+
+            await nav.handleNavigationTabRemoved(1);
+
+            await expect(olderConsent).rejects.toMatchObject({ name: 'AbortError' });
+            await expect(newerConsent).rejects.toMatchObject({ name: 'AbortError' });
+            expect(helpers.windows.size).toBe(0);
+            expect(nav.pendingNavigationConsents.size).toBe(0);
+            expect(chrome.tabs.create).not.toHaveBeenCalled();
+        });
+
         it('keeps concurrent requests bound to their own pop-up windows', async () => {
             helpers.consentChoice = null;
             helpers.addTab({ id: 2, url: 'https://other.example/', windowId: 9 });

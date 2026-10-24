@@ -40,14 +40,27 @@ const key = (window, target, keyName) => {
     return event;
 };
 
+const INPUT_DELAY_MS = 750;
+
+// Loads the page, initialises it and waits past the input delay so it accepts answers.
+async function openReadyConsentPage(options) {
+    const page = await loadConsentPage(options);
+    await page.init();
+    await vi.advanceTimersByTimeAsync(INPUT_DELAY_MS);
+    return page;
+}
+
 describe('navigation-consent page', () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
     afterEach(() => {
         vi.useRealTimers();
     });
 
     it('loads the request for its own request id and renders the URL as text', async () => {
-        const { document, chrome, init } = await loadConsentPage();
-        await init();
+        const { document, chrome } = await openReadyConsentPage();
 
         expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'getNavigationConsentRequest', requestId: 'req-1' });
         const urlEl = document.getElementById('consentUrl');
@@ -59,8 +72,7 @@ describe('navigation-consent page', () => {
     });
 
     it('shows an error and no choices when the background rejects the request', async () => {
-        const { document, chrome, init } = await loadConsentPage({ response: { status: 'rejected' } });
-        await init();
+        const { document, chrome } = await openReadyConsentPage({ response: { status: 'rejected' } });
 
         expect(document.getElementById('consentError').classList.contains('invisible')).toBe(false);
         expect(document.getElementById('consentButtons').classList.contains('invisible')).toBe(true);
@@ -69,8 +81,7 @@ describe('navigation-consent page', () => {
     });
 
     it('ignores scripted clicks and key presses', async () => {
-        const { window, document, chrome, init } = await loadConsentPage();
-        await init();
+        const { window, document, chrome } = await openReadyConsentPage();
 
         document.getElementById('consentAllow').click();
         key(window, document.body, 'Enter');
@@ -81,44 +92,74 @@ describe('navigation-consent page', () => {
     });
 
     describe('with user input', () => {
+        it('ignores input until the window has been shown for a moment', async () => {
+            const { window, document, chrome, init } = await loadConsentPage({ trustEvents: true });
+            await init();
+
+            expect([...document.querySelectorAll('#consentButtons button')].every(b => b.disabled)).toBe(true);
+            key(window, document.body, 'Enter');
+            document.getElementById('consentAllow').click();
+            await vi.advanceTimersByTimeAsync(INPUT_DELAY_MS - 50);
+            key(window, document.body, 'Enter');
+            expect(responses(chrome)).toHaveLength(0);
+
+            await vi.advanceTimersByTimeAsync(50);
+            expect(document.activeElement?.id).toBe('consentOnce');
+            key(window, document.body, 'Escape');
+            await vi.advanceTimersByTimeAsync(0);
+            expect(responses(chrome).map(r => r.choice)).toEqual(['cancel']);
+        });
+
+        it('ignores input again for a moment after the window regains focus', async () => {
+            const { window, document, chrome } = await openReadyConsentPage({ trustEvents: true });
+
+            window.dispatchEvent(new window.Event('focus'));
+            key(window, document.body, 'Enter');
+            expect(responses(chrome)).toHaveLength(0);
+
+            await vi.advanceTimersByTimeAsync(INPUT_DELAY_MS);
+            key(window, document.body, 'Enter');
+            await vi.advanceTimersByTimeAsync(0);
+            expect(responses(chrome).map(r => r.choice)).toEqual(['once']);
+        });
+
         it.each([
             ['consentAllow', 'allow'],
             ['consentOnce', 'once'],
             ['consentCancel', 'cancel']
         ])('%s answers %s once and closes the window', async (id, choice) => {
-            const { window, document, chrome, init } = await loadConsentPage({ trustEvents: true });
-            await init();
+            const { window, document, chrome } = await openReadyConsentPage({ trustEvents: true });
 
             document.getElementById(id).click();
             document.getElementById('consentAllow').click();
-            await vi.waitFor(() => expect(window.close).toHaveBeenCalled());
+            await vi.advanceTimersByTimeAsync(0);
 
+            expect(window.close).toHaveBeenCalled();
             expect(responses(chrome)).toEqual([{ action: 'navigationConsentResponse', requestId: 'req-1', choice }]);
             expect([...document.querySelectorAll('#consentButtons button')].every(b => b.disabled)).toBe(true);
         });
 
         it('Escape cancels even when focus has left the controls', async () => {
-            const { window, document, chrome, init } = await loadConsentPage({ trustEvents: true });
-            await init();
+            const { window, document, chrome } = await openReadyConsentPage({ trustEvents: true });
             document.activeElement.blur();
 
             key(window, document.body, 'Escape');
+            await vi.advanceTimersByTimeAsync(0);
 
-            await vi.waitFor(() => expect(responses(chrome)).toEqual([{ action: 'navigationConsentResponse', requestId: 'req-1', choice: 'cancel' }]));
+            expect(responses(chrome)).toEqual([{ action: 'navigationConsentResponse', requestId: 'req-1', choice: 'cancel' }]);
         });
 
         it('Enter outside a button chooses allow once', async () => {
-            const { window, document, chrome, init } = await loadConsentPage({ trustEvents: true });
-            await init();
+            const { window, document, chrome } = await openReadyConsentPage({ trustEvents: true });
 
             key(window, document.getElementById('consentUrl'), 'Enter');
+            await vi.advanceTimersByTimeAsync(0);
 
-            await vi.waitFor(() => expect(responses(chrome)[0]?.choice).toBe('once'));
+            expect(responses(chrome)[0]?.choice).toBe('once');
         });
 
         it('leaves Enter on an explicitly focused button to the button', async () => {
-            const { window, document, chrome, init } = await loadConsentPage({ trustEvents: true });
-            await init();
+            const { window, document, chrome } = await openReadyConsentPage({ trustEvents: true });
             const cancel = document.getElementById('consentCancel');
             cancel.focus();
 
@@ -130,11 +171,9 @@ describe('navigation-consent page', () => {
     });
 
     it('sends keep-alive messages while waiting and stops after answering', async () => {
-        vi.useFakeTimers();
-        const { document, chrome, init } = await loadConsentPage({ trustEvents: true });
-        await init();
+        const { document, chrome } = await openReadyConsentPage({ trustEvents: true });
 
-        await vi.advanceTimersByTimeAsync(31000);
+        await vi.advanceTimersByTimeAsync(31000 - INPUT_DELAY_MS);
         const keepAlives = () => chrome.runtime.sendMessage.mock.calls.filter(([m]) => m.action === 'navigationConsentKeepAlive');
         expect(keepAlives()).toHaveLength(2);
         expect(keepAlives()[0][0]).toEqual({ action: 'navigationConsentKeepAlive', requestId: 'req-1' });

@@ -17,6 +17,7 @@ importBackgroundScript('jslib/utils.js');
 importBackgroundScript('jslib/model-catalogue.js');
 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
+const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
 
 importBackgroundScript('jslib/log.js');
 importBackgroundScript('background-memory.js');
@@ -53,11 +54,12 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onUpdateAvailable.addListener(tryReloadExtension);
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
-    const ctrl = controllers.get(tabId);
-    if (ctrl) {
+    for (const ctrl of originRequestControllers.get(tabId) ?? []) {
         ctrl.abort('Originating tab closed.');
-        controllers.delete(tabId);
     }
+    originRequestControllers.delete(tabId);
+    controllers.get(tabId)?.abort('Originating tab closed.');
+    controllers.delete(tabId);
     await handleNavigationTabRemoved(tabId);
     await removeActiveSessionPageData(tabId);
 
@@ -969,6 +971,10 @@ async function fetchDataAction(request, sender) {
         signal: controller.signal,
     };
     const navigationSession = createNavigationSession(tabId, controller.signal);
+    if (tabId != null) {
+        if (!originRequestControllers.has(tabId)) { originRequestControllers.set(tabId, new Set()); }
+        originRequestControllers.get(tabId).add(controller);
+    }
     try {
         while(true) {
             reqOpt.body = JSON.stringify(request.data);
@@ -1100,6 +1106,9 @@ async function fetchDataAction(request, sender) {
     finally {
         await disposeNavigationSession(navigationSession);
         if (tabId != null && controllers.get(tabId) === controller) {  controllers.delete(tabId);  }
+        const originControllers = originRequestControllers.get(tabId);
+        originControllers?.delete(controller);
+        if (originControllers?.size === 0) {  originRequestControllers.delete(tabId);  }
     }
 
     return { "status": "success", "message": "Request sent. Awaiting response." };

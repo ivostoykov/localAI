@@ -49,6 +49,10 @@ Click the icon to open the main UI.
 
 
 
+# AI response actions
+
+Hover over an AI reply to show its actions. `Copy` copies the rendered text. `Copy as Markdown` copies the reply's original Markdown, including headings, lists, tables and code fences, without the model's thinking block. It works for new replies and for replies restored from session history, with debug logging on or off. For an aborted reply it copies the part received so far. If no Markdown source is available, for example a reply that contained only thinking, a warning is shown and the clipboard is left unchanged.
+
 # AI response parser
 
 A new Markdown parser is included for an improved experience. It is available as an independent open-source project on GitHub: [solomd2html](https://github.com/ivostoykov/solomd2html). Please use the parser's [Issues section](https://github.com/ivostoykov/solomd2html/issues) for bug reports and suggestions related to the AI output format.
@@ -288,7 +292,18 @@ Off by default. The built-in `browse_url` tool lets the model open a link in a s
 - `Allow only this time` opens this one page only.
 - `Cancel`, `Escape` or closing the window declines; no page is loaded. An unanswered request is declined after two minutes.
 
-`Enter` chooses `Allow only this time` unless another button has focus. One background tab is reused for all pages opened while answering a prompt and is closed when the answer is complete, aborted or fails, or when the originating tab is closed. Only absolute `http` and `https` URLs are accepted. Content is read once two consecutive extractions agree and contain at least 200 characters, within a bounded wait; if it is still changing, the result is marked as possibly incomplete. This is a generic heuristic: a stable loading placeholder, login wall or consent page also passes it, so the returned final URL and content may describe that page rather than the intended one. Sign-in state is that of the browser profile.
+`Enter` chooses `Allow only this time` unless another button has focus. The window ignores clicks and keys for a moment after it opens or regains focus, so typing meant for another window cannot answer it.
+
+How the browsing tab behaves:
+
+- The tab is created only after permission is granted, in the background (never activated), and is used only for that prompt.
+- All pages the model opens while answering one prompt reuse the same tab.
+- It is closed when the final answer arrives, when the request is aborted or fails, or when the tab you asked from is closed. If you close it yourself, the model is told and a new one is opened on the next request.
+- Your current tab is never navigated; tools that read "the current page" still read your tab.
+
+What the model receives: the requested and final URL (after redirects), the page title, the page content including links in `[text](url)` form, and `contentStatus`. Only absolute `http` and `https` URLs are accepted.
+
+Readiness and its limits: content is accepted once the page has loaded, the main content area shows no recognised loading indicators (busy markers, progress bars, skeleton/placeholder/spinner elements) and two extractions a second apart agree with at least 200 characters. Waits are bounded (30 seconds to load, 15 seconds to settle); otherwise the result is marked `incomplete` with a warning. This is a heuristic: a stable placeholder without recognised indicators, a login wall or a cookie-consent page also passes, so check the returned final URL and content. Pages are opened with your browser profile's sign-in state. Scrolling, clicking and form filling in the browsing tab are not supported.
 
 ### End Points
 

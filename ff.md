@@ -24,6 +24,10 @@ If you're using Firefox >= 158 it probably worth to keep reading.
 
 This will allow add-on to interact with the `activeTab`.
 
+## Reading links (Allow navigation)
+
+The `browse_url` tool opens pages in a background tab and reads them through the add-on's content script, so it also needs `Access your data for all websites`. The permission question opens as a small add-on pop-up window; if a pop-up blocker or window manager hides it, the request is declined after two minutes.
+
 ## Speech Recognition doesn't work in Firefox
 
 For instructions on enabling Web Speech API in Firefox,  check the linked article [here](https://hacks.mozilla.org/2016/01/firefox-and-the-web-speech-api/). Focus on the **"Browser support in more detail"** section.

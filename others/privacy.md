@@ -18,7 +18,7 @@ This privacy policy governs the use of the software application AI Form Fill Hel
 
 ## Permissions and Security
 
-**Permissions:** Permissions required by the Extension are minimal and only intended to enable its core functionalities such as accessing active tabs to input or modify form data. The Extension asks for user consent before accessing any content.
+**Permissions:** Permissions required by the Extension are minimal and only intended to enable its core functionalities such as accessing active tabs to input or modify form data. The Extension asks for user consent before accessing any content. When the model asks to open a link, the page is loaded in a separate background tab only after the user allows it in an extension pop-up window, or after the user has turned on `Allow navigation` in the options. The page content is sent only to the AI endpoint configured by the user, and the tab is closed when the answer is complete.
 
 **Security Measures:** The Extension uses standard security features to protect user data and prevent unauthorized access. Data used by the Extension is encrypted and stored locally, enhancing security and privacy.
 

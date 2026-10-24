@@ -22,6 +22,7 @@ function createDeps(bodies) {
     const sessions = [];
     const deps = {
         controllers: new Map(),
+        originRequestControllers: new Map(),
         manifest: { name: 'Local AI helper' },
         getLineNumber: () => 'test',
         chrome: { tabs: { sendMessage: vi.fn(async () => undefined) } },
@@ -182,5 +183,75 @@ describe('background.js navigation lifecycle', () => {
         expect(other.signal.aborted).toBe(false);
         expect(deps.controllers.has(1)).toBe(false);
         expect(deps.handleNavigationTabRemoved).toHaveBeenCalledWith(1);
+    });
+
+    it('aborts every concurrent loop from a closed origin tab and leaves other tabs running', async () => {
+        const { deps, sessions } = createDeps([]);
+        deps.consumeStreamResponse.mockImplementation(async () => ({
+            responseText: '',
+            body: { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://a.example/')] } }
+        }));
+        deps.resolveToolCalls.mockImplementation((call, base, tab, sessionId, navigationSession) => new Promise((resolve, reject) => {
+            const fail = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+            if (navigationSession.signal.aborted) { fail(); return; }
+            navigationSession.signal.addEventListener('abort', fail, { once: true });
+        }));
+        let onRemoved;
+        deps.chrome.tabs.onRemoved = { addListener: (fn) => { onRemoved = fn; } };
+        deps.chrome.tabs.query = vi.fn(async () => []);
+        deps.chrome.storage = { local: { get: vi.fn(async () => ({})), remove: vi.fn() } };
+        registerOnRemoved(deps);
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const older = fetchDataAction(request(), sender);
+        const newer = fetchDataAction(request(), sender);
+        const other = fetchDataAction(request(), { tab: { id: 2, url: 'https://other.example/' } });
+        await vi.waitFor(() => expect(deps.resolveToolCalls).toHaveBeenCalledTimes(3));
+        expect(deps.originRequestControllers.get(1).size).toBe(2);
+
+        await onRemoved(1);
+        await Promise.all([older, newer]);
+
+        const [olderSession, newerSession, otherSession] = sessions;
+        expect(olderSession.signal.aborted).toBe(true);
+        expect(newerSession.signal.aborted).toBe(true);
+        expect(otherSession.signal.aborted).toBe(false);
+        expect(deps.disposeNavigationSession).toHaveBeenCalledWith(olderSession);
+        expect(deps.disposeNavigationSession).toHaveBeenCalledWith(newerSession);
+        expect(deps.disposeNavigationSession).not.toHaveBeenCalledWith(otherSession);
+        expect(deps.originRequestControllers.has(1)).toBe(false);
+        expect(deps.controllers.has(1)).toBe(false);
+        expect(deps.originRequestControllers.get(2).size).toBe(1);
+
+        deps.controllers.get(2).abort('test cleanup');
+        await other;
+        expect(deps.originRequestControllers.has(2)).toBe(false);
+    });
+
+    it('an older loop finishing keeps the newer loop of the same tab registered and abortable', async () => {
+        const { deps, sessions } = createDeps([]);
+        let releaseOlder;
+        deps.consumeStreamResponse
+            .mockImplementationOnce(() => new Promise(resolve => { releaseOlder = () => resolve({ responseText: '', body: { message: { role: 'assistant', content: 'Older answer' } } }); }))
+            .mockImplementationOnce(async () => ({ responseText: '', body: { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://b.example/')] } } }));
+        deps.resolveToolCalls.mockImplementation((call, base, tab, sessionId, navigationSession) => new Promise((resolve, reject) => {
+            navigationSession.signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+        }));
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const older = fetchDataAction(request(), sender);
+        await vi.waitFor(() => expect(releaseOlder).toBeTypeOf('function'));
+        const newer = fetchDataAction(request(), sender);
+        await vi.waitFor(() => expect(deps.resolveToolCalls).toHaveBeenCalledTimes(1));
+        releaseOlder();
+        await older;
+
+        expect(deps.controllers.get(1)).toBe([...deps.originRequestControllers.get(1)][0]);
+        expect(deps.originRequestControllers.get(1).size).toBe(1);
+
+        deps.controllers.get(1).abort('User aborted last request.');
+        await newer;
+        expect(sessions[1].signal.aborted).toBe(true);
+        expect(deps.originRequestControllers.has(1)).toBe(false);
     });
 });

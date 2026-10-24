@@ -59,6 +59,7 @@ async function disposeNavigationSession(session) {
 
     session.disposed = true;
     navigationSessions.delete(session);
+    session.pendingConsent?.settle({ choice: 'disposed' });
 
     const tabId = session.ownedTabId;
     session.ownedTabId = null;
@@ -220,6 +221,7 @@ async function requestNavigationConsent(session, url) {
         };
     });
     pendingNavigationConsents.set(requestId, pending);
+    session.pendingConsent = pending;
 
     let response;
     try {
@@ -248,9 +250,14 @@ async function requestNavigationConsent(session, url) {
     } finally {
         pending.settle({ choice: 'closed' });
         pendingNavigationConsents.delete(requestId);
+        if (session.pendingConsent === pending) { delete session.pendingConsent; }
         if (pending.windowId != null) {
             await chrome.windows.remove(pending.windowId).catch(() => {});
         }
+    }
+
+    if (session.disposed || response?.choice === 'disposed') {
+        throw createNavigationAbortError('The model request ended while waiting for permission.');
     }
 
     switch (response?.choice) {
