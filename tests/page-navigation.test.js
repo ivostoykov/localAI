@@ -364,6 +364,60 @@ describe('page-navigation.js', () => {
             expect(chrome.tabs.create).not.toHaveBeenCalled();
         });
 
+        it('does not open a pop-up when the origin closes while the permission setting is being read', async () => {
+            let releaseRead;
+            const read = chrome.storage.sync.get.getMockImplementation();
+            chrome.storage.sync.get.mockImplementationOnce(async (key) => {
+                await new Promise(resolve => { releaseRead = resolve; });
+                return read(key);
+            });
+            const session = nav.createNavigationSession(1, new AbortController().signal);
+            const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.advanceTimersByTimeAsync(0);
+
+            helpers.closeTab(1);
+            await nav.handleNavigationTabRemoved(1);
+            releaseRead();
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+            expect(chrome.windows.create).not.toHaveBeenCalled();
+            expect(nav.pendingNavigationConsents.size).toBe(0);
+        });
+
+        it('does not open a pop-up when the origin closes while the status message is being sent', async () => {
+            let releaseNotify;
+            chrome.tabs.sendMessage.mockImplementationOnce(() => new Promise(resolve => { releaseNotify = resolve; }));
+            const session = nav.createNavigationSession(1, new AbortController().signal);
+            const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.advanceTimersByTimeAsync(0);
+
+            helpers.closeTab(1);
+            await nav.handleNavigationTabRemoved(1);
+            releaseNotify();
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+            expect(chrome.windows.create).not.toHaveBeenCalled();
+            expect(nav.pendingNavigationConsents.size).toBe(0);
+        });
+
+        it('does not save Allow always when the origin closed before the answer arrived', async () => {
+            helpers.consentChoice = null;
+            helpers.syncStore.laiOptions = { aiModel: 'm' };
+            const session = nav.createNavigationSession(1, null);
+            const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.advanceTimersByTimeAsync(0);
+
+            helpers.tabs.delete(1);
+            await helpers.answerConsent(helpers.consentRequests.at(-1), 'allow');
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+            expect(helpers.syncStore.laiOptions).toEqual({ aiModel: 'm' });
+            expect(helpers.windows.size).toBe(0);
+        });
+
         it('keeps concurrent requests bound to their own pop-up windows', async () => {
             helpers.consentChoice = null;
             helpers.addTab({ id: 2, url: 'https://other.example/', windowId: 9 });

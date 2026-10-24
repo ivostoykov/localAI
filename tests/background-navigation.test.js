@@ -12,20 +12,34 @@ const backgroundCode = fs.readFileSync(
 const fetchDataActionCode = backgroundCode.match(/async function fetchDataAction\([\s\S]*?\n}\n/)[0];
 const onRemovedListenerCode = backgroundCode.match(/chrome\.tabs\.onRemoved\.addListener\(async \(tabId\) => \{[\s\S]*?\n\}\);\n/)[0];
 
+const requestHelpersCode = ['registerRequestController', 'unregisterRequestController', 'throwIfRequestCancelled', 'sendStreamAbort']
+    .map(name => backgroundCode.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0])
+    .join('\n');
+
 // The background script relies on globals; `with` scopes the stubs for the extracted code only.
-const loadFetchDataAction = new Function('deps', `with (deps) { ${fetchDataActionCode}; return fetchDataAction; }`);
+const loadFetchDataAction = new Function('deps', `with (deps) { ${requestHelpersCode}\n${fetchDataActionCode}; return fetchDataAction; }`);
 const registerOnRemoved = new Function('deps', `with (deps) { ${onRemovedListenerCode} }`);
 
 const toolCall = (url) => ({ function: { name: 'browse_url', arguments: { url } } });
 
 function createDeps(bodies) {
     const sessions = [];
-    const deps = {
+    let deps;
+    deps = {
         controllers: new Map(),
         originRequestControllers: new Map(),
         manifest: { name: 'Local AI helper' },
         getLineNumber: () => 'test',
-        chrome: { tabs: { sendMessage: vi.fn(async () => undefined) } },
+        openTabs: new Set([1, 2]),
+        chrome: {
+            tabs: {
+                sendMessage: vi.fn(async () => undefined),
+                get: vi.fn(async (tabId) => {
+                    if (!deps.openTabs.has(tabId)) { throw new Error(`No tab with id: ${tabId}.`); }
+                    return { id: tabId };
+                })
+            }
+        },
         getLaiOptions: vi.fn(async () => ({ toolFunc: '', debug: false })),
         getPromptTools: vi.fn(async () => [{ type: 'function', function: { name: 'browse_url' } }]),
         getAiUrl: vi.fn(async () => 'http://localhost:11434/api/chat'),
@@ -177,6 +191,7 @@ describe('background.js navigation lifecycle', () => {
         deps.controllers.set(1, controller);
         deps.controllers.set(2, other);
 
+        deps.openTabs.delete(1);
         await onRemoved(1);
 
         expect(controller.signal.aborted).toBe(true);
@@ -209,6 +224,7 @@ describe('background.js navigation lifecycle', () => {
         await vi.waitFor(() => expect(deps.resolveToolCalls).toHaveBeenCalledTimes(3));
         expect(deps.originRequestControllers.get(1).size).toBe(2);
 
+        deps.openTabs.delete(1);
         await onRemoved(1);
         await Promise.all([older, newer]);
 
@@ -285,6 +301,7 @@ describe('background.js navigation lifecycle', () => {
         await vi.waitFor(() => expect(deps.resolveToolCalls).toHaveBeenCalledTimes(1));
         expect(deps.originRequestControllers.get(1).size).toBe(2);
 
+        deps.openTabs.delete(1);
         await onRemoved(1);
         releaseOlderSetup();
         await Promise.all([older, newer]);
@@ -309,5 +326,119 @@ describe('background.js navigation lifecycle', () => {
         expect(deps.disposeNavigationSession).not.toHaveBeenCalled();
         expect(deps.originRequestControllers.has(1)).toBe(false);
         expect(deps.controllers.has(1)).toBe(false);
+    });
+
+    describe('cancellation during setup', () => {
+        const deferred = () => {
+            let release;
+            const promise = new Promise(resolve => { release = resolve; });
+            return { promise, release };
+        };
+
+        const closeOrigin = async (deps) => {
+            let onRemoved;
+            deps.chrome.tabs.onRemoved = { addListener: (fn) => { onRemoved = fn; } };
+            deps.chrome.tabs.query = vi.fn(async () => []);
+            deps.chrome.storage = { local: { get: vi.fn(async () => ({})), remove: vi.fn() } };
+            registerOnRemoved(deps);
+            deps.openTabs.delete(1);
+            await onRemoved(1);
+        };
+
+        const expectNothingAfterClose = (deps, result) => {
+            expect(result.status).toBe('aborted');
+            expect(deps.setActiveSession).not.toHaveBeenCalled();
+            expect(deps.fetch).not.toHaveBeenCalled();
+            expect(deps.createNavigationSession).not.toHaveBeenCalled();
+            expect(deps.backgroundMemory.storeTurnWithEmbeddings).not.toHaveBeenCalled();
+            expect(deps.originRequestControllers.size).toBe(0);
+            expect(deps.controllers.size).toBe(0);
+        };
+
+        it.each([
+            ['getLaiOptions'],
+            ['getPromptTools'],
+            ['getAiUrl']
+        ])('stops when the origin closes while %s is pending', async (step) => {
+            const { deps } = createDeps([]);
+            const gate = deferred();
+            deps[step].mockImplementationOnce(async () => {
+                await gate.promise;
+                return step === 'getAiUrl' ? 'http://localhost:11434/api/chat' : step === 'getPromptTools' ? [] : { toolFunc: '' };
+            });
+            const fetchDataAction = loadFetchDataAction(deps);
+            const req = request();
+            if (step === 'getAiUrl') { delete req.url; }
+
+            const pending = fetchDataAction(req, sender);
+            await vi.waitFor(() => expect(deps[step]).toHaveBeenCalled());
+            expect(deps.originRequestControllers.get(1).size).toBe(1);
+            await closeOrigin(deps);
+            gate.release();
+
+            expectNothingAfterClose(deps, await pending);
+        });
+
+        it.each([
+            ['getActiveSession'],
+            ['processCommandArguments'],
+            ['buildOptimisedContext'],
+            ['getContext']
+        ])('does not write the session when the origin closes while %s is pending', async (step) => {
+            const { deps } = createDeps([]);
+            const gate = deferred();
+            const target = step in deps.backgroundMemory ? deps.backgroundMemory : deps;
+            const original = target[step].getMockImplementation();
+            target[step].mockImplementationOnce(async (...args) => {
+                await gate.promise;
+                return original(...args);
+            });
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            const pending = fetchDataAction(request(), sender);
+            await vi.waitFor(() => expect(target[step]).toHaveBeenCalled());
+            await closeOrigin(deps);
+            gate.release();
+
+            expectNothingAfterClose(deps, await pending);
+        });
+
+        it('checks that a fallback tab is still open before any setup', async () => {
+            const { deps } = createDeps([]);
+            deps.validateAndGetTabId.mockResolvedValueOnce(7);
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            const result = await fetchDataAction(request(), { tab: undefined });
+
+            expect(result.status).toBe('aborted');
+            expect(deps.getLaiOptions).not.toHaveBeenCalled();
+            expect(deps.fetch).not.toHaveBeenCalled();
+            expect(deps.originRequestControllers.size).toBe(0);
+        });
+
+        it('does not persist tool results when the origin closes during a tool call', async () => {
+            const { deps } = createDeps([
+                { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://a.example/')] } }
+            ]);
+            const gate = deferred();
+            deps.resolveToolCalls.mockImplementationOnce(async () => {
+                await gate.promise;
+                return 'tool result';
+            });
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            const pending = fetchDataAction(request(), sender);
+            await vi.waitFor(() => expect(deps.resolveToolCalls).toHaveBeenCalled());
+            const writesBefore = deps.setActiveSession.mock.calls.length;
+            await closeOrigin(deps);
+            gate.release();
+            await pending;
+
+            expect(deps.setActiveSession.mock.calls.length).toBe(writesBefore);
+            expect(deps.backgroundMemory.storeToolCallEmbedding).not.toHaveBeenCalled();
+            expect(deps.fetch).toHaveBeenCalledTimes(1);
+            expect(deps.disposeNavigationSession).toHaveBeenCalledTimes(1);
+            expect(deps.originRequestControllers.size).toBe(0);
+        });
     });
 });

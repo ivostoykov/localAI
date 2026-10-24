@@ -200,6 +200,28 @@ async function notifyNavigationStatus(tabId, message) {
     }
 }
 
+// The originating tab can close while a request is still being set up, before its session is
+// registered for closure handling; such a session must not ask for consent or open a page.
+async function isNavigationOriginClosed(session) {
+    if (session?.originTabId == null) { return false; }
+    return !await chrome.tabs.get(session.originTabId).catch(() => null);
+}
+
+async function stopIfNavigationOriginClosed(session) {
+    if (!await isNavigationOriginClosed(session)) { return; }
+    await disposeNavigationSession(session);
+    throw createNavigationAbortError('The originating tab was closed.');
+}
+
+// Checked after every awaited step and immediately before each side effect (pop-up, saved setting,
+// tab creation or navigation), so a request cancelled while waiting stops there.
+async function throwIfNavigationCancelled(session) {
+    if (session.disposed || session.signal?.aborted) {
+        throw createNavigationAbortError(session.signal?.reason);
+    }
+    await stopIfNavigationOriginClosed(session);
+}
+
 async function requestNavigationConsent(session, url) {
     if (await getNavigationPermission()) {
         return { granted: true, choice: 'setting' };
@@ -208,6 +230,7 @@ async function requestNavigationConsent(session, url) {
     if (session?.originTabId == null) {
         return { granted: false, reason: 'no originating chat is available to ask the user for permission' };
     }
+    await throwIfNavigationCancelled(session);
 
     const requestId = crypto.randomUUID();
     const pending = { requestId, url, windowId: null, tabId: null, settled: false };
@@ -226,6 +249,7 @@ async function requestNavigationConsent(session, url) {
     let response;
     try {
         await notifyNavigationStatus(session.originTabId, 'Waiting for permission to open a page - see the Local AI pop-up window.');
+        await throwIfNavigationCancelled(session);
         try {
             Object.assign(pending, await openNavigationConsentWindow(requestId));
         } finally {
@@ -256,9 +280,10 @@ async function requestNavigationConsent(session, url) {
         }
     }
 
-    if (session.disposed || response?.choice === 'disposed') {
+    if (response?.choice === 'disposed') {
         throw createNavigationAbortError('The model request ended while waiting for permission.');
     }
+    await throwIfNavigationCancelled(session);
 
     switch (response?.choice) {
         case 'allow':
@@ -357,6 +382,7 @@ function watchOwnedTabLoad(signal, timeoutMs = NAVIGATION_LOAD_TIMEOUT_MS) {
 }
 
 async function loadUrlInOwnedTab(session, url) {
+    await throwIfNavigationCancelled(session);
     const watcher = watchOwnedTabLoad(session.signal);
     try {
         if (session.ownedTabId != null) {
@@ -364,10 +390,16 @@ async function loadUrlInOwnedTab(session, url) {
             await chrome.tabs.update(session.ownedTabId, { url });
         } else {
             const origin = session.originTabId != null ? await chrome.tabs.get(session.originTabId).catch(() => null) : null;
+            if (session.originTabId != null && !origin) {
+                await disposeNavigationSession(session);
+            }
+            if (session.disposed || session.signal?.aborted) {
+                throw createNavigationAbortError(session.signal?.reason);
+            }
             const createProperties = { active: false, url };
             if (origin?.windowId != null) { createProperties.windowId = origin.windowId; }
             const tab = await chrome.tabs.create(createProperties);
-            if (session.disposed) {
+            if (session.disposed || session.signal?.aborted) {
                 await chrome.tabs.remove(tab.id).catch(() => {});
                 throw createNavigationAbortError('The model request ended before the page was opened.');
             }
@@ -496,19 +528,6 @@ async function waitForNavigationContent(tabId, signal, timeoutMs = NAVIGATION_RE
     };
 }
 
-// The originating tab can close while a request is still being set up, before its session is
-// registered for closure handling; such a session must not ask for consent or open a page.
-async function isNavigationOriginClosed(session) {
-    if (session?.originTabId == null) { return false; }
-    return !await chrome.tabs.get(session.originTabId).catch(() => null);
-}
-
-async function stopIfNavigationOriginClosed(session) {
-    if (!await isNavigationOriginClosed(session)) { return; }
-    await disposeNavigationSession(session);
-    throw createNavigationAbortError('The originating tab was closed.');
-}
-
 async function browseUrl(session, rawUrl) {
     if (!session || session.disposed) {
         return 'Navigation failed: no active model request owns a browsing tab.';
@@ -517,15 +536,12 @@ async function browseUrl(session, rawUrl) {
     const { url, error } = validateNavigationUrl(rawUrl);
     if (error) { return error; }
 
-    await stopIfNavigationOriginClosed(session);
+    await throwIfNavigationCancelled(session);
     const consent = await requestNavigationConsent(session, url);
     if (!consent.granted) {
         return `Navigation to ${url} was not performed: ${consent.reason}. Do not retry this URL unless the user asks for it.`;
     }
-    if (session.disposed || session.signal?.aborted) {
-        throw createNavigationAbortError(session.signal?.reason);
-    }
-    await stopIfNavigationOriginClosed(session);
+    await throwIfNavigationCancelled(session);
 
     let loadState;
     try {

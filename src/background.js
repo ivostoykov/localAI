@@ -860,39 +860,74 @@ async function processCommandArguments(userInput, attachments, tabId) {
     return { pageContent, pageHash };
 }
 
+function registerRequestController(tabId, controller) {
+    if (tabId == null) { return; }
+    controllers.set(tabId, controller);
+    if (!originRequestControllers.has(tabId)) { originRequestControllers.set(tabId, new Set()); }
+    originRequestControllers.get(tabId).add(controller);
+}
+
+function unregisterRequestController(tabId, controller) {
+    if (tabId == null) { return; }
+    if (controllers.get(tabId) === controller) { controllers.delete(tabId); }
+    const originControllers = originRequestControllers.get(tabId);
+    originControllers?.delete(controller);
+    if (originControllers?.size === 0) { originRequestControllers.delete(tabId); }
+}
+
+// Called after each awaited step and before every side effect: a request whose originating tab
+// closed, or which was aborted, while it was waiting must not write, call the model or open windows.
+async function throwIfRequestCancelled(controller, tabId) {
+    if (!controller.signal.aborted && tabId != null && !await chrome.tabs.get(tabId).catch(() => null)) {
+        controller.abort('Originating tab closed.');
+    }
+    if (controller.signal.aborted) {
+        throw new DOMException(typeof controller.signal.reason === 'string' ? controller.signal.reason : 'The operation was aborted.', 'AbortError');
+    }
+}
+
+async function sendStreamAbort(tabId) {
+    try {
+        await chrome.tabs.sendMessage(tabId, { action: "streamAbort" });
+        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+    } catch (e1) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e1.message}`, e1);
+    }
+}
+
 async function fetchDataAction(request, sender) {
-    const laiOptions = await getLaiOptions();
-    const toolsEnabled = request?.tools || false;
-    const promptTools = toolsEnabled ? await getPromptTools() : [];
-    console.debug(`>>> [${getLineNumber()}] - promptTools. ${toolsEnabled}`, promptTools)
-
-    let url = request?.url ?? await getAiUrl();
-    if (!url) {
-        let msg = `Failed to compose the request URL - ${url}`;
-        await showUIMessage(msg, 'error', sender.tab);
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
-        return { "status": "error", "message": msg };
-    }
-
-    let tabId = sender?.tab?.id;
-    if (!tabId) {
-        tabId = await validateAndGetTabId(null);
-        if (!tabId) {
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab context available`);
-        }
-    }
-
     const controller = new AbortController();
-    if (tabId != null) {
-        controllers.set(tabId, controller);
-        if (!originRequestControllers.has(tabId)) { originRequestControllers.set(tabId, new Set()); }
-        originRequestControllers.get(tabId).add(controller);
-    }
+    let tabId = sender?.tab?.id ?? null;
+    registerRequestController(tabId, controller);
 
-    // Everything after registration runs inside this try, so setup failures and aborts during setup
-    // still release the controller and any browsing session.
+    // Registration happens before the first await and everything after it runs inside this try,
+    // so cancellation at any point and setup failures still release the controller and any browsing session.
     let navigationSession = null;
     try {
+        if (tabId == null) {
+            tabId = await validateAndGetTabId(null);
+            if (tabId == null) {
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab context available`);
+            } else {
+                registerRequestController(tabId, controller);
+            }
+        }
+        await throwIfRequestCancelled(controller, tabId);
+
+        const laiOptions = await getLaiOptions();
+        const toolsEnabled = request?.tools || false;
+        const promptTools = toolsEnabled ? await getPromptTools() : [];
+        console.debug(`>>> [${getLineNumber()}] - promptTools. ${toolsEnabled}`, promptTools)
+
+        let url = request?.url ?? await getAiUrl();
+        await throwIfRequestCancelled(controller, tabId);
+        if (!url) {
+            let msg = `Failed to compose the request URL - ${url}`;
+            await showUIMessage(msg, 'error', sender.tab);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+            return { "status": "error", "message": msg };
+        }
+
         let model = await getAiModel();
         if (model) {
             request.data['model'] = await resolveModelNameForRequest(model, false, sender?.tab);
@@ -950,6 +985,7 @@ async function fetchDataAction(request, sender) {
             }
         }
 
+        await throwIfRequestCancelled(controller, tabId);
         request.data.messages = optimisedMessages;
         activeSession.messages = [
             ...getVisibleSessionMessages(activeSession.messages),
@@ -979,9 +1015,10 @@ async function fetchDataAction(request, sender) {
             signal: controller.signal,
         };
         try {
-            if (controller.signal.aborted) { throw new DOMException('The operation was aborted.', 'AbortError'); }
+            await throwIfRequestCancelled(controller, tabId);
             navigationSession = createNavigationSession(tabId, controller.signal);
             while(true) {
+                await throwIfRequestCancelled(controller, tabId);
                 reqOpt.body = JSON.stringify(request.data);
                 response = await fetch(url, reqOpt);
                 if (request.data.stream && response.ok) {
@@ -1010,6 +1047,7 @@ async function fetchDataAction(request, sender) {
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - requested tools`, toolNamesUsed);
 
                     const toolData = await resolveToolCalls(tool, laiOptions.toolFunc, sender?.tab, activeSession?.id, navigationSession);
+                    await throwIfRequestCancelled(controller, tabId);
                     const newMessages = { role: 'tool', tool_name: toolNamesUsed, content: toolData }
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolved tool call`, newMessages);
                     request.data.messages.push(newMessages);
@@ -1030,6 +1068,7 @@ async function fetchDataAction(request, sender) {
                 }
 
                 if (sessionUpdatedWithTools) {
+                    await throwIfRequestCancelled(controller, tabId);
                     await setActiveSession(activeSession);
                     // delete request.data.tools;
                 }
@@ -1041,6 +1080,7 @@ async function fetchDataAction(request, sender) {
             await updateUIStatusBar(`Final response received...`, sender?.tab);
             await checkResponseTextAndBody({sender, responseText, body});
 
+            await throwIfRequestCancelled(controller, tabId);
             const historyMessage = sanitizeAssistantMessageForHistory(responseMessage);
             if (historyMessage) {
                 activeSession.messages.push(historyMessage);
@@ -1089,12 +1129,7 @@ async function fetchDataAction(request, sender) {
         catch (e) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
             if (e.name === 'AbortError') {
-                try {
-                    await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamAbort" });
-                    if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-                } catch (e1) {
-                    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e1.message}`, e1);
-                }
+                await sendStreamAbort(sender?.tab?.id);
             } else {
                 try {
                     await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamError", error: e.toString() });
@@ -1111,12 +1146,15 @@ async function fetchDataAction(request, sender) {
 
         return { "status": "success", "message": "Request sent. Awaiting response." };
     }
+    catch (e) {
+        if (e?.name !== 'AbortError') { throw e; }
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Request cancelled during setup`, e.message);
+        await sendStreamAbort(sender?.tab?.id);
+        return { "status": "aborted", "message": e.message };
+    }
     finally {
         if (navigationSession) { await disposeNavigationSession(navigationSession); }
-        if (tabId != null && controllers.get(tabId) === controller) {  controllers.delete(tabId);  }
-        const originControllers = originRequestControllers.get(tabId);
-        originControllers?.delete(controller);
-        if (originControllers?.size === 0) {  originRequestControllers.delete(tabId);  }
+        unregisterRequestController(tabId, controller);
     }
 }
 
