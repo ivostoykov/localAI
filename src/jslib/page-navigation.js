@@ -496,6 +496,19 @@ async function waitForNavigationContent(tabId, signal, timeoutMs = NAVIGATION_RE
     };
 }
 
+// The originating tab can close while a request is still being set up, before its session is
+// registered for closure handling; such a session must not ask for consent or open a page.
+async function isNavigationOriginClosed(session) {
+    if (session?.originTabId == null) { return false; }
+    return !await chrome.tabs.get(session.originTabId).catch(() => null);
+}
+
+async function stopIfNavigationOriginClosed(session) {
+    if (!await isNavigationOriginClosed(session)) { return; }
+    await disposeNavigationSession(session);
+    throw createNavigationAbortError('The originating tab was closed.');
+}
+
 async function browseUrl(session, rawUrl) {
     if (!session || session.disposed) {
         return 'Navigation failed: no active model request owns a browsing tab.';
@@ -504,6 +517,7 @@ async function browseUrl(session, rawUrl) {
     const { url, error } = validateNavigationUrl(rawUrl);
     if (error) { return error; }
 
+    await stopIfNavigationOriginClosed(session);
     const consent = await requestNavigationConsent(session, url);
     if (!consent.granted) {
         return `Navigation to ${url} was not performed: ${consent.reason}. Do not retry this URL unless the user asks for it.`;
@@ -511,6 +525,7 @@ async function browseUrl(session, rawUrl) {
     if (session.disposed || session.signal?.aborted) {
         throw createNavigationAbortError(session.signal?.reason);
     }
+    await stopIfNavigationOriginClosed(session);
 
     let loadState;
     try {

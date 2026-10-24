@@ -254,4 +254,60 @@ describe('background.js navigation lifecycle', () => {
         expect(sessions[1].signal.aborted).toBe(true);
         expect(deps.originRequestControllers.has(1)).toBe(false);
     });
+
+    it('stops an older request that is still in setup when the shared origin tab closes', async () => {
+        const { deps, sessions } = createDeps([]);
+        let releaseOlderSetup;
+        deps.getActiveSession
+            .mockImplementationOnce(() => new Promise(resolve => {
+                releaseOlderSetup = () => resolve({ id: 'session-1', messages: [], titleGenerated: true });
+            }))
+            .mockImplementation(async () => ({ id: 'session-1', messages: [], titleGenerated: true }));
+        deps.consumeStreamResponse.mockImplementation(async () => ({
+            responseText: '',
+            body: { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://a.example/')] } }
+        }));
+        deps.resolveToolCalls.mockImplementation((call, base, tab, sessionId, navigationSession) => new Promise((resolve, reject) => {
+            const fail = () => reject(new DOMException('The operation was aborted.', 'AbortError'));
+            if (navigationSession.signal.aborted) { fail(); return; }
+            navigationSession.signal.addEventListener('abort', fail, { once: true });
+        }));
+        let onRemoved;
+        deps.chrome.tabs.onRemoved = { addListener: (fn) => { onRemoved = fn; } };
+        deps.chrome.tabs.query = vi.fn(async () => []);
+        deps.chrome.storage = { local: { get: vi.fn(async () => ({})), remove: vi.fn() } };
+        registerOnRemoved(deps);
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const older = fetchDataAction(request(), sender);
+        await vi.waitFor(() => expect(releaseOlderSetup).toBeTypeOf('function'));
+        const newer = fetchDataAction(request(), sender);
+        await vi.waitFor(() => expect(deps.resolveToolCalls).toHaveBeenCalledTimes(1));
+        expect(deps.originRequestControllers.get(1).size).toBe(2);
+
+        await onRemoved(1);
+        releaseOlderSetup();
+        await Promise.all([older, newer]);
+
+        expect(deps.createNavigationSession).toHaveBeenCalledTimes(1);
+        expect(deps.resolveToolCalls).toHaveBeenCalledTimes(1);
+        expect(deps.fetch).toHaveBeenCalledTimes(1);
+        expect(sessions[0].signal.aborted).toBe(true);
+        expect(deps.disposeNavigationSession).toHaveBeenCalledWith(sessions[0]);
+        expect(deps.originRequestControllers.has(1)).toBe(false);
+        expect(deps.controllers.has(1)).toBe(false);
+    });
+
+    it('releases its controller when setup fails before the tool loop', async () => {
+        const { deps } = createDeps([]);
+        deps.getActiveSession.mockRejectedValueOnce(new Error('storage unavailable'));
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        await expect(fetchDataAction(request(), sender)).rejects.toThrow('storage unavailable');
+
+        expect(deps.createNavigationSession).not.toHaveBeenCalled();
+        expect(deps.disposeNavigationSession).not.toHaveBeenCalled();
+        expect(deps.originRequestControllers.has(1)).toBe(false);
+        expect(deps.controllers.has(1)).toBe(false);
+    });
 });

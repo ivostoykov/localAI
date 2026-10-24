@@ -288,11 +288,11 @@ This will send the content of the page from current active tab to the AI with a 
 
 Off by default. The built-in `browse_url` tool lets the model open a link in a separate, inactive background tab and read its content; your current tab, its form state and the chat are not changed. While this option is off, a small Local AI pop-up window asks before every page the model wants to open (the chat status bar points to it). The question is asked in an extension window rather than in the chat panel, because the visited page can read and change the panel's content:
 
-- `Allow` opens the page and turns this option on, so later pages open without asking.
-- `Allow only this time` opens this one page only.
+- `Allow always` opens the page and turns this option on, so later pages open without asking.
+- `Allow this time` opens this one page only; the next page asks again.
 - `Cancel`, `Escape` or closing the window declines; no page is loaded. An unanswered request is declined after two minutes.
 
-`Enter` chooses `Allow only this time` unless another button has focus. For 0.75 seconds after the window opens or regains focus, its buttons are dimmed with a short notice and clicks and keys are ignored, so typing meant for another window cannot answer it; after that, `Enter` works as described.
+`Enter` chooses `Allow this time` unless another button has focus. For 0.75 seconds after the window opens or regains focus, its buttons are dimmed with a short notice and clicks and keys are ignored, so typing meant for another window cannot answer it; after that, `Enter` works as described.
 
 How the browsing tab behaves:
 

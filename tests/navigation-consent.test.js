@@ -66,8 +66,8 @@ describe('navigation-consent page', () => {
         const urlEl = document.getElementById('consentUrl');
         expect(urlEl.textContent).toBe('https://example.com/jobs/<img src=x onerror=alert(1)>');
         expect(urlEl.children).toHaveLength(0);
-        expect(document.getElementById('consentNote').textContent).toMatch(/"Allow" also turns on "Allow navigation"/);
-        expect([...document.querySelectorAll('#consentButtons button')].map(b => b.textContent)).toEqual(['Allow', 'Allow only this time', 'Cancel']);
+        expect(document.getElementById('consentNote').textContent).toMatch(/"Allow always" also turns on "Allow navigation"/);
+        expect([...document.querySelectorAll('#consentButtons button')].map(b => b.textContent)).toEqual(['Allow always', 'Allow this time', 'Cancel']);
         expect(document.activeElement?.id).toBe('consentOnce');
     });
 

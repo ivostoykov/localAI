@@ -270,7 +270,7 @@ describe('page-navigation.js', () => {
             expect(chrome.windows.create).not.toHaveBeenCalled();
         });
 
-        it('Allow persists the setting without dropping other options', async () => {
+        it('Allow always persists the setting without dropping other options', async () => {
             helpers.syncStore.laiOptions = { aiUrl: 'http://x/api/chat', aiModel: 'm', debug: true };
             helpers.consentChoice = 'allow';
             const session = nav.createNavigationSession(1, null);
@@ -279,7 +279,7 @@ describe('page-navigation.js', () => {
             expect(helpers.syncStore.laiOptions).toEqual({ aiUrl: 'http://x/api/chat', aiModel: 'm', debug: true, allowNavigation: true });
         });
 
-        it('Allow only this time does not change the setting or cover a later request', async () => {
+        it('Allow this time does not change the setting or cover a later request', async () => {
             helpers.syncStore.laiOptions = { aiModel: 'm' };
             const session = nav.createNavigationSession(1, null);
 
@@ -628,6 +628,36 @@ describe('page-navigation.js', () => {
 
             await expect(runWithTimers(nav.browseUrl(session, 'https://a.example/'))).rejects.toMatchObject({ name: 'AbortError' });
             expect([...helpers.tabs.keys()].sort()).toEqual([1, 5]);
+        });
+
+        it.each([
+            ['permission off', {}],
+            ['permission on', { allowNavigation: true }]
+        ])('does not ask or open a tab once the originating tab is gone (%s)', async (label, options) => {
+            helpers.syncStore.laiOptions = options;
+            const session = nav.createNavigationSession(77, null);
+
+            await expect(nav.browseUrl(session, 'https://a.example/')).rejects.toMatchObject({ name: 'AbortError' });
+
+            expect(chrome.windows.create).not.toHaveBeenCalled();
+            expect(chrome.tabs.create).not.toHaveBeenCalled();
+            expect(session.disposed).toBe(true);
+            expect(nav.navigationSessions.has(session)).toBe(false);
+        });
+
+        it('does not open a tab when the originating tab closes while consent is pending', async () => {
+            helpers.consentChoice = null;
+            const session = nav.createNavigationSession(1, null);
+            const promise = nav.browseUrl(session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.advanceTimersByTimeAsync(0);
+
+            helpers.tabs.delete(1);
+            await helpers.answerConsent(helpers.consentRequests.at(-1), 'once');
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+            expect(chrome.tabs.create).not.toHaveBeenCalled();
+            expect(helpers.windows.size).toBe(0);
         });
 
         it('refuses to navigate after the loop has been disposed', async () => {

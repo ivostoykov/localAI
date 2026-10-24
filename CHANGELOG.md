@@ -5,9 +5,10 @@
 ### URL Browsing
 
 - Added the built-in `browse_url` tool: the model can open an absolute http or https URL in an inactive background tab and receive its final URL, title and enhanced content, including links
-- Added the `Allow navigation` option (off by default); while off, an extension-owned pop-up window asks before each navigation with `Allow` (persists the option), `Allow only this time` and `Cancel`. `Enter` chooses allow once, `Escape` or closing the window cancels, and an unanswered request is declined after two minutes
+- Added the `Allow navigation` option (off by default); while off, an extension-owned pop-up window asks before each navigation with `Allow always` (persists the option), `Allow this time` (this one navigation only) and `Cancel`. `Enter` chooses `Allow this time`, `Escape` or closing the window cancels, and an unanswered request is declined after two minutes
 - Consent answers are accepted only from that pop-up's own extension page, tab and window for the matching request; messages from web pages or content scripts are rejected, and scripted clicks or key presses in the pop-up are ignored, as is any input in the first moment after the pop-up opens or regains focus
 - Pending permission pop-ups are closed when their request ends, including when several requests from the same tab are pending and the tab closes
+- Every request is tracked from creation, so closing the originating tab stops requests that are still being set up; no permission pop-up or browsing tab is opened for a tab that has already closed
 - One browsing tab per prompt's tool loop is created lazily, reused for later calls and closed when the loop completes, is aborted, fails or its originating tab closes; it is kept separate from the web-search tab and from other concurrent requests
 - Pages are read after loading once the main content shows no loading indicators and two consecutive extractions agree, within bounded waits; otherwise the result is marked `incomplete`. Redirects, unreachable pages, timeouts, manual tab closure and extraction failures are returned as explicit tool results
 - The originating tab is never navigated; current-page tools still read it
