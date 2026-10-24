@@ -17,6 +17,7 @@ importBackgroundScript('jslib/utils.js');
 importBackgroundScript('jslib/model-catalogue.js');
 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
+const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
 
 importBackgroundScript('jslib/log.js');
 importBackgroundScript('background-memory.js');
@@ -25,6 +26,7 @@ importBackgroundScript('jslib/session-repository.js');
 importBackgroundScript('jslib/internal-tools.js');
 importBackgroundScript('jslib/search-engines.js');
 importBackgroundScript('jslib/web-search.js');
+importBackgroundScript('jslib/page-navigation.js');
 
 init();
 clearLegacyPageContentStorage();
@@ -52,6 +54,13 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onUpdateAvailable.addListener(tryReloadExtension);
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+    for (const ctrl of originRequestControllers.get(tabId) ?? []) {
+        ctrl.abort('Originating tab closed.');
+    }
+    originRequestControllers.delete(tabId);
+    controllers.get(tabId)?.abort('Originating tab closed.');
+    controllers.delete(tabId);
+    await handleNavigationTabRemoved(tabId);
     await removeActiveSessionPageData(tabId);
 
     const allTabs = await chrome.tabs.query({});
@@ -72,6 +81,8 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cleaned up ${orphanedKeys.length} orphaned page data keys`);
     }
 });
+
+chrome.windows.onRemoved.addListener(handleNavigationConsentWindowRemoved);
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${activeInfo.tabId} activated`);
@@ -145,6 +156,11 @@ async function handleRuntimeMessage(request, sender) {
             await backgroundMemory.deleteSession(request.sessionId);
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Deleted session ${request.sessionId} from memory`);
             return { status: 'success' };
+
+        case "getNavigationConsentRequest":
+        case "navigationConsentKeepAlive":
+        case "navigationConsentResponse":
+            return await handleNavigationConsentMessage(request, sender);
 
         case "clearAllMemory":
             await backgroundMemory.clearAll();
@@ -642,7 +658,7 @@ async function validateToolCall(call = {}, availableTools) {
     return { isValid: true };
 }
 
-async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
+async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, navigationSession = null) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolveToolCalls tab:`, tab, 'tab?.id:', tab?.id);
     // const availableTools = await getPromptTools();
 
@@ -672,7 +688,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null) {
                         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab for internal tool execution`);
                     }
                 }
-                data = await execInternalTool(toolCall, validatedTabId);
+                data = await execInternalTool(toolCall, validatedTabId, { navigationSession });
                 break;
             case 'function':
                 res = await fetchExtResponse(funcUrl, {
@@ -844,249 +860,307 @@ async function processCommandArguments(userInput, attachments, tabId) {
     return { pageContent, pageHash };
 }
 
-async function fetchDataAction(request, sender) {
-    const laiOptions = await getLaiOptions();
-    const toolsEnabled = request?.tools || false;
-    const promptTools = toolsEnabled ? await getPromptTools() : [];
-    console.debug(`>>> [${getLineNumber()}] - promptTools. ${toolsEnabled}`, promptTools)
+function registerRequestController(tabId, controller) {
+    if (tabId == null) { return; }
+    controllers.set(tabId, controller);
+    if (!originRequestControllers.has(tabId)) { originRequestControllers.set(tabId, new Set()); }
+    originRequestControllers.get(tabId).add(controller);
+}
 
-    let url = request?.url ?? await getAiUrl();
-    if (!url) {
-        let msg = `Failed to compose the request URL - ${url}`;
-        await showUIMessage(msg, 'error', sender.tab);
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
-        return { "status": "error", "message": msg };
+function unregisterRequestController(tabId, controller) {
+    if (tabId == null) { return; }
+    if (controllers.get(tabId) === controller) { controllers.delete(tabId); }
+    const originControllers = originRequestControllers.get(tabId);
+    originControllers?.delete(controller);
+    if (originControllers?.size === 0) { originRequestControllers.delete(tabId); }
+}
+
+// Called at the awaited boundaries that precede a side effect: a request whose originating tab closed,
+// or which was aborted, while it was waiting must not start a new write, model call or tool call.
+async function throwIfRequestCancelled(controller, tabId) {
+    if (!controller.signal.aborted && tabId != null && !await chrome.tabs.get(tabId).catch(() => null)) {
+        controller.abort('Originating tab closed.');
     }
-
-    let tabId = sender?.tab?.id;
-    if (!tabId) {
-        tabId = await validateAndGetTabId(null);
-        if (!tabId) {
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab context available`);
-        }
+    if (controller.signal.aborted) {
+        throw new DOMException(typeof controller.signal.reason === 'string' ? controller.signal.reason : 'The operation was aborted.', 'AbortError');
     }
+}
 
-    const controller = new AbortController();
-    if (tabId != null) { controllers.set(tabId, controller); }
-
-    let model = await getAiModel();
-    if (model) {
-        request.data['model'] = await resolveModelNameForRequest(model, false, sender?.tab);
-    }
-    await applyAutomaticModelOptions(request.data, model);
-
-    request.data["stream"] = true;
-    request["format"] = "json";
-
-    const userInput = request?.data?.userInput || "";
-    delete request.data.userInput;
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - userInput:`, userInput);
-
-    let activeSession = await getActiveSession();
-    const userAssistantMessages = (activeSession?.messages || []).filter(m => m.role === 'user' || m.role === 'assistant');
-    const turnNumber = Math.floor(userAssistantMessages.length / 2) + 1;
-    let attachments = [...(activeSession?.attachments || [])];
-    const { pageContent, pageHash } = await processCommandArguments(userInput, attachments, tabId);
-    const cleanedUserInput = replaceCommandPlaceholders(userInput);
-    const systemInstructions = request.systemInstructions || laiOptions?.systemInstructions || '';
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to call buildOptimisedContext, backgroundMemory is:`, typeof backgroundMemory);
-
-    const optimisedMessages = await backgroundMemory.buildOptimisedContext(
-        activeSession?.id,
-        cleanedUserInput,
-        turnNumber,
-        systemInstructions,
-        pageContent,
-        attachments,
-        pageHash,
-        toolsEnabled,
-        tabId
-    );
-
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Turn ${turnNumber}: Built context with ${optimisedMessages.length} messages`);
-
-    const sessionContext = await backgroundMemory.getContext(activeSession.id);
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - sessionContext:`, sessionContext);
-
-    if (sessionContext?.images?.length > 0) {
-        // Extract base64 strings directly from the context images
-        const base64Images = sessionContext.images
-            .map(img => img.base64)
-            .filter(b64 => b64); // Filter out any undefined/null values
-
-        if (base64Images.length > 0) {
-            // Add images to the first user message (Ollama format)
-            const firstUserMessage = optimisedMessages.find(msg => msg.role === 'user');
-            if (firstUserMessage) {
-                firstUserMessage.images = base64Images;
-                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Added ${base64Images.length} image(s).`);
-            } else {
-                console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No user message found to attach images to!`);
-            }
-        }
-    }
-
-    request.data.messages = optimisedMessages;
-    activeSession.messages = [
-        ...getVisibleSessionMessages(activeSession.messages),
-        { role: 'user', content: userInput }
-    ];
-    await setActiveSession(activeSession);
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - updated request`, request.data);
-
-    if (promptTools.length > 0 && await modelCanUseTools(model, sender?.tab)) {
-        request.data["tools"] = promptTools;
-        request.data["tool_choice"] = "auto"
-    } else {
-        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions, 'debug', sender?.tab?.id)
-        console.debug(`>>> [${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions)
-    }
-
-    await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender?.tab?.id);
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - request.data`, request.data);
-
-    var response;
-    var body;
-    var responseText;
-    var responseMessage;
-    var reqOpt = {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-    };
+async function sendStreamAbort(tabId) {
     try {
-        while(true) {
-            reqOpt.body = JSON.stringify(request.data);
-            response = await fetch(url, reqOpt);
-            if (request.data.stream && response.ok) {
-                const streamedResponse = await consumeStreamResponse(response, sender?.tab?.id, laiOptions?.debug ?? false, controller.signal);
-                responseText = streamedResponse.responseText;
-                body = streamedResponse.body;
+        await chrome.tabs.sendMessage(tabId, { action: "streamAbort" });
+        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+    } catch (e1) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e1.message}`, e1);
+    }
+}
+
+async function fetchDataAction(request, sender) {
+    const controller = new AbortController();
+    let tabId = sender?.tab?.id ?? null;
+    registerRequestController(tabId, controller);
+
+    // Registration happens before the first await and everything after it runs inside this try,
+    // so cancellation and setup failures still release the controller and any browsing session.
+    let navigationSession = null;
+    try {
+        if (tabId == null) {
+            tabId = await validateAndGetTabId(null);
+            if (tabId == null) {
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab context available`);
             } else {
-                responseText = await response.clone().text();
-                body = await response.json();
+                registerRequestController(tabId, controller);
             }
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response received.`, responseText);
-            responseMessage = body?.message;
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response as JSON`, body);
-            request.data.messages.push(responseMessage);
-            await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response received.`, { "responseText": responseText, "body": body }, 'log', sender?.tab?.id);
-            if (response.status > 299) { throw new Error(`${response.status}: ${response.statusText} - ${body?.error || 'No response error provided...'}`); }
+        }
+        await throwIfRequestCancelled(controller, tabId);
 
-            const requestedTools = body?.message?.tool_calls ?? [];
-            if(requestedTools.length < 1){  break;  }
+        const laiOptions = await getLaiOptions();
+        const toolsEnabled = request?.tools || false;
+        const promptTools = toolsEnabled ? await getPromptTools() : [];
+        console.debug(`>>> [${getLineNumber()}] - promptTools. ${toolsEnabled}`, promptTools)
 
-            let sessionUpdatedWithTools = false;
+        let url = request?.url ?? await getAiUrl();
+        await throwIfRequestCancelled(controller, tabId);
+        if (!url) {
+            let msg = `Failed to compose the request URL - ${url}`;
+            await showUIMessage(msg, 'error', sender.tab);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg};  request.url: ${request?.url};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);
+            return { "status": "error", "message": msg };
+        }
 
-            for (let i = 0, l = requestedTools.length; i < l; i++) {
-                const tool = requestedTools[i];
-                const toolNamesUsed = tool?.function?.name ?? "";
-                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - requested tools`, toolNamesUsed);
+        let model = await getAiModel();
+        if (model) {
+            request.data['model'] = await resolveModelNameForRequest(model, false, sender?.tab);
+        }
+        await applyAutomaticModelOptions(request.data, model);
 
-                const toolData = await resolveToolCalls(tool, laiOptions.toolFunc, sender?.tab, activeSession?.id);
-                const newMessages = { role: 'tool', tool_name: toolNamesUsed, content: toolData }
-                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolved tool call`, newMessages);
-                request.data.messages.push(newMessages);
-                activeSession.messages.push(newMessages);
-                sessionUpdatedWithTools = true;
+        request.data["stream"] = true;
+        request["format"] = "json";
 
-                try {
-                    await backgroundMemory.storeToolCallEmbedding(
-                        activeSession.id,
-                        sender?.tab?.id,
-                        turnNumber,
-                        toolNamesUsed,
-                        toolData
-                    );
-                } catch (embeddingError) {
-                    console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store tool call embedding:`, embeddingError);
+        const userInput = request?.data?.userInput || "";
+        delete request.data.userInput;
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - userInput:`, userInput);
+
+        let activeSession = await getActiveSession();
+        const userAssistantMessages = (activeSession?.messages || []).filter(m => m.role === 'user' || m.role === 'assistant');
+        const turnNumber = Math.floor(userAssistantMessages.length / 2) + 1;
+        let attachments = [...(activeSession?.attachments || [])];
+        const { pageContent, pageHash } = await processCommandArguments(userInput, attachments, tabId);
+        const cleanedUserInput = replaceCommandPlaceholders(userInput);
+        const systemInstructions = request.systemInstructions || laiOptions?.systemInstructions || '';
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to call buildOptimisedContext, backgroundMemory is:`, typeof backgroundMemory);
+
+        const optimisedMessages = await backgroundMemory.buildOptimisedContext(
+            activeSession?.id,
+            cleanedUserInput,
+            turnNumber,
+            systemInstructions,
+            pageContent,
+            attachments,
+            pageHash,
+            toolsEnabled,
+            tabId
+        );
+
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Turn ${turnNumber}: Built context with ${optimisedMessages.length} messages`);
+
+        const sessionContext = await backgroundMemory.getContext(activeSession.id);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - sessionContext:`, sessionContext);
+
+        if (sessionContext?.images?.length > 0) {
+            // Extract base64 strings directly from the context images
+            const base64Images = sessionContext.images
+                .map(img => img.base64)
+                .filter(b64 => b64); // Filter out any undefined/null values
+
+            if (base64Images.length > 0) {
+                // Add images to the first user message (Ollama format)
+                const firstUserMessage = optimisedMessages.find(msg => msg.role === 'user');
+                if (firstUserMessage) {
+                    firstUserMessage.images = base64Images;
+                    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Added ${base64Images.length} image(s).`);
+                } else {
+                    console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No user message found to attach images to!`);
                 }
             }
-
-            if (sessionUpdatedWithTools) {
-                await setActiveSession(activeSession);
-                // delete request.data.tools;
-            }
-        };
-
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response after tools as JSON`, body);
-        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - final response received.`, { "responseText": responseText, "body": body }, 'log', sender?.tab?.id);
-
-        await updateUIStatusBar(`Final response received...`, sender?.tab);
-        await checkResponseTextAndBody({sender, responseText, body});
-
-        const historyMessage = sanitizeAssistantMessageForHistory(responseMessage);
-        if (historyMessage) {
-            activeSession.messages.push(historyMessage);
         }
-        delete activeSession.attachments;
+
+        await throwIfRequestCancelled(controller, tabId);
+        request.data.messages = optimisedMessages;
+        activeSession.messages = [
+            ...getVisibleSessionMessages(activeSession.messages),
+            { role: 'user', content: userInput }
+        ];
         await setActiveSession(activeSession);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - updated request`, request.data);
 
-        const assistantResponse = responseMessage?.content || '';
+        if (promptTools.length > 0 && await modelCanUseTools(model, sender?.tab)) {
+            request.data["tools"] = promptTools;
+            request.data["tool_choice"] = "auto"
+        } else {
+            await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions, 'debug', sender?.tab?.id)
+            console.debug(`>>> [${getLineNumber()}] - tools are disabled in the settings or not supported by the model. Skipping them.`, laiOptions)
+        }
 
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to store turn: sessionId=${activeSession.id}, turn=${turnNumber}, userInputLength=${userInput?.length}, responseLength=${assistantResponse?.length}`);
+        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - request.data.messages: ${request.data.messages.length}`, request.data.messages, 'log', sender?.tab?.id);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - request.data`, request.data);
+
+        var response;
+        var body;
+        var responseText;
+        var responseMessage;
+        var reqOpt = {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+        };
         try {
-            await backgroundMemory.storeTurnWithEmbeddings(
-                activeSession.id,
-                sender?.tab?.id,
-                turnNumber,
-                userInput,
-                assistantResponse
-            );
-        } catch (memoryError) {
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store turn in memory:`, memoryError);
-        }
+            await throwIfRequestCancelled(controller, tabId);
+            navigationSession = createNavigationSession(tabId, controller.signal);
+            while(true) {
+                await throwIfRequestCancelled(controller, tabId);
+                reqOpt.body = JSON.stringify(request.data);
+                response = await fetch(url, reqOpt);
+                if (request.data.stream && response.ok) {
+                    const streamedResponse = await consumeStreamResponse(response, sender?.tab?.id, laiOptions?.debug ?? false, controller.signal);
+                    responseText = streamedResponse.responseText;
+                    body = streamedResponse.body;
+                } else {
+                    responseText = await response.clone().text();
+                    body = await response.json();
+                }
+                await throwIfRequestCancelled(controller, tabId);
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response received.`, responseText);
+                responseMessage = body?.message;
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response as JSON`, body);
+                request.data.messages.push(responseMessage);
+                await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response received.`, { "responseText": responseText, "body": body }, 'log', sender?.tab?.id);
+                if (response.status > 299) { throw new Error(`${response.status}: ${response.statusText} - ${body?.error || 'No response error provided...'}`); }
 
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] -  - response body message`, body?.message);
-        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response body message`, body?.message, 'info', sender?.tab?.id);
-        // Only send response to frontend if it has content or tool calls
-        // Thinking-only responses are logged in worker console but not displayed
-        // const hasContent = typeof body?.message?.content === 'string' && body.message.content.trim().length > 0;
-        // const hasToolCalls = Array.isArray(body?.message?.tool_calls) && body.message.tool_calls.length > 0;
-        // const hasThinkingOnly = typeof body?.message?.thinking === 'string' && body.message.thinking.trim().length > 0 && !hasContent && !hasToolCalls;
+                const requestedTools = body?.message?.tool_calls ?? [];
+                if(requestedTools.length < 1){  break;  }
 
-        // if (hasThinkingOnly) {
-        //     await updateUIStatusBar(`Thinking completed, awaiting response...`, sender?.tab);
-        //     await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamEnd" });
-        // } else {
-            if (request.data.stream) {
-                await handleStreamEnd(body, sender?.tab?.id, responseText, laiOptions?.debug ?? false);
-            } else {
-                await handleResponse(body, sender?.tab?.id);
+                let sessionUpdatedWithTools = false;
+
+                for (let i = 0, l = requestedTools.length; i < l; i++) {
+                    const tool = requestedTools[i];
+                    const toolNamesUsed = tool?.function?.name ?? "";
+                    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - requested tools`, toolNamesUsed);
+                    await throwIfRequestCancelled(controller, tabId);
+
+                    const toolData = await resolveToolCalls(tool, laiOptions.toolFunc, sender?.tab, activeSession?.id, navigationSession);
+                    await throwIfRequestCancelled(controller, tabId);
+                    const newMessages = { role: 'tool', tool_name: toolNamesUsed, content: toolData }
+                    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolved tool call`, newMessages);
+                    request.data.messages.push(newMessages);
+                    activeSession.messages.push(newMessages);
+                    sessionUpdatedWithTools = true;
+
+                    try {
+                        await backgroundMemory.storeToolCallEmbedding(
+                            activeSession.id,
+                            sender?.tab?.id,
+                            turnNumber,
+                            toolNamesUsed,
+                            toolData
+                        );
+                    } catch (embeddingError) {
+                        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store tool call embedding:`, embeddingError);
+                    }
+                }
+
+                if (sessionUpdatedWithTools) {
+                    await throwIfRequestCancelled(controller, tabId);
+                    await setActiveSession(activeSession);
+                    // delete request.data.tools;
+                }
+            };
+
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response after tools as JSON`, body);
+            await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - final response received.`, { "responseText": responseText, "body": body }, 'log', sender?.tab?.id);
+
+            await updateUIStatusBar(`Final response received...`, sender?.tab);
+            await checkResponseTextAndBody({sender, responseText, body});
+
+            await throwIfRequestCancelled(controller, tabId);
+            const historyMessage = sanitizeAssistantMessageForHistory(responseMessage);
+            if (historyMessage) {
+                activeSession.messages.push(historyMessage);
             }
-        // }
+            delete activeSession.attachments;
+            await setActiveSession(activeSession);
+            await throwIfRequestCancelled(controller, tabId);
 
-        if (turnNumber === 1 && !activeSession?.titleGenerated && !activeSession?.titleManual) {
-            await generateAndUpdateSessionTitle(cleanedUserInput, activeSession.id, sender.tab);
+            const assistantResponse = responseMessage?.content || '';
+
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to store turn: sessionId=${activeSession.id}, turn=${turnNumber}, userInputLength=${userInput?.length}, responseLength=${assistantResponse?.length}`);
+            try {
+                await backgroundMemory.storeTurnWithEmbeddings(
+                    activeSession.id,
+                    sender?.tab?.id,
+                    turnNumber,
+                    userInput,
+                    assistantResponse
+                );
+            } catch (memoryError) {
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store turn in memory:`, memoryError);
+            }
+
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] -  - response body message`, body?.message);
+            await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response body message`, body?.message, 'info', sender?.tab?.id);
+            // Only send response to frontend if it has content or tool calls
+            // Thinking-only responses are logged in worker console but not displayed
+            // const hasContent = typeof body?.message?.content === 'string' && body.message.content.trim().length > 0;
+            // const hasToolCalls = Array.isArray(body?.message?.tool_calls) && body.message.tool_calls.length > 0;
+            // const hasThinkingOnly = typeof body?.message?.thinking === 'string' && body.message.thinking.trim().length > 0 && !hasContent && !hasToolCalls;
+
+            // if (hasThinkingOnly) {
+            //     await updateUIStatusBar(`Thinking completed, awaiting response...`, sender?.tab);
+            //     await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamEnd" });
+            // } else {
+                if (request.data.stream) {
+                    await handleStreamEnd(body, sender?.tab?.id, responseText, laiOptions?.debug ?? false);
+                } else {
+                    await handleResponse(body, sender?.tab?.id);
+                }
+            // }
+
+            // The answer has already been delivered here, so cancellation only skips the title instead of aborting the stream.
+            const cancelledAfterAnswer = await throwIfRequestCancelled(controller, tabId).then(() => false, () => true);
+            if (!cancelledAfterAnswer && turnNumber === 1 && !activeSession?.titleGenerated && !activeSession?.titleManual) {
+                await generateAndUpdateSessionTitle(cleanedUserInput, activeSession.id, sender.tab);
+            }
         }
+        catch (e) {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
+            if (e.name === 'AbortError') {
+                await sendStreamAbort(sender?.tab?.id);
+            } else {
+                try {
+                    await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamError", error: e.toString() });
+                    if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+                    await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error: ${e.message}`, e, 'error', sender?.tab?.id);
+
+                } catch (e2) {
+                    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e2.message}`, e2);
+                }
+
+                return { "status": "error", "message": e.message };
+            }
+        }
+
+        return { "status": "success", "message": "Request sent. Awaiting response." };
     }
     catch (e) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
-        if (e.name === 'AbortError') {
-            try {
-                await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamAbort" });
-                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-            } catch (e1) {
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e1.message}`, e1);
-            }
-        } else {
-            try {
-                await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamError", error: e.toString() });
-                if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-                await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error: ${e.message}`, e, 'error', sender?.tab?.id);
-
-            } catch (e2) {
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e2.message}`, e2);
-            }
-
-            return { "status": "error", "message": e.message };
-        }
+        if (e?.name !== 'AbortError') { throw e; }
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Request cancelled during setup`, e.message);
+        await sendStreamAbort(sender?.tab?.id);
+        return { "status": "aborted", "message": e.message };
     }
     finally {
-        if (tabId != null) {  controllers.delete(tabId);  }
+        if (navigationSession) { await disposeNavigationSession(navigationSession); }
+        unregisterRequestController(tabId, controller);
     }
-
-    return { "status": "success", "message": "Request sent. Awaiting response." };
 }
 
 function getVisibleSessionMessages(messages = []) {
@@ -1224,7 +1298,8 @@ async function getLaiOptions() {
         "loadHistoryOnStart": false,
         "systemInstructions": 'You are a helpful assistant.',
         "personalInfo": '',
-        "debug": false
+        "debug": false,
+        "allowNavigation": false
     };
 
     try {

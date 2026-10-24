@@ -849,6 +849,7 @@ async function restoreHistorySessionClicked(e = null, sessionIdx = null) {
 
         const aiReplyTextElement = await addInputCardToUIChatHistory('', role, i);
         await parseAndRender(msg.content, aiReplyTextElement, { streamReply: false });
+        setMarkdownSource(aiReplyTextElement, msg.content);
     }
 
     const shadowRoot = getShadowRoot();

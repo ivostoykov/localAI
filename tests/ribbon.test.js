@@ -394,3 +394,51 @@ describe('ribbon.js model list', () => {
         expect(historyButton.dataset.menuId).toBeUndefined();
     });
 });
+
+describe('ribbon.js session restore', () => {
+    const restoreCode = ribbonCode.match(/async function restoreHistorySessionClicked\([\s\S]*?\n}\n/)[0];
+    const laiMainCode = fs.readFileSync(path.join(__dirname, '../src/lai-main.js'), 'utf-8');
+    const markdownSourceCode = laiMainCode.match(/function setMarkdownSource\([\s\S]*?\n}\n/)[0]
+        + laiMainCode.match(/function getMarkdownSource\([\s\S]*?\n}\n/)[0];
+
+    it('keeps the stored Markdown of restored messages for Copy as Markdown', async () => {
+        const dom = new JSDOM('<!DOCTYPE html><div id="laiChatMessageList"></div>');
+        const doc = dom.window.document;
+        const cards = [];
+        const markdown = '## Heading\n\n- **item**\n\n```js\nconst a = 1;\n```';
+        const deps = {
+            getActiveSessionId: vi.fn(async () => 's1'),
+            getActiveSessionById: vi.fn(async () => ({
+                title: 'Restored',
+                messages: [
+                    { role: 'user', content: 'question' },
+                    { role: 'assistant', content: '', tool_calls: [{ function: { name: 'browse_url' } }] },
+                    { role: 'tool', content: 'tool output' },
+                    { role: 'assistant', content: markdown }
+                ]
+            })),
+            setActiveSessionId: vi.fn(async () => undefined),
+            clearChatHistoryUI: vi.fn(),
+            addInputCardToUIChatHistory: vi.fn(async () => {
+                const el = doc.createElement('span');
+                cards.push(el);
+                return el;
+            }),
+            parseAndRender: vi.fn(async (text, el) => { el.innerHTML = '<h2>Heading</h2>'; }),
+            getShadowRoot: () => doc,
+            showMessage: vi.fn(),
+            manifest: { name: 'Local AI helper' },
+            getLineNumber: () => 'test'
+        };
+
+        const { restoreHistorySessionClicked, getMarkdownSource } = new Function('deps',
+            `with (deps) { ${markdownSourceCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
+        )(deps);
+
+        await restoreHistorySessionClicked(null, 's1');
+
+        expect(cards).toHaveLength(2);
+        expect(getMarkdownSource(cards[0])).toBe('question');
+        expect(getMarkdownSource(cards[1])).toBe(markdown);
+    });
+});

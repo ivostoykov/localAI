@@ -18,6 +18,8 @@ If you value privacy but still want the power of LLMs, LocalAI is for you. There
 * **Local Control:** Your data stays on your device—no sharing or storing of your actions. You control what to keep or delete.
 * **Task Assistance:** Need summaries or quick insights? LocalAI helps with tasks using the information in your active tab.
 * **Web Search:** Ask the AI to search the web and it will use your configured search engine in a background tab — no external APIs, no credential sharing.
+* **Read Links (opt-in):** The AI can open a link in a separate background tab and read it, leaving your current tab untouched. It asks first in a Local AI pop-up window (`Allow always`, `Allow this time`, `Cancel`) unless you turn on `Allow navigation` in the options; the tab is closed when the answer is finished. See [Allow navigation](documentation.md#allow-navigation).
+* **Copy as Markdown:** Copy any AI reply as its original Markdown, including replies restored from history.
 * **Custom Prompts:** Create, store, and execute your own prompts locally for a personalised experience.
 * **External Hooks:** Enhance functionality by integrating your own solutions and resources.
 

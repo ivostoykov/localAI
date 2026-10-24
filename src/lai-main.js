@@ -721,6 +721,14 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
             }
         }
     ];
+    const arrAiButtons = [
+        {
+            "span": {
+                "class": "lai-chat-item-button", "data-type": "copy-md", "title": "Copy as Markdown",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/copy-md.svg') } }]
+            }
+        }
+    ];
     const arrEditButton = [{
         "span": {
             "class": "lai-chat-item-button", "data-type": "edit", "data-index": index, "title": "Edit",
@@ -735,7 +743,7 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
 
     const actionIconsDiv = document.createElement('div');
     actionIconsDiv.classList.add('lai-action-icons', 'invisible');
-    actionIconsDiv.appendChild(buildElements(type !== 'ai' ? [...arrButtons, ...arrEditButton] : arrButtons));
+    actionIconsDiv.appendChild(buildElements(type !== 'ai' ? [...arrButtons, ...arrEditButton] : [arrButtons[0], ...arrAiButtons, ...arrButtons.slice(1)]));
     lastChatElement.appendChild(lastChatlabel)
     lastChatElement.appendChild(lastChatText)
     lastChatElement.appendChild(actionIconsDiv);
@@ -798,6 +806,9 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
                     break;
                 case 'copy':
                     await copyChatElementContent(e, type);
+                    break;
+                case 'copy-md':
+                    await copyChatElementContentAsMarkdown(e, type);
                     break;
                 case 'edit':
                     await editUserInput(e, type);
@@ -930,6 +941,48 @@ async function copyChatElementContent(e, type) {
         laiShowCopyHint(evt)
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err);
+    }
+}
+
+function setMarkdownSource(element, markdown = '') {
+    if (!element) { return; }
+    if (typeof markdown === 'string' && markdown.trim()) {
+        element._laiMarkdownSource = markdown;
+    } else {
+        delete element._laiMarkdownSource;
+    }
+}
+
+function getMarkdownSource(element) {
+    if (typeof element?._laiMarkdownSource === 'string' && element._laiMarkdownSource.trim()) {
+        return element._laiMarkdownSource;
+    }
+
+    const rawChunks = element?._laiRawResponse || element?.dataset?.laiRawResponse || '';
+    return rawChunks.trim().split('\n')
+        .reduce((acc, line) => {
+            try {
+                const chunk = JSON.parse(line);
+                return acc + (chunk?.message?.content || '');
+            } catch {
+                return acc;
+            }
+        }, '');
+}
+
+async function copyChatElementContentAsMarkdown(e, type) {
+    const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
+    const markdown = getMarkdownSource(element);
+    if (!markdown.trim()) {
+        showMessage('Markdown source is not available for this response.', 'warning');
+        return;
+    }
+
+    try {
+        await navigator.clipboard.writeText(markdown);
+        laiShowCopyHint(e);
+    } catch (err) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy markdown: ${err.message}`, err);
     }
 }
 
@@ -1215,6 +1268,31 @@ function clearStreamingRecipient(recipient, keepRawResponse = true) {
     resetStreamTracking(recipient, keepRawResponse);
 }
 
+function isValidFinalStreamMessage(message) {
+    if (!message || typeof message !== 'object' || Array.isArray(message)) { return false; }
+
+    const { content, thinking, tool_calls } = message;
+    if (content !== undefined && typeof content !== 'string') { return false; }
+    if (thinking !== undefined && typeof thinking !== 'string') { return false; }
+    if (tool_calls !== undefined && !Array.isArray(tool_calls)) { return false; }
+
+    return (content || '').trim().length > 0 || (thinking || '').trim().length > 0;
+}
+
+function parseFinalStreamResponse(response = {}) {
+    if (typeof response?.response !== 'string' || !response.response) { return null; }
+
+    try {
+        const parsed = JSON.parse(response.response);
+        if (isValidFinalStreamMessage(parsed?.message)) { return parsed; }
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Final streamed response has no valid message; using streamed content`, parsed);
+        return null;
+    } catch (err) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Final streamed response could not be parsed; using streamed content`, err);
+        return null;
+    }
+}
+
 async function finaliseStreamRecipient(recipient, response = {}) {
     if (!recipient) { return; }
 
@@ -1227,8 +1305,15 @@ async function finaliseStreamRecipient(recipient, response = {}) {
         });
     }
 
-    let finalContent = laiExtractDataFromResponse(response);
-    if (!finalContent) {
+    // A valid thinking-only final response is deliberately not rendered; only a missing,
+    // malformed or aborted final falls back to the content streamed so far.
+    const finalResponse = parseFinalStreamResponse(response);
+    let finalContent = '';
+    let markdownSource = '';
+    if (finalResponse) {
+        finalContent = laiExtractDataFromResponse(response);
+        markdownSource = typeof finalResponse.message.content === 'string' ? finalResponse.message.content : '';
+    } else {
         const ac = recipient._laiStreamContent || '';
         const at = recipient._laiStreamThinking || '';
         if (at && ac.trim().length > 0) {
@@ -1236,8 +1321,10 @@ async function finaliseStreamRecipient(recipient, response = {}) {
         } else {
             finalContent = ac || at;
         }
+        markdownSource = ac;
     }
     clearStreamingRecipient(recipient, !!recipient._laiRawResponse);
+    setMarkdownSource(recipient, finalContent ? markdownSource : '');
 
     if (!finalContent) {
         return;

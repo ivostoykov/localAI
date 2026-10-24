@@ -49,6 +49,10 @@ Click the icon to open the main UI.
 
 
 
+# AI response actions
+
+Hover over an AI reply to show its actions. `Copy` copies the rendered text. `Copy as Markdown` copies the reply's original Markdown, including headings, lists, tables and code fences, without the model's thinking block. It works for new replies and for replies restored from session history, with debug logging on or off. For an aborted reply it copies the part received so far. If no Markdown source is available, for example a reply that contained only thinking, a warning is shown and the clipboard is left unchanged.
+
 # AI response parser
 
 A new Markdown parser is included for an improved experience. It is available as an independent open-source project on GitHub: [solomd2html](https://github.com/ivostoykov/solomd2html). Please use the parser's [Issues section](https://github.com/ivostoykov/solomd2html/issues) for bug reports and suggestions related to the AI output format.
@@ -279,6 +283,27 @@ This will send the content of the page from current active tab to the AI with a 
 <img src="media/options.png" width="1200" alt="Options"/>
 
 <img src="media/default_temp.png" width="250" alt="Temperature" title="Temperature"/> Use temperature slider to set default temperature, adjustable anytime from the [Ribbon](#ribbon). The short description is: the lower the value, the stricter the response; conversely, a higher value allows for a more relaxed and creative outcome. If you're interested in learning more about temperature, here is a [helpful article](https://www.hopsworks.ai/dictionary/llm-temperature), or you can simply Google it.
+
+### Allow navigation
+
+Off by default. The built-in `browse_url` tool lets the model open a link in a separate, inactive background tab and read its content; your current tab, its form state and the chat are not changed. While this option is off, a small Local AI pop-up window asks before every page the model wants to open (the chat status bar points to it). The question is asked in an extension window rather than in the chat panel, because the visited page can read and change the panel's content:
+
+- `Allow always` opens the page and turns this option on, so later pages open without asking.
+- `Allow this time` opens this one page only; the next page asks again.
+- `Cancel`, `Escape` or closing the window declines; no page is loaded. An unanswered request is declined after two minutes.
+
+`Enter` chooses `Allow this time` unless another button has focus. For 0.75 seconds after the window opens or regains focus, its buttons are dimmed with a short notice and clicks and keys are ignored, so typing meant for another window cannot answer it; after that, `Enter` works as described.
+
+How the browsing tab behaves:
+
+- The tab is created only after permission is granted, in the background (never activated), and is used only for that prompt.
+- All pages the model opens while answering one prompt reuse the same tab.
+- It is closed when the final answer arrives, when the request is aborted or fails, or when the tab you asked from is closed. If you close it yourself, the model is told and a new one is opened on the next request.
+- Your current tab is never navigated; tools that read "the current page" still read your tab.
+
+What the model receives: the requested and final URL (after redirects), the page title, the page content including links in `[text](url)` form, and `contentStatus`. Only absolute `http` and `https` URLs are accepted.
+
+Readiness and its limits: content is accepted once the page has loaded, the main content area shows no recognised loading indicators (busy markers, progress bars, skeleton/placeholder/spinner elements) and two extractions a second apart agree with at least 200 characters. Waits are bounded (30 seconds to load, 15 seconds to settle); otherwise the result is marked `incomplete` with a warning. This is a heuristic: a stable placeholder without recognised indicators, a login wall or a cookie-consent page also passes, so check the returned final URL and content. Pages are opened with your browser profile's sign-in state. Scrolling, clicking and form filling in the browsing tab are not supported.
 
 ### End Points
 
