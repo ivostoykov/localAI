@@ -38,12 +38,13 @@ global.chrome = {
 const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 
 // Extract the functions we want to test
+const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown };';
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
-    isMessagePersistableCode + '\n' + laiMainCode + '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, showNavigationConsent, dismissNavigationConsent, isNavigationConsentPending };'
+    isMessagePersistableCode + '\n' + laiMainCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable;
-let setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, showNavigationConsent, dismissNavigationConsent, isNavigationConsentPending;
+let setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown;
 
 describe('lai-main.js', () => {
     beforeEach(() => {
@@ -73,9 +74,6 @@ describe('lai-main.js', () => {
         getMarkdownSource = exports.getMarkdownSource;
         copyChatElementContent = exports.copyChatElementContent;
         copyChatElementContentAsMarkdown = exports.copyChatElementContentAsMarkdown;
-        showNavigationConsent = exports.showNavigationConsent;
-        dismissNavigationConsent = exports.dismissNavigationConsent;
-        isNavigationConsentPending = exports.isNavigationConsentPending;
     });
 
     describe('stream preview helpers', () => {
@@ -446,6 +444,24 @@ Third line of thinking`;
             expect(global.showMessage).not.toHaveBeenCalled();
         });
 
+        it.each([
+            ['a message without content or thinking', { message: { role: 'assistant' } }],
+            ['array content', { message: { role: 'assistant', content: ['Final'] } }],
+            ['non-string thinking', { message: { role: 'assistant', content: '', thinking: { text: 'x' } } }],
+            ['null content', { message: { role: 'assistant', content: null } }],
+            ['non-array tool calls', { message: { role: 'assistant', content: 'x', tool_calls: 'browse_url' } }],
+            ['an array message', { message: [] }],
+            ['no message', { model: 'm' }]
+        ])('keeps the streamed answer when the final response has %s', async (label, finalBody) => {
+            const recipient = document.createElement('span');
+            recipient._laiStreamContent = '**Partial** answer';
+
+            await finaliseStreamRecipient(recipient, { response: JSON.stringify(finalBody) });
+
+            expect(global.parseAndRender.mock.calls[0][0]).toBe('**Partial** answer');
+            expect(recipient._laiMarkdownSource).toBe('**Partial** answer');
+        });
+
         it('falls back to streamed content for a malformed final response', async () => {
             const recipient = document.createElement('span');
             recipient._laiStreamContent = '- item';
@@ -517,96 +533,6 @@ Third line of thinking`;
             await copyChatElementContent(event, 'ai');
 
             expect(writeText).toHaveBeenCalledWith('Title\nbold text');
-        });
-    });
-
-    describe('navigation consent dialogue', () => {
-        let root;
-
-        const press = (target, key) => target.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-        const openDialogue = (requestId = 'req-1') => {
-            const promise = showNavigationConsent({ requestId, url: 'https://example.com/jobs/1' });
-            return { promise, dialogue: () => root.querySelector('.lai-navigation-consent') };
-        };
-
-        beforeEach(() => {
-            document.body.innerHTML = '<div id="root"><div id="laiSidebar" class="active"></div><div id="laiMainButton"></div><div id="laiChatMessageList"></div></div>';
-            root = document.getElementById('root');
-            global.getShadowRoot = vi.fn(() => ({
-                getElementById: (id) => root.querySelector(`#${id}`)
-            }));
-        });
-
-        it('shows the destination and explains that Allow persists, with allow once focused', async () => {
-            const { dialogue } = openDialogue();
-            await Promise.resolve();
-
-            expect(dialogue().textContent).toContain('https://example.com/jobs/1');
-            expect(dialogue().textContent).toMatch(/"Allow" also turns on "Allow navigation"/);
-            expect([...dialogue().querySelectorAll('button')].map(b => b.textContent)).toEqual(['Allow', 'Allow only this time', 'Cancel']);
-            expect(document.activeElement?.dataset?.choice).toBe('once');
-            expect(isNavigationConsentPending()).toBe(true);
-        });
-
-        it.each([
-            ['allow'], ['once'], ['cancel']
-        ])('resolves %s from its button and removes the dialogue', async (choice) => {
-            const { promise, dialogue } = openDialogue();
-            await Promise.resolve();
-            dialogue().querySelector(`button[data-choice="${choice}"]`).click();
-
-            await expect(promise).resolves.toEqual({ choice });
-            expect(dialogue()).toBeNull();
-            expect(isNavigationConsentPending()).toBe(false);
-        });
-
-        it('Enter outside a button defaults to allow once', async () => {
-            const { promise, dialogue } = openDialogue();
-            await Promise.resolve();
-            press(dialogue().querySelector('code'), 'Enter');
-            await expect(promise).resolves.toEqual({ choice: 'once' });
-        });
-
-        it('Enter on an explicitly focused button is left to the button', async () => {
-            const { promise, dialogue } = openDialogue();
-            await Promise.resolve();
-            const cancel = dialogue().querySelector('button[data-choice="cancel"]');
-            cancel.focus();
-            const event = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
-            cancel.dispatchEvent(event);
-
-            expect(event.defaultPrevented).toBe(false);
-            expect(isNavigationConsentPending()).toBe(true);
-            cancel.click();
-            await expect(promise).resolves.toEqual({ choice: 'cancel' });
-        });
-
-        it('Escape cancels', async () => {
-            const { promise, dialogue } = openDialogue();
-            await Promise.resolve();
-            press(dialogue(), 'Escape');
-            await expect(promise).resolves.toEqual({ choice: 'cancel' });
-        });
-
-        it('background dismissal cancels the matching dialogue', async () => {
-            const { promise, dialogue } = openDialogue('req-9');
-            await Promise.resolve();
-            dismissNavigationConsent('other');
-            expect(dialogue()).not.toBeNull();
-            dismissNavigationConsent('req-9');
-            await expect(promise).resolves.toEqual({ choice: 'cancel' });
-        });
-
-        it('opens a closed sidebar so the question is visible', async () => {
-            root.querySelector('#laiSidebar').classList.remove('active');
-            const { dialogue } = openDialogue();
-            await vi.waitFor(() => expect(dialogue()).not.toBeNull());
-            expect(root.querySelector('#laiSidebar').classList.contains('active')).toBe(true);
-        });
-
-        it('reports an unavailable UI without rendering anything', async () => {
-            global.getShadowRoot = vi.fn(() => null);
-            await expect(showNavigationConsent({ url: 'https://example.com/' })).resolves.toEqual({ choice: 'unavailable' });
         });
     });
 });

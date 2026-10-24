@@ -282,13 +282,13 @@ This will send the content of the page from current active tab to the AI with a 
 
 ### Allow navigation
 
-Off by default. The built-in `browse_url` tool lets the model open a link in a separate, inactive background tab and read its content; your current tab, its form state and the chat are not changed. While this option is off, the chat asks before every page the model wants to open:
+Off by default. The built-in `browse_url` tool lets the model open a link in a separate, inactive background tab and read its content; your current tab, its form state and the chat are not changed. While this option is off, a small Local AI pop-up window asks before every page the model wants to open (the chat status bar points to it). The question is asked in an extension window rather than in the chat panel, because the visited page can read and change the panel's content:
 
 - `Allow` opens the page and turns this option on, so later pages open without asking.
 - `Allow only this time` opens this one page only.
-- `Cancel` (or `Escape`) declines; no page is loaded.
+- `Cancel`, `Escape` or closing the window declines; no page is loaded. An unanswered request is declined after two minutes.
 
-`Enter` chooses `Allow only this time` unless another button has focus. One background tab is reused for all pages opened while answering a prompt and is closed when the answer is complete, aborted or fails, or when the originating tab is closed. Only absolute `http` and `https` URLs are accepted. Content is read once it has settled, within a bounded wait; if it is still changing, the result is marked as possibly incomplete.
+`Enter` chooses `Allow only this time` unless another button has focus. One background tab is reused for all pages opened while answering a prompt and is closed when the answer is complete, aborted or fails, or when the originating tab is closed. Only absolute `http` and `https` URLs are accepted. Content is read once two consecutive extractions agree and contain at least 200 characters, within a bounded wait; if it is still changing, the result is marked as possibly incomplete. This is a generic heuristic: a stable loading placeholder, login wall or consent page also passes it, so the returned final URL and content may describe that page rather than the intended one. Sign-in state is that of the browser profile.
 
 ### End Points
 

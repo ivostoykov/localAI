@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local AI - Allow navigation?</title>
+  <link rel="stylesheet" href="css/navigation-consent.css" />
+</head>
+
+<body>
+  <main role="alertdialog" aria-labelledby="consentTitle" aria-describedby="consentNote">
+    <h1 id="consentTitle">Open this page in a background tab?</h1>
+    <p>The model wants to read this page. Your current tab and chat stay unchanged.</p>
+    <code id="consentUrl"></code>
+    <p id="consentNote">"Allow" also turns on "Allow navigation" in the options, so later pages open without asking. "Allow only this time" opens this page only.</p>
+    <p id="consentError" class="invisible">This permission request is no longer valid. You can close this window.</p>
+    <div id="consentButtons" class="consent-buttons">
+      <button type="button" id="consentAllow" data-choice="allow">Allow</button>
+      <button type="button" id="consentOnce" data-choice="once">Allow only this time</button>
+      <button type="button" id="consentCancel" data-choice="cancel">Cancel</button>
+    </div>
+  </main>
+  <script src="navigation-consent.js"></script>
+</body>
+
+</html>

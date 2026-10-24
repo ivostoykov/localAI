@@ -80,6 +80,8 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     }
 });
 
+chrome.windows.onRemoved.addListener(handleNavigationConsentWindowRemoved);
+
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${activeInfo.tabId} activated`);
 });
@@ -152,6 +154,11 @@ async function handleRuntimeMessage(request, sender) {
             await backgroundMemory.deleteSession(request.sessionId);
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Deleted session ${request.sessionId} from memory`);
             return { status: 'success' };
+
+        case "getNavigationConsentRequest":
+        case "navigationConsentKeepAlive":
+        case "navigationConsentResponse":
+            return await handleNavigationConsentMessage(request, sender);
 
         case "clearAllMemory":
             await backgroundMemory.clearAll();

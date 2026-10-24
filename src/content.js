@@ -99,7 +99,6 @@ async function allDOMContentLoaded(e) {
     }
 
     if (e.key !== "Escape") { return; }
-    if (isNavigationConsentPending()) { return; }
     const laiOptions = await getOptions()
     if (!laiOptions.closeOnClickOut) { return; }
 

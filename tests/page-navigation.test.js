@@ -17,6 +17,8 @@ function createChromeFake() {
     const tabs = new Map();
     const syncStore = {};
     let nextTabId = 100;
+    let nextWindowId = 500;
+    const windows = new Map();
 
     const event = (set) => ({
         addListener: fn => set.add(fn),
@@ -26,7 +28,21 @@ function createChromeFake() {
 
     const helpers = {
         tabs,
+        windows,
         syncStore,
+        // Answers the consent pop-up like the extension page would; null leaves it unanswered.
+        consentChoice: 'once',
+        consentRequests: [],
+        answerConsent(requestId, choice, senderOverrides = {}) {
+            const win = [...windows.values()].find(w => w.requestId === requestId);
+            const sender = {
+                id: 'test-extension',
+                url: win?.url,
+                tab: { id: win?.tabId, windowId: win?.id },
+                ...senderOverrides
+            };
+            return helpers.nav.handleNavigationConsentMessage({ action: 'navigationConsentResponse', requestId, choice }, sender);
+        },
         updatedListeners,
         removedListeners,
         // Navigation completion is controlled per test; the default finishes asynchronously like a browser.
@@ -52,6 +68,32 @@ function createChromeFake() {
     };
 
     const chrome = {
+        runtime: {
+            id: 'test-extension',
+            getURL: (p) => `chrome-extension://test-extension/${p}`
+        },
+        windows: {
+            create: vi.fn(async ({ url }) => {
+                const requestId = new URL(url).searchParams.get('requestId');
+                const tabId = nextTabId++;
+                const win = { id: nextWindowId++, url, requestId, tabId };
+                windows.set(win.id, win);
+                helpers.consentRequests.push(requestId);
+                if (helpers.consentChoice) {
+                    setTimeout(() => helpers.answerConsent(requestId, helpers.consentChoice), 0);
+                }
+                return { id: win.id, tabs: [{ id: tabId, windowId: win.id }] };
+            }),
+            get: vi.fn(async (windowId) => {
+                if (!windows.has(windowId)) { throw new Error(`No window with id: ${windowId}.`); }
+                return { id: windowId };
+            }),
+            remove: vi.fn(async (windowId) => {
+                if (!windows.has(windowId)) { throw new Error(`No window with id: ${windowId}.`); }
+                windows.delete(windowId);
+                helpers.nav?.handleNavigationConsentWindowRemoved(windowId);
+            })
+        },
         storage: {
             sync: {
                 get: vi.fn(async (key) => ({ [key]: structuredClone(syncStore[key]) })),
@@ -81,10 +123,14 @@ function createChromeFake() {
                 if (!tabs.has(tabId)) { throw new Error(`No tab with id: ${tabId}.`); }
                 helpers.closeTab(tabId);
             }),
-            sendMessage: vi.fn(async () => ({ choice: 'once' }))
+            query: vi.fn(async ({ windowId }) => {
+                const win = windows.get(windowId);
+                return win ? [{ id: win.tabId, windowId }] : [];
+            }),
+            sendMessage: vi.fn(async () => undefined)
         },
         scripting: {
-            executeScript: vi.fn(async () => [{ result: { ready: true, textLength: LONG_CONTENT.length } }])
+            executeScript: vi.fn(async () => [{ result: { readyState: 'complete', busy: 0, textLength: LONG_CONTENT.length } }])
         }
     };
 
@@ -96,7 +142,9 @@ function loadModule(chrome, callContentScriptExtractor) {
         'chrome', 'callContentScriptExtractor', 'manifest', 'getLineNumber', 'storageOptionKey',
         `${pageNavigationCode}
         return { validateNavigationUrl, createNavigationSession, disposeNavigationSession, handleNavigationTabRemoved,
-            requestNavigationConsent, watchOwnedTabLoad, loadUrlInOwnedTab, extractNavigationContent, browseUrl, navigationSessions };`
+            requestNavigationConsent, handleNavigationConsentMessage, handleNavigationConsentWindowRemoved, pendingNavigationConsents,
+            watchOwnedTabLoad, loadUrlInOwnedTab, inspectNavigationContentState, waitForNavigationContent, browseUrl, navigationSessions,
+            NAVIGATION_BUSY_SELECTORS };`
     )(chrome, callContentScriptExtractor, { name: 'Local AI helper' }, () => 'test', 'laiOptions');
 }
 
@@ -122,6 +170,7 @@ describe('page-navigation.js', () => {
         helpers.addTab({ id: 5, url: 'https://duckduckgo.com/?q=x', windowId: 9, active: false });
         extractor = vi.fn(async () => LONG_CONTENT);
         nav = loadModule(chrome, extractor);
+        helpers.nav = nav;
     });
 
     afterEach(() => {
@@ -146,103 +195,180 @@ describe('page-navigation.js', () => {
     });
 
     describe('consent', () => {
-        it('treats absent and legacy settings as not allowed and asks the originating chat', async () => {
+        const lastRequestId = () => helpers.consentRequests.at(-1);
+
+        it('treats absent and legacy settings as not allowed and asks in an extension pop-up window', async () => {
             helpers.syncStore.laiOptions = { aiUrl: 'http://localhost:11434/api/chat', debug: false };
             const session = nav.createNavigationSession(1, new AbortController().signal);
 
-            const result = await nav.requestNavigationConsent(session, 'https://example.com/');
+            const result = await runWithTimers(nav.requestNavigationConsent(session, 'https://example.com/'));
 
             expect(result).toEqual({ granted: true, choice: 'once' });
-            expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({
-                action: 'requestNavigationConsent',
-                url: 'https://example.com/'
-            }));
+            const [{ url, type }] = chrome.windows.create.mock.calls[0];
+            expect(type).toBe('popup');
+            expect(url).toBe(`chrome-extension://test-extension/navigation-consent.html?requestId=${lastRequestId()}`);
+            expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'updateStatusbar' }));
+            expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'requestNavigationConsent' }));
+            expect(helpers.windows.size).toBe(0);
+            expect(nav.pendingNavigationConsents.size).toBe(0);
         });
 
-        it('skips the dialogue when the persisted setting allows navigation', async () => {
+        it('serves the requested URL only to the bound consent page', async () => {
+            helpers.consentChoice = null;
+            const session = nav.createNavigationSession(1, null);
+            const promise = nav.requestNavigationConsent(session, 'https://example.com/<b>x</b>');
+            await vi.advanceTimersByTimeAsync(0);
+            const requestId = lastRequestId();
+            const win = [...helpers.windows.values()][0];
+            const sender = { id: 'test-extension', url: win.url, tab: { id: win.tabId, windowId: win.id } };
+
+            await expect(nav.handleNavigationConsentMessage({ action: 'getNavigationConsentRequest', requestId }, sender))
+                .resolves.toEqual({ status: 'ok', url: 'https://example.com/<b>x</b>' });
+            await expect(nav.handleNavigationConsentMessage({ action: 'getNavigationConsentRequest', requestId }, { ...sender, tab: { id: 1, windowId: 9 } }))
+                .resolves.toEqual({ status: 'rejected' });
+
+            await helpers.answerConsent(requestId, 'cancel');
+            await expect(promise).resolves.toMatchObject({ granted: false });
+        });
+
+        it('rejects forged answers from content scripts, other tabs, other pages and other requests', async () => {
+            helpers.consentChoice = null;
+            helpers.syncStore.laiOptions = { aiModel: 'm' };
+            const session = nav.createNavigationSession(1, null);
+            const promise = nav.requestNavigationConsent(session, 'https://example.com/');
+            await vi.advanceTimersByTimeAsync(0);
+            const requestId = lastRequestId();
+            const win = [...helpers.windows.values()][0];
+
+            const forgeries = [
+                { url: 'https://origin.example/form', tab: { id: 1, windowId: 9 } },
+                { id: 'other-extension' },
+                { url: `chrome-extension://test-extension/options.html?requestId=${requestId}` },
+                { url: 'chrome-extension://test-extension/navigation-consent.html?requestId=other' },
+                { tab: { id: win.tabId + 1, windowId: win.id } },
+                { tab: { id: win.tabId, windowId: win.id + 1 } },
+                { tab: undefined }
+            ];
+            for (const forged of forgeries) {
+                await expect(helpers.answerConsent(requestId, 'allow', forged)).resolves.toEqual({ status: 'rejected' });
+            }
+            await expect(helpers.answerConsent('unknown-request', 'allow')).resolves.toEqual({ status: 'rejected' });
+            await expect(helpers.answerConsent(requestId, 'grant-everything')).resolves.toEqual({ status: 'rejected' });
+            expect(nav.pendingNavigationConsents.size).toBe(1);
+
+            await expect(helpers.answerConsent(requestId, 'cancel')).resolves.toEqual({ status: 'ok' });
+            await expect(promise).resolves.toMatchObject({ granted: false, reason: 'the user declined the navigation' });
+            await expect(helpers.answerConsent(requestId, 'allow')).resolves.toEqual({ status: 'rejected' });
+            expect(helpers.syncStore.laiOptions).toEqual({ aiModel: 'm' });
+        });
+
+        it('skips the pop-up when the persisted setting allows navigation', async () => {
             helpers.syncStore.laiOptions = { allowNavigation: true };
             const session = nav.createNavigationSession(1, null);
 
             await expect(nav.requestNavigationConsent(session, 'https://example.com/')).resolves.toEqual({ granted: true, choice: 'setting' });
-            expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+            expect(chrome.windows.create).not.toHaveBeenCalled();
         });
 
         it('Allow persists the setting without dropping other options', async () => {
             helpers.syncStore.laiOptions = { aiUrl: 'http://x/api/chat', aiModel: 'm', debug: true };
-            chrome.tabs.sendMessage.mockResolvedValueOnce({ choice: 'allow' });
+            helpers.consentChoice = 'allow';
             const session = nav.createNavigationSession(1, null);
 
-            await expect(nav.requestNavigationConsent(session, 'https://example.com/')).resolves.toEqual({ granted: true, choice: 'allow' });
+            await expect(runWithTimers(nav.requestNavigationConsent(session, 'https://example.com/'))).resolves.toEqual({ granted: true, choice: 'allow' });
             expect(helpers.syncStore.laiOptions).toEqual({ aiUrl: 'http://x/api/chat', aiModel: 'm', debug: true, allowNavigation: true });
         });
 
         it('Allow only this time does not change the setting or cover a later request', async () => {
             helpers.syncStore.laiOptions = { aiModel: 'm' };
-            chrome.tabs.sendMessage.mockResolvedValueOnce({ choice: 'once' }).mockResolvedValueOnce({ choice: 'cancel' });
             const session = nav.createNavigationSession(1, null);
 
-            await expect(nav.requestNavigationConsent(session, 'https://a.example/')).resolves.toMatchObject({ granted: true });
+            await expect(runWithTimers(nav.requestNavigationConsent(session, 'https://a.example/'))).resolves.toMatchObject({ granted: true });
             expect(helpers.syncStore.laiOptions).toEqual({ aiModel: 'm' });
-            await expect(nav.requestNavigationConsent(session, 'https://b.example/')).resolves.toMatchObject({ granted: false });
-            expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
+            helpers.consentChoice = 'cancel';
+            await expect(runWithTimers(nav.requestNavigationConsent(session, 'https://b.example/'))).resolves.toMatchObject({ granted: false });
+            expect(chrome.windows.create).toHaveBeenCalledTimes(2);
         });
 
-        it('declines on Cancel, unknown answers and a missing UI', async () => {
+        it('declines when the user closes the pop-up window', async () => {
+            helpers.consentChoice = null;
             const session = nav.createNavigationSession(1, null);
-            chrome.tabs.sendMessage
-                .mockResolvedValueOnce({ choice: 'cancel' })
-                .mockResolvedValueOnce({ error: 'Local AI UI is not ready yet.' })
-                .mockResolvedValueOnce({ choice: 'unavailable' })
-                .mockRejectedValueOnce(new Error('Could not establish connection. Receiving end does not exist.'));
+            const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            await vi.advanceTimersByTimeAsync(0);
 
-            await expect(nav.requestNavigationConsent(session, 'https://a.example/')).resolves.toEqual({ granted: false, reason: 'the user declined the navigation' });
-            await expect(nav.requestNavigationConsent(session, 'https://a.example/')).resolves.toMatchObject({ granted: false, reason: expect.stringMatching(/could not be shown/) });
-            await expect(nav.requestNavigationConsent(session, 'https://a.example/')).resolves.toMatchObject({ granted: false });
-            await expect(nav.requestNavigationConsent(session, 'https://a.example/')).resolves.toMatchObject({ granted: false, reason: expect.stringMatching(/could not be shown/) });
+            const [windowId] = helpers.windows.keys();
+            await chrome.windows.remove(windowId);
+
+            await expect(promise).resolves.toMatchObject({ granted: false, reason: expect.stringMatching(/closed the permission window/) });
+            expect(nav.pendingNavigationConsents.size).toBe(0);
         });
 
-        it('declines without a dialogue when there is no originating tab', async () => {
+        it('declines when the pop-up cannot be opened', async () => {
+            chrome.windows.create.mockRejectedValueOnce(new Error('Windows API unavailable'));
+            const session = nav.createNavigationSession(1, null);
+
+            await expect(nav.requestNavigationConsent(session, 'https://a.example/')).resolves.toMatchObject({ granted: false, reason: expect.stringMatching(/could not be shown/) });
+            expect(nav.pendingNavigationConsents.size).toBe(0);
+        });
+
+        it('declines without a pop-up when there is no originating tab', async () => {
             const session = nav.createNavigationSession(null, null);
             await expect(nav.requestNavigationConsent(session, 'https://a.example/')).resolves.toMatchObject({ granted: false });
-            expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+            expect(chrome.windows.create).not.toHaveBeenCalled();
         });
 
-        it('times out an unanswered dialogue, dismisses it and declines', async () => {
-            chrome.tabs.sendMessage.mockImplementation(async (tabId, message) => (
-                message.action === 'requestNavigationConsent' ? new Promise(() => {}) : undefined
-            ));
+        it('times out an unanswered pop-up, closes it and declines', async () => {
+            helpers.consentChoice = null;
             const session = nav.createNavigationSession(1, null);
 
             const promise = nav.requestNavigationConsent(session, 'https://a.example/');
             await vi.advanceTimersByTimeAsync(120000);
 
             await expect(promise).resolves.toMatchObject({ granted: false, reason: expect.stringMatching(/did not answer/) });
-            expect(chrome.tabs.sendMessage).toHaveBeenLastCalledWith(1, expect.objectContaining({ action: 'dismissNavigationConsent' }));
+            expect(helpers.windows.size).toBe(0);
+            expect(nav.pendingNavigationConsents.size).toBe(0);
         });
 
-        it('cancellation while waiting dismisses the dialogue and propagates the abort', async () => {
-            chrome.tabs.sendMessage.mockImplementation(async (tabId, message) => (
-                message.action === 'requestNavigationConsent' ? new Promise(() => {}) : undefined
-            ));
+        it('cancellation while waiting closes the pop-up and propagates the abort', async () => {
+            helpers.consentChoice = null;
             const controller = new AbortController();
             const session = nav.createNavigationSession(1, controller.signal);
 
             const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            await vi.advanceTimersByTimeAsync(0);
+            const requestId = lastRequestId();
             controller.abort('User aborted last request.');
 
             await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
-            const dismiss = chrome.tabs.sendMessage.mock.calls.find(([, msg]) => msg.action === 'dismissNavigationConsent');
-            const request = chrome.tabs.sendMessage.mock.calls.find(([, msg]) => msg.action === 'requestNavigationConsent');
-            expect(dismiss[1].requestId).toBe(request[1].requestId);
+            expect(helpers.windows.size).toBe(0);
+            await expect(helpers.answerConsent(requestId, 'allow')).resolves.toEqual({ status: 'rejected' });
+        });
+
+        it('keeps concurrent requests bound to their own pop-up windows', async () => {
+            helpers.consentChoice = null;
+            helpers.addTab({ id: 2, url: 'https://other.example/', windowId: 9 });
+            const first = nav.requestNavigationConsent(nav.createNavigationSession(1, null), 'https://a.example/');
+            const second = nav.requestNavigationConsent(nav.createNavigationSession(2, null), 'https://b.example/');
+            await vi.advanceTimersByTimeAsync(0);
+            const [firstId, secondId] = helpers.consentRequests;
+            const firstWindow = [...helpers.windows.values()].find(w => w.requestId === firstId);
+
+            await expect(helpers.answerConsent(secondId, 'once', { url: firstWindow.url, tab: { id: firstWindow.tabId, windowId: firstWindow.id } }))
+                .resolves.toEqual({ status: 'rejected' });
+            await helpers.answerConsent(secondId, 'once');
+            await helpers.answerConsent(firstId, 'cancel');
+
+            await expect(first).resolves.toMatchObject({ granted: false });
+            await expect(second).resolves.toMatchObject({ granted: true, choice: 'once' });
         });
     });
 
     describe('browseUrl', () => {
         it('does not create or load any tab when consent is declined', async () => {
-            chrome.tabs.sendMessage.mockResolvedValueOnce({ choice: 'cancel' });
+            helpers.consentChoice = 'cancel';
             const session = nav.createNavigationSession(1, null);
 
-            const result = await nav.browseUrl(session, 'https://example.com/');
+            const result = await runWithTimers(nav.browseUrl(session, 'https://example.com/'));
 
             expect(result).toMatch(/was not performed: the user declined/);
             expect(chrome.tabs.create).not.toHaveBeenCalled();
@@ -252,7 +378,7 @@ describe('page-navigation.js', () => {
         it('returns validation errors without asking for consent', async () => {
             const session = nav.createNavigationSession(1, null);
             await expect(nav.browseUrl(session, '/relative')).resolves.toMatch(/not an absolute URL/);
-            expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+            expect(chrome.windows.create).not.toHaveBeenCalled();
         });
 
         it('opens the URL directly in an inactive tab in the origin window and returns final URL and content', async () => {
@@ -394,8 +520,47 @@ describe('page-navigation.js', () => {
             const result = JSON.parse(await runWithTimers(nav.browseUrl(session, 'https://spa.example/route')));
 
             expect(result.content).toBe(LONG_CONTENT);
+            expect(result.contentStatus).toBe('settled');
             expect(result.warning).toBeUndefined();
             expect(extractor).toHaveBeenCalledTimes(4);
+        });
+
+        it('does not accept a long, stable skeleton while loading indicators are visible', async () => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            const skeleton = `# Jobs\n\n${'Loading job details placeholder text. '.repeat(10)}`;
+            expect(skeleton.length).toBeGreaterThanOrEqual(200);
+            const busyState = [{ result: { readyState: 'complete', busy: 4, textLength: skeleton.length } }];
+            chrome.scripting.executeScript
+                .mockResolvedValueOnce(busyState)
+                .mockResolvedValueOnce(busyState)
+                .mockResolvedValueOnce(busyState);
+            extractor
+                .mockResolvedValueOnce(skeleton)
+                .mockResolvedValueOnce(skeleton)
+                .mockResolvedValueOnce(skeleton)
+                .mockResolvedValue(LONG_CONTENT);
+            const session = nav.createNavigationSession(1, null);
+
+            const result = JSON.parse(await runWithTimers(nav.browseUrl(session, 'https://www.linkedin.com/jobs/view/1/')));
+
+            expect(result.content).toBe(LONG_CONTENT);
+            expect(result.contentStatus).toBe('settled');
+            expect(extractor).toHaveBeenCalledTimes(5);
+        });
+
+        it('reports a skeleton that never resolves as incomplete within the deadline', async () => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            const skeleton = `# Jobs\n\n${'Loading job details placeholder text. '.repeat(10)}`;
+            chrome.scripting.executeScript.mockResolvedValue([{ result: { readyState: 'complete', busy: 2, textLength: skeleton.length } }]);
+            extractor.mockResolvedValue(skeleton);
+            const session = nav.createNavigationSession(1, null);
+
+            const result = JSON.parse(await runWithTimers(nav.browseUrl(session, 'https://www.linkedin.com/jobs/view/1/')));
+
+            expect(result.contentStatus).toBe('incomplete');
+            expect(result.warning).toMatch(/Loading indicators were still visible/);
+            expect(result.content).toBe(skeleton);
+            expect(extractor.mock.calls.length).toBeLessThanOrEqual(17);
         });
 
         it('returns bounded incomplete content honestly when the page never settles', async () => {
@@ -406,9 +571,10 @@ describe('page-navigation.js', () => {
 
             const result = JSON.parse(await runWithTimers(nav.browseUrl(session, 'https://feed.example/')));
 
-            expect(result.warning).toMatch(/content may be incomplete/);
+            expect(result.warning).toMatch(/still changing or very short/);
+            expect(result.contentStatus).toBe('incomplete');
             expect(result.content).toMatch(/^# Job advert/);
-            expect(extractor.mock.calls.length).toBeLessThanOrEqual(12);
+            expect(extractor.mock.calls.length).toBeLessThanOrEqual(17);
         });
 
         it('aborts an in-flight load on cancellation without leaking listeners', async () => {
@@ -490,6 +656,36 @@ describe('page-navigation.js', () => {
 
             await vi.advanceTimersByTimeAsync(1000);
             await expect(watcher.promise).rejects.toMatchObject({ name: 'TimeoutError' });
+        });
+    });
+
+    describe('inspectNavigationContentState', () => {
+        const filler = 'Visible text. '.repeat(20);
+        const inspect = (html) => {
+            document.body.innerHTML = html;
+            return nav.inspectNavigationContentState(nav.NAVIGATION_BUSY_SELECTORS);
+        };
+
+        it('counts visible loading placeholders in the main content region', () => {
+            const state = inspect(`<main><div class="jobs-ghost-fadein-placeholder">${filler}</div><div class="artdeco-loader"></div></main>`);
+            expect(state.busy).toBeGreaterThanOrEqual(2);
+            expect(state.textLength).toBeGreaterThanOrEqual(200);
+        });
+
+        it('treats an aria-busy region and progress bars as busy', () => {
+            expect(inspect(`<main aria-busy="true"><p>${filler}</p></main>`).busy).toBeGreaterThan(0);
+            expect(inspect(`<main><div role="progressbar"></div><p>${filler}</p></main>`).busy).toBeGreaterThan(0);
+        });
+
+        it('ignores hidden placeholders and indicators outside the content region', () => {
+            const state = inspect(`<nav><div class="skeleton">menu</div></nav><main><div class="skeleton" style="display:none"></div><p>${filler}</p></main>`);
+            expect(state.busy).toBe(0);
+            expect(state.readyState).toBe(document.readyState);
+        });
+
+        it('falls back to the body when there is no main region', () => {
+            expect(inspect(`<div class="loading-spinner"></div><p>${filler}</p>`).busy).toBeGreaterThan(0);
+            expect(inspect(`<p>${filler}</p>`).busy).toBe(0);
         });
     });
 });

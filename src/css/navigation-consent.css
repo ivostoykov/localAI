@@ -1,0 +1,78 @@
+body {
+    margin: 0;
+    padding: 1rem 1.25rem;
+    font-family: system-ui, sans-serif;
+    font-size: 15px;
+    background: #fff;
+    color: #222;
+}
+
+h1 {
+    font-size: 1.15rem;
+    margin: 0 0 0.5rem;
+}
+
+p {
+    margin: 0.5rem 0;
+}
+
+#consentUrl {
+    display: block;
+    padding: 0.5rem;
+    border: 1px solid #d08c00;
+    border-radius: 4px;
+    background: #fff8e6;
+    font-family: monospace;
+    word-break: break-all;
+}
+
+#consentNote {
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+
+#consentError {
+    color: #a33;
+}
+
+.consent-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.consent-buttons button {
+    cursor: pointer;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid #888;
+    border-radius: 4px;
+    background: #fff;
+    color: #222;
+    font-size: 0.95rem;
+}
+
+.consent-buttons button:focus-visible {
+    outline: 2px solid #0078d4;
+    outline-offset: 1px;
+}
+
+.invisible {
+    display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+    body {
+        background: #1e1e1e;
+        color: #eee;
+    }
+
+    #consentUrl {
+        background: #3a2f12;
+    }
+
+    .consent-buttons button {
+        background: #2b2b2b;
+        color: #eee;
+    }
+}

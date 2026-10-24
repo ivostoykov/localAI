@@ -5,8 +5,19 @@
  */
 
 const NAVIGATION_LOAD_TIMEOUT_MS = 30000;
-const NAVIGATION_READY_TIMEOUT_MS = 10000;
-const NAVIGATION_QUIET_MS = 800;
+const NAVIGATION_READY_TIMEOUT_MS = 15000;
+const NAVIGATION_STATE_TIMEOUT_MS = 5000;
+const NAVIGATION_BUSY_SELECTORS = [
+    '[aria-busy="true"]',
+    '[role="progressbar"]',
+    '[class*="skeleton" i]',
+    '[class*="shimmer" i]',
+    '[class*="ghost" i]',
+    '[class*="placeholder" i]',
+    '[class*="loader" i]',
+    '[class*="spinner" i]',
+    '[class*="loading" i]'
+];
 const NAVIGATION_MIN_TEXT_LENGTH = 200;
 const NAVIGATION_CONSENT_TIMEOUT_MS = 120000;
 const NAVIGATION_SUPPORTED_PROTOCOLS = ['http:', 'https:'];
@@ -106,11 +117,85 @@ async function persistNavigationPermission() {
     await chrome.storage.sync.set({ [storageOptionKey]: { ...options, allowNavigation: true } });
 }
 
-async function dismissNavigationConsent(originTabId, requestId) {
+const NAVIGATION_CONSENT_PAGE = 'navigation-consent.html';
+const NAVIGATION_CONSENT_CHOICES = ['allow', 'once', 'cancel'];
+
+// Consent is answered only from the extension's own pop-up window: the visited page shares the
+// sidebar's DOM and could forge or disguise an in-chat answer.
+const pendingNavigationConsents = new Map();
+
+function isNavigationConsentSender(sender, pending) {
+    if (!sender || !pending || sender.id !== chrome.runtime.id) { return false; }
+
+    let senderUrl;
+    let pageUrl;
     try {
-        await chrome.tabs.sendMessage(originTabId, { action: 'dismissNavigationConsent', requestId });
+        senderUrl = new URL(sender.url);
+        pageUrl = new URL(chrome.runtime.getURL(NAVIGATION_CONSENT_PAGE));
+    } catch {
+        return false;
+    }
+
+    return senderUrl.protocol === pageUrl.protocol
+        && senderUrl.host === pageUrl.host
+        && senderUrl.pathname === pageUrl.pathname
+        && senderUrl.searchParams.get('requestId') === pending.requestId
+        && pending.tabId != null
+        && sender.tab?.id === pending.tabId
+        && sender.tab?.windowId === pending.windowId;
+}
+
+async function handleNavigationConsentMessage(request = {}, sender = {}) {
+    const pending = pendingNavigationConsents.get(request?.requestId);
+    await pending?.opened;
+    if (!isNavigationConsentSender(sender, pending) || pending.settled) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Rejected navigation consent message`, {
+            action: request?.action,
+            senderUrl: sender?.url,
+            senderTabId: sender?.tab?.id
+        });
+        return { status: 'rejected' };
+    }
+
+    switch (request.action) {
+        case 'getNavigationConsentRequest':
+            return { status: 'ok', url: pending.url };
+        case 'navigationConsentKeepAlive':
+            return { status: 'ok' };
+        case 'navigationConsentResponse':
+            if (!NAVIGATION_CONSENT_CHOICES.includes(request.choice)) { return { status: 'rejected' }; }
+            pending.settle({ choice: request.choice });
+            return { status: 'ok' };
+        default:
+            return { status: 'rejected' };
+    }
+}
+
+function handleNavigationConsentWindowRemoved(windowId) {
+    for (const pending of pendingNavigationConsents.values()) {
+        if (pending.windowId === windowId) {
+            pending.settle({ choice: 'closed' });
+        }
+    }
+}
+
+async function openNavigationConsentWindow(requestId) {
+    const url = `${chrome.runtime.getURL(NAVIGATION_CONSENT_PAGE)}?requestId=${encodeURIComponent(requestId)}`;
+    const win = await chrome.windows.create({ url, type: 'popup', width: 560, height: 360, focused: true });
+    let tabId = win?.tabs?.[0]?.id ?? null;
+    if (tabId == null && win?.id != null) {
+        const [tab] = await chrome.tabs.query({ windowId: win.id });
+        tabId = tab?.id ?? null;
+    }
+    return { windowId: win?.id ?? null, tabId };
+}
+
+async function notifyNavigationStatus(tabId, message) {
+    if (tabId == null) { return; }
+    try {
+        await chrome.tabs.sendMessage(tabId, { action: 'updateStatusbar', message });
     } catch (err) {
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Consent dialogue dismissal skipped`, err?.message);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Navigation status skipped`, err?.message);
     }
 }
 
@@ -124,24 +209,48 @@ async function requestNavigationConsent(session, url) {
     }
 
     const requestId = crypto.randomUUID();
+    const pending = { requestId, url, windowId: null, tabId: null, settled: false };
+    let markOpened;
+    pending.opened = new Promise(resolve => { markOpened = resolve; });
+    const answer = new Promise(resolve => {
+        pending.settle = (value) => {
+            if (pending.settled) { return; }
+            pending.settled = true;
+            resolve(value);
+        };
+    });
+    pendingNavigationConsents.set(requestId, pending);
+
     let response;
     try {
+        await notifyNavigationStatus(session.originTabId, 'Waiting for permission to open a page - see the Local AI pop-up window.');
+        try {
+            Object.assign(pending, await openNavigationConsentWindow(requestId));
+        } finally {
+            markOpened();
+        }
+        if (pending.windowId == null || pending.tabId == null || !await chrome.windows.get(pending.windowId).catch(() => null)) {
+            pending.settle({ choice: 'closed' });
+        }
         response = await raceNavigationStep(
-            chrome.tabs.sendMessage(session.originTabId, { action: 'requestNavigationConsent', requestId, url }),
+            answer,
             session.signal,
             NAVIGATION_CONSENT_TIMEOUT_MS,
             'The user did not respond to the navigation request in time.'
         );
     } catch (err) {
-        if (err?.name === 'AbortError' || err?.name === 'TimeoutError') {
-            await dismissNavigationConsent(session.originTabId, requestId);
-        }
         if (err?.name === 'AbortError') { throw err; }
         if (err?.name === 'TimeoutError') {
             return { granted: false, reason: 'the user did not answer the permission request' };
         }
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Navigation consent dialogue unavailable`, err?.message);
-        return { granted: false, reason: 'the permission dialogue could not be shown' };
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Navigation consent window unavailable`, err?.message);
+        return { granted: false, reason: 'the permission window could not be shown' };
+    } finally {
+        pending.settle({ choice: 'closed' });
+        pendingNavigationConsents.delete(requestId);
+        if (pending.windowId != null) {
+            await chrome.windows.remove(pending.windowId).catch(() => {});
+        }
     }
 
     switch (response?.choice) {
@@ -153,7 +262,7 @@ async function requestNavigationConsent(session, url) {
         case 'cancel':
             return { granted: false, reason: 'the user declined the navigation' };
         default:
-            return { granted: false, reason: response?.error ? 'the permission dialogue could not be shown' : 'the user did not grant permission' };
+            return { granted: false, reason: 'the user closed the permission window without granting permission' };
     }
 }
 
@@ -273,45 +382,69 @@ async function loadUrlInOwnedTab(session, url) {
     }
 }
 
-async function waitForNavigationContent(tabId, signal) {
+// Runs in the browsing tab, so it must stay self-contained.
+function inspectNavigationContentState(busySelectors = []) {
+    const region = document.querySelector('main, [role="main"], article') || document.body;
+    let busy = 0;
+    if (region) {
+        if (region.getAttribute?.('aria-busy') === 'true') { busy++; }
+        for (const selector of busySelectors) {
+            let elements = [];
+            try { elements = region.querySelectorAll(selector); } catch { continue; }
+            for (const el of elements) {
+                const style = getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden') { continue; }
+                busy++;
+            }
+        }
+    }
+
+    return {
+        readyState: document.readyState,
+        busy,
+        textLength: (region?.innerText || region?.textContent || '').trim().length
+    };
+}
+
+async function getNavigationContentState(tabId, signal) {
     const results = await raceNavigationStep(
         chrome.scripting.executeScript({
             target: { tabId },
-            func: (quietMs, maxMs, minTextLength) => new Promise(resolve => {
-                const started = Date.now();
-                let lastChange = Date.now();
-                const observer = new MutationObserver(() => { lastChange = Date.now(); });
-                observer.observe(document.documentElement || document, { childList: true, subtree: true, characterData: true });
-                const timer = setInterval(() => {
-                    const textLength = (document.body?.innerText || '').trim().length;
-                    const quiet = Date.now() - lastChange >= quietMs;
-                    const ready = document.readyState === 'complete' && quiet && textLength >= minTextLength;
-                    if (ready || Date.now() - started >= maxMs) {
-                        clearInterval(timer);
-                        observer.disconnect();
-                        resolve({ ready, textLength });
-                    }
-                }, 200);
-            }),
-            args: [NAVIGATION_QUIET_MS, NAVIGATION_READY_TIMEOUT_MS, NAVIGATION_MIN_TEXT_LENGTH]
+            func: inspectNavigationContentState,
+            args: [NAVIGATION_BUSY_SELECTORS]
         }),
         signal,
-        NAVIGATION_READY_TIMEOUT_MS + 5000,
-        'The page content did not become available in time.'
+        NAVIGATION_STATE_TIMEOUT_MS,
+        'The page did not respond in time.'
     );
 
-    return results?.[0]?.result || { ready: false, textLength: 0 };
+    return results?.[0]?.result || null;
 }
 
-// A quiet DOM can still be a loading skeleton, so content counts as ready only when
-// two consecutive extractions agree and carry enough text; otherwise the last result is returned as incomplete.
-async function extractNavigationContent(tabId, signal, timeoutMs = NAVIGATION_READY_TIMEOUT_MS) {
+// Content counts as settled only when the main content region shows no loading indicators and two
+// consecutive extractions agree with enough text. This is a heuristic: a stable placeholder, login wall
+// or consent page without such indicators still passes, so callers also get the final URL.
+async function waitForNavigationContent(tabId, signal, timeoutMs = NAVIGATION_READY_TIMEOUT_MS) {
     const deadline = Date.now() + timeoutMs;
     let previous = null;
     let lastContent = '';
     let lastError = '';
+    let lastState = null;
+    let firstCheck = true;
 
     while (true) {
+        let state = null;
+        try {
+            state = await getNavigationContentState(tabId, signal);
+        } catch (err) {
+            if (err?.name === 'AbortError') { throw err; }
+            if (firstCheck) {
+                throw Object.assign(new Error(err?.message || 'The page could not be read.'), { name: 'PageUnreadableError' });
+            }
+        }
+        firstCheck = false;
+        lastState = state;
+
         let content = '';
         try {
             content = await raceNavigationStep(
@@ -326,8 +459,12 @@ async function extractNavigationContent(tabId, signal, timeoutMs = NAVIGATION_RE
         }
 
         if (typeof content === 'string' && content && !content.startsWith('Error') && !content.startsWith('No result from')) {
-            if (content === previous && content.length >= NAVIGATION_MIN_TEXT_LENGTH) {
-                return { content, stable: true };
+            const settled = state?.readyState === 'complete'
+                && state?.busy === 0
+                && content === previous
+                && content.length >= NAVIGATION_MIN_TEXT_LENGTH;
+            if (settled) {
+                return { content, status: 'settled' };
             }
             previous = content;
             lastContent = content;
@@ -339,9 +476,17 @@ async function extractNavigationContent(tabId, signal, timeoutMs = NAVIGATION_RE
         await raceNavigationStep(new Promise(resolve => setTimeout(resolve, 1000)), signal, 0);
     }
 
-    return lastContent
-        ? { content: lastContent, stable: false }
-        : { error: lastError || 'No content could be extracted.' };
+    if (!lastContent) {
+        return { error: lastError || 'No content could be extracted.' };
+    }
+
+    return {
+        content: lastContent,
+        status: 'incomplete',
+        reason: lastState?.busy > 0
+            ? 'Loading indicators were still visible in the main content when it was read; the intended content may not have loaded.'
+            : 'The page content was still changing or very short when it was read; content may be incomplete.'
+    };
 }
 
 async function browseUrl(session, rawUrl) {
@@ -375,9 +520,9 @@ async function browseUrl(session, rawUrl) {
         return `Navigation to ${url} failed: the browsing tab was closed.`;
     }
 
-    let readiness;
+    let extraction;
     try {
-        readiness = await waitForNavigationContent(tabId, session.signal);
+        extraction = await waitForNavigationContent(tabId, session.signal);
     } catch (err) {
         if (session.disposed || err?.name === 'AbortError') { throw createNavigationAbortError(session.signal?.reason); }
         const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -390,7 +535,6 @@ async function browseUrl(session, rawUrl) {
         }, null, 2);
     }
 
-    const extraction = await extractNavigationContent(tabId, session.signal);
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     if (!tab) { return `Navigation to ${url} failed: the browsing tab was closed.`; }
 
@@ -407,7 +551,8 @@ async function browseUrl(session, rawUrl) {
 
     const warnings = [];
     if (loadState.timedOut) { warnings.push('The page did not finish loading in time; content may be incomplete.'); }
-    if (!readiness.ready || !extraction.stable) { warnings.push('The page content was still changing or very short when it was read; content may be incomplete.'); }
+    if (extraction.status !== 'settled') { warnings.push(extraction.reason); }
+    result.contentStatus = loadState.timedOut ? 'incomplete' : extraction.status;
     if (warnings.length > 0) { result.warning = warnings.join(' '); }
 
     result.content = extraction.content;
