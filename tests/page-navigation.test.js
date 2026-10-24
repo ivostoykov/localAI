@@ -418,6 +418,100 @@ describe('page-navigation.js', () => {
             expect(helpers.windows.size).toBe(0);
         });
 
+        // Holds the n-th origin lookup open so the request can be aborted while the origin tab stays open.
+        const deferOriginLookup = (n) => {
+            const get = chrome.tabs.get.getMockImplementation();
+            const state = { lookups: 0, release: null };
+            chrome.tabs.get.mockImplementation(async (tabId) => {
+                if (tabId === 1 && ++state.lookups === n) {
+                    await new Promise(resolve => { state.release = resolve; });
+                }
+                return get(tabId);
+            });
+            return state;
+        };
+
+        it('does not open a pop-up when the request is aborted during the last origin lookup while the origin stays open', async () => {
+            const lookup = deferOriginLookup(2);
+            const controller = new AbortController();
+            const session = nav.createNavigationSession(1, controller.signal);
+            const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.waitFor(() => expect(lookup.release).toBeTypeOf('function'));
+            expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'updateStatusbar' }));
+
+            controller.abort('User aborted last request.');
+            lookup.release();
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+            expect(helpers.tabs.has(1)).toBe(true);
+            expect(chrome.windows.create).not.toHaveBeenCalled();
+        });
+
+        it('does not save Allow always when the request is aborted during the origin lookup after the answer', async () => {
+            helpers.consentChoice = 'allow';
+            helpers.syncStore.laiOptions = { aiModel: 'm' };
+            const lookup = deferOriginLookup(3);
+            const controller = new AbortController();
+            const session = nav.createNavigationSession(1, controller.signal);
+            const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.advanceTimersByTimeAsync(0);
+            await vi.waitFor(() => expect(lookup.release).toBeTypeOf('function'));
+            expect(helpers.windows.size).toBe(0);
+
+            controller.abort('User aborted last request.');
+            lookup.release();
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+            expect(chrome.storage.sync.set).not.toHaveBeenCalled();
+            expect(helpers.syncStore.laiOptions).toEqual({ aiModel: 'm' });
+        });
+
+        it('does not save Allow always when the request is aborted while the options are being read', async () => {
+            helpers.consentChoice = 'allow';
+            helpers.syncStore.laiOptions = { aiModel: 'm' };
+            const read = chrome.storage.sync.get.getMockImplementation();
+            let reads = 0;
+            let releaseRead = null;
+            chrome.storage.sync.get.mockImplementation(async (key) => {
+                reads++;
+                if (reads === 2) { await new Promise(resolve => { releaseRead = resolve; }); }
+                return read(key);
+            });
+            const controller = new AbortController();
+            const session = nav.createNavigationSession(1, controller.signal);
+            const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.advanceTimersByTimeAsync(0);
+            await vi.waitFor(() => expect(releaseRead).toBeTypeOf('function'));
+
+            controller.abort('User aborted last request.');
+            releaseRead();
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+            expect(chrome.storage.sync.set).not.toHaveBeenCalled();
+            expect(helpers.syncStore.laiOptions).toEqual({ aiModel: 'm' });
+        });
+
+        it('releases waiting consent messages when the request ends before the pop-up opens', async () => {
+            let releaseNotify;
+            chrome.tabs.sendMessage.mockImplementationOnce(() => new Promise(resolve => { releaseNotify = resolve; }));
+            const controller = new AbortController();
+            const session = nav.createNavigationSession(1, controller.signal);
+            const promise = nav.requestNavigationConsent(session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.advanceTimersByTimeAsync(0);
+            const [requestId] = nav.pendingNavigationConsents.keys();
+            const waiting = nav.handleNavigationConsentMessage({ action: 'getNavigationConsentRequest', requestId }, { id: 'test-extension' });
+
+            controller.abort('User aborted last request.');
+            releaseNotify();
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+            await expect(waiting).resolves.toEqual({ status: 'rejected' });
+        });
+
         it('keeps concurrent requests bound to their own pop-up windows', async () => {
             helpers.consentChoice = null;
             helpers.addTab({ id: 2, url: 'https://other.example/', windowId: 9 });

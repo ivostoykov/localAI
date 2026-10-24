@@ -875,8 +875,8 @@ function unregisterRequestController(tabId, controller) {
     if (originControllers?.size === 0) { originRequestControllers.delete(tabId); }
 }
 
-// Called after each awaited step and before every side effect: a request whose originating tab
-// closed, or which was aborted, while it was waiting must not write, call the model or open windows.
+// Called at the awaited boundaries that precede a side effect: a request whose originating tab closed,
+// or which was aborted, while it was waiting must not start a new write, model call or tool call.
 async function throwIfRequestCancelled(controller, tabId) {
     if (!controller.signal.aborted && tabId != null && !await chrome.tabs.get(tabId).catch(() => null)) {
         controller.abort('Originating tab closed.');
@@ -901,7 +901,7 @@ async function fetchDataAction(request, sender) {
     registerRequestController(tabId, controller);
 
     // Registration happens before the first await and everything after it runs inside this try,
-    // so cancellation at any point and setup failures still release the controller and any browsing session.
+    // so cancellation and setup failures still release the controller and any browsing session.
     let navigationSession = null;
     try {
         if (tabId == null) {
@@ -1029,6 +1029,7 @@ async function fetchDataAction(request, sender) {
                     responseText = await response.clone().text();
                     body = await response.json();
                 }
+                await throwIfRequestCancelled(controller, tabId);
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response received.`, responseText);
                 responseMessage = body?.message;
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response as JSON`, body);
@@ -1045,6 +1046,7 @@ async function fetchDataAction(request, sender) {
                     const tool = requestedTools[i];
                     const toolNamesUsed = tool?.function?.name ?? "";
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - requested tools`, toolNamesUsed);
+                    await throwIfRequestCancelled(controller, tabId);
 
                     const toolData = await resolveToolCalls(tool, laiOptions.toolFunc, sender?.tab, activeSession?.id, navigationSession);
                     await throwIfRequestCancelled(controller, tabId);
@@ -1087,6 +1089,7 @@ async function fetchDataAction(request, sender) {
             }
             delete activeSession.attachments;
             await setActiveSession(activeSession);
+            await throwIfRequestCancelled(controller, tabId);
 
             const assistantResponse = responseMessage?.content || '';
 
@@ -1122,7 +1125,9 @@ async function fetchDataAction(request, sender) {
                 }
             // }
 
-            if (turnNumber === 1 && !activeSession?.titleGenerated && !activeSession?.titleManual) {
+            // The answer has already been delivered here, so cancellation only skips the title instead of aborting the stream.
+            const cancelledAfterAnswer = await throwIfRequestCancelled(controller, tabId).then(() => false, () => true);
+            if (!cancelledAfterAnswer && turnNumber === 1 && !activeSession?.titleGenerated && !activeSession?.titleManual) {
                 await generateAndUpdateSessionTitle(cleanedUserInput, activeSession.id, sender.tab);
             }
         }

@@ -112,8 +112,9 @@ async function getNavigationPermission() {
     return stored?.[storageOptionKey]?.allowNavigation === true;
 }
 
-async function persistNavigationPermission() {
+async function persistNavigationPermission(session) {
     const stored = await chrome.storage.sync.get(storageOptionKey);
+    await throwIfNavigationCancelled(session);
     const options = stored?.[storageOptionKey] || {};
     await chrome.storage.sync.set({ [storageOptionKey]: { ...options, allowNavigation: true } });
 }
@@ -213,13 +214,18 @@ async function stopIfNavigationOriginClosed(session) {
     throw createNavigationAbortError('The originating tab was closed.');
 }
 
-// Checked after every awaited step and immediately before each side effect (pop-up, saved setting,
-// tab creation or navigation), so a request cancelled while waiting stops there.
-async function throwIfNavigationCancelled(session) {
+function throwIfNavigationDisposed(session) {
     if (session.disposed || session.signal?.aborted) {
         throw createNavigationAbortError(session.signal?.reason);
     }
+}
+
+// Checked before each side effect (pop-up, saved setting, tab creation or navigation) that follows
+// an awaited step, so a request cancelled or left without its originating tab stops there.
+async function throwIfNavigationCancelled(session) {
+    throwIfNavigationDisposed(session);
     await stopIfNavigationOriginClosed(session);
+    throwIfNavigationDisposed(session);
 }
 
 async function requestNavigationConsent(session, url) {
@@ -272,6 +278,7 @@ async function requestNavigationConsent(session, url) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Navigation consent window unavailable`, err?.message);
         return { granted: false, reason: 'the permission window could not be shown' };
     } finally {
+        markOpened();
         pending.settle({ choice: 'closed' });
         pendingNavigationConsents.delete(requestId);
         if (session.pendingConsent === pending) { delete session.pendingConsent; }
@@ -287,7 +294,7 @@ async function requestNavigationConsent(session, url) {
 
     switch (response?.choice) {
         case 'allow':
-            await persistNavigationPermission();
+            await persistNavigationPermission(session);
             return { granted: true, choice: 'allow' };
         case 'once':
             return { granted: true, choice: 'once' };

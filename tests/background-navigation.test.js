@@ -416,6 +416,81 @@ describe('background.js navigation lifecycle', () => {
             expect(deps.originRequestControllers.size).toBe(0);
         });
 
+        it('does not start a tool call when the origin closes while the model response is being read', async () => {
+            const gate = deferred();
+            const { deps } = createDeps([]);
+            deps.consumeStreamResponse.mockImplementationOnce(async () => {
+                await gate.promise;
+                return { responseText: '', body: { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://a.example/')] } } };
+            });
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            const pending = fetchDataAction(request(), sender);
+            await vi.waitFor(() => expect(deps.consumeStreamResponse).toHaveBeenCalled());
+            await closeOrigin(deps);
+            gate.release();
+            await pending;
+
+            expect(deps.resolveToolCalls).not.toHaveBeenCalled();
+            expect(deps.originRequestControllers.size).toBe(0);
+        });
+
+        it('does not start the next tool when the origin closes while the previous tool result is being stored', async () => {
+            const gate = deferred();
+            const { deps } = createDeps([
+                { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://a.example/'), toolCall('https://b.example/')] } }
+            ]);
+            deps.backgroundMemory.storeToolCallEmbedding.mockImplementationOnce(() => gate.promise);
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            const pending = fetchDataAction(request(), sender);
+            await vi.waitFor(() => expect(deps.backgroundMemory.storeToolCallEmbedding).toHaveBeenCalled());
+            await closeOrigin(deps);
+            gate.release();
+            await pending;
+
+            expect(deps.resolveToolCalls).toHaveBeenCalledTimes(1);
+            expect(deps.fetch).toHaveBeenCalledTimes(1);
+            expect(deps.originRequestControllers.size).toBe(0);
+        });
+
+        it('does not store the turn or generate a title when the origin closes while the final answer is being saved', async () => {
+            const gate = deferred();
+            const { deps } = createDeps([{ message: { role: 'assistant', content: 'Final answer' } }]);
+            deps.getActiveSession.mockImplementation(async () => ({ id: 'session-1', messages: [] }));
+            let writes = 0;
+            deps.setActiveSession.mockImplementation(async () => {
+                writes++;
+                if (writes === 2) { await gate.promise; }
+            });
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            const pending = fetchDataAction(request(), sender);
+            await vi.waitFor(() => expect(deps.setActiveSession).toHaveBeenCalledTimes(2));
+            await closeOrigin(deps);
+            gate.release();
+            await pending;
+
+            expect(deps.backgroundMemory.storeTurnWithEmbeddings).not.toHaveBeenCalled();
+            expect(deps.generateAndUpdateSessionTitle).not.toHaveBeenCalled();
+            expect(deps.handleStreamEnd).not.toHaveBeenCalled();
+            expect(deps.originRequestControllers.size).toBe(0);
+        });
+
+        it('skips title generation but keeps the delivered answer when the origin closes after delivery', async () => {
+            const { deps } = createDeps([{ message: { role: 'assistant', content: 'Final answer' } }]);
+            deps.getActiveSession.mockImplementation(async () => ({ id: 'session-1', messages: [] }));
+            deps.handleStreamEnd.mockImplementation(async () => { await closeOrigin(deps); });
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            const result = await fetchDataAction(request(), sender);
+
+            expect(result.status).toBe('success');
+            expect(deps.backgroundMemory.storeTurnWithEmbeddings).toHaveBeenCalledTimes(1);
+            expect(deps.generateAndUpdateSessionTitle).not.toHaveBeenCalled();
+            expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, { action: 'streamAbort' });
+        });
+
         it('does not persist tool results when the origin closes during a tool call', async () => {
             const { deps } = createDeps([
                 { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://a.example/')] } }
