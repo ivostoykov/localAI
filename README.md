@@ -29,21 +29,25 @@ You’ll need enough hardware power, preferably with a GPU.
 
 A local AI tool—these are easy to set up, usually just download and run:
 
-* [Ollama](https://ollama.com/) server is used as the API endpoint.
+* [Ollama](https://ollama.com/) — the recommended runtime, used as the API endpoint.
 
-If you use [Ollama Cloud](https://ollama.com/), the current preferred setup is still the local Ollama endpoint. Sign in with the Ollama app or CLI first, then keep the extension pointed at your local `'/api/*'` endpoint. Cloud-tagged models exposed by the signed-in local daemon can then be used without storing API keys in the extension.
+Ollama is local-first: everything runs on your machine, and the same endpoint can serve cloud models when you need more, without reconfiguring the extension or storing API keys in it.
 
-The model picker now loads two catalogues:
+If you use [Ollama Cloud](https://ollama.com/), the preferred setup is still the local Ollama endpoint. Sign in with the Ollama app or CLI first, then keep the extension pointed at your local `/api/*` endpoint. Cloud-tagged models exposed by the signed-in local daemon can then be used without storing API keys in the extension.
 
-* **Local** models are fetched from your configured Ollama endpoint `'/api/tags'`.
+The model picker loads two catalogues:
+
+* **Local** models are fetched from your configured Ollama endpoint `/api/tags`.
 * **Cloud** models are fetched from `https://ollama.com/api/tags`.
 
 If Ollama Cloud access is a concern in your environment, note that refreshing the model catalogue will make that external request for the cloud tab.
 
->[! Warning]:
-> The following API providers are deprecated for now and will only be reinstated upon request.
-> * [LM Studio](https://lmstudio.ai/) - preffered
-> * [Mozilla LlamaFile](https://github.com/Mozilla-Ocho/llamafile)
+The same local daemon can back other AI tools you already use — [Claude Code](https://docs.ollama.com/integrations/claude-code) (`ollama launch claude`) and [Codex CLI](https://docs.ollama.com/integrations/codex) (`ollama launch codex`, or `codex --oss`) — so one local setup serves all of them.
+
+> [!NOTE]
+> **Other local runtimes**
+>
+> Ollama is the default choice. [LM Studio](https://lmstudio.ai/) and [Mozilla LlamaFile](https://github.com/Mozilla-Ocho/llamafile) are the alternative local runtimes this project has worked with.
 
 And the browser extension.
 
@@ -64,4 +68,4 @@ It’s easy—give it a try and let us know your thoughts!
 ----
 
 
-Here is the [documenration](documentation.md) where you can get a deepr understanding.
+Here is the [documentation](documentation.md) where you can get a deeper understanding.
