@@ -76,7 +76,12 @@ function cssEscape(value) {
 const cssGlobal = window.CSS?.escape ? window.CSS : { escape: cssEscape };
 
 const hasVisibleText = loadSourceFunction('src/content.js', 'hasVisibleText', { document, window });
-const getARIAContext = loadSourceFunction('src/content.js', 'getARIAContext', { CSS: cssGlobal });
+const getARIAContext = loadSourceFunction('src/content.js', 'getARIAContext', {
+  CSS: cssGlobal,
+  // Only touched by the function's error path.
+  manifest: { name: 'localAI' },
+  getLineNumber: () => 'md-compat harness'
+});
 
 // --- project extractor, unmodified ---
 const extractorSrc = fs.readFileSync(path.join(REPO_ROOT, 'src/jslib/content-extractor.js'), 'utf8');

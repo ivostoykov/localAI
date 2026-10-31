@@ -1,7 +1,7 @@
 {
   "assessed": {
     "commit": "b8a6f271387b9451631038d0fc1ee263d82d56da",
-    "runCommit": "b8a6f271387b9451631038d0fc1ee263d82d56da",
+    "runCommit": "2611ce209617f5413e22ac1549744577b4cd42ce",
     "sources": {
       "src/jslib/content-extractor.js": "9d8c004cab7e047400f353162bb7666f63e5ae965a225c8e565f997afdcd1db8",
       "src/jslib/solomd2html.js": "0fcbd8901e5d5c4ee1688f13e69aa0e0929c37b1b54a50f1cc1ae30d2de719dc",
