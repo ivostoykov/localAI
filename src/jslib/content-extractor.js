@@ -123,21 +123,17 @@ function extractPageMetadata() {
 }
 
 /**
- * Detect main content area using semantic HTML and heuristics
+ * Detect main content area using semantic HTML and common content selectors.
+ * Returns null when no trusted region exists, so callers keep the whole
+ * cleaned body instead of guessing a single block (e.g. one comment of a thread).
  * @param {HTMLElement} domClone - Cleaned DOM clone
  * @returns {HTMLElement|null} Main content element or null
  */
 function detectMainContent(domClone) {
-  // Priority 1: Semantic HTML5 elements
-  const main = domClone.querySelector('main');
-  if (main) return main;
-
-  const article = domClone.querySelector('article');
-  if (article) return article;
-
-  // Priority 2: Common content class/id patterns
   const contentSelectors = [
+    'main',
     '[role="main"]',
+    'article',
     '#content',
     '#main-content',
     '.main-content',
@@ -148,29 +144,56 @@ function detectMainContent(domClone) {
   ];
 
   for (const selector of contentSelectors) {
-    const element = domClone.querySelector(selector);
-    if (element) return element;
+    const outermost = Array.from(domClone.querySelectorAll(selector))
+      .filter(el => {
+        const enclosing = el.parentElement?.closest(selector);
+        return !enclosing || enclosing === domClone;
+      });
+    if (outermost.length > 0) return lowestCommonAncestor(outermost);
   }
 
-  // Priority 3: Heuristic - element with most text content
-  const candidates = Array.from(domClone.querySelectorAll('div, section'));
-  if (candidates.length === 0) return null;
+  return null;
+}
 
-  const scored = candidates.map(el => {
-    const textLength = el.textContent?.length || 0;
-    const paragraphs = el.querySelectorAll('p').length;
-    const headings = el.querySelectorAll('h1, h2, h3, h4, h5, h6').length;
+/**
+ * Smallest element containing all given elements, so sibling regions
+ * (several articles or comments) are kept together.
+ */
+function lowestCommonAncestor(elements) {
+  let ancestor = elements[0];
+  while (ancestor && !elements.every(el => ancestor.contains(el))) {
+    ancestor = ancestor.parentElement;
+  }
+  return ancestor;
+}
 
-    // Simple scoring: text length + bonus for structural elements
-    const score = textLength + (paragraphs * 100) + (headings * 50);
+/**
+ * True when a structured ancestor (list, table, code block, caption) has
+ * already been extracted, so its descendants are not emitted a second time.
+ */
+function isInsideProcessedElement(node, processedElements, root) {
+  let ancestor = node.parentElement;
+  while (ancestor && ancestor !== root) {
+    if (processedElements.has(ancestor)) return true;
+    ancestor = ancestor.parentElement;
+  }
+  return false;
+}
 
-    return { element: el, score };
-  });
+/**
+ * Distinguishes data tables from layout tables (Readability-style rules), so
+ * page layout built from tables is walked as text instead of being flattened.
+ */
+function isDataTable(table) {
+  const role = table.getAttribute('role');
+  if (role === 'presentation' || role === 'none') return false;
+  if (table.querySelector('table')) return false;
+  if (table.querySelector('caption, thead, th, colgroup, col, tfoot')) return true;
 
-  scored.sort((a, b) => b.score - a.score);
-
-  // Return highest-scoring element if it has substantial content
-  return scored[0].score > 500 ? scored[0].element : null;
+  const rows = table.rows.length;
+  const columns = Math.max(0, ...Array.from(table.rows, row => row.cells.length));
+  if (rows <= 1 || columns <= 1) return false;
+  return rows >= 10 || columns > 4 || rows * columns > 10;
 }
 
 /**
@@ -204,6 +227,8 @@ function extractEnhancedTextStructure(domClone) {
     if (node.nodeType === Node.ELEMENT_NODE) {
       const tag = node.tagName;
 
+      if (isInsideProcessedElement(node, processedElements, domClone)) continue;
+
       // Handle lists
       if (tag === 'UL' || tag === 'OL') {
         const currentList = extractList(node);
@@ -213,7 +238,7 @@ function extractEnhancedTextStructure(domClone) {
       }
 
       // Handle tables
-      if (tag === 'TABLE') {
+      if (tag === 'TABLE' && isDataTable(node)) {
         const currentTable = extractTable(node);
         currentSection.tables.push(currentTable);
         processedElements.add(node);
@@ -262,17 +287,7 @@ function extractEnhancedTextStructure(domClone) {
 
       const parent = node.parentElement;
 
-      // Skip text nodes inside already-processed structured elements
-      let ancestor = parent;
-      let skipNode = false;
-      while (ancestor && ancestor !== domClone) {
-        if (processedElements.has(ancestor)) {
-          skipNode = true;
-          break;
-        }
-        ancestor = ancestor.parentElement;
-      }
-      if (skipNode) continue;
+      if (isInsideProcessedElement(node, processedElements, domClone)) continue;
 
       const parentTag = parent?.tagName || '';
       let text = node.nodeValue.trim();
@@ -720,14 +735,12 @@ async function getMainContentOnly() {
   const cleanedDOM = await getDocumentContentFiltered();
   const mainContent = detectMainContent(cleanedDOM);
 
-  if (!mainContent) {
-    return 'Could not detect main content area. The page may not have semantic HTML structure. Use get_enhanced_page_content to get all content.';
-  }
-
-  const structure = extractEnhancedTextStructure(mainContent);
+  const structure = extractEnhancedTextStructure(mainContent || cleanedDOM);
   const metadata = extractPageMetadata();
+  const formatted = formatEnhancedPageContent(structure, metadata);
 
-  return formatEnhancedPageContent(structure, metadata);
+  if (mainContent) return formatted;
+  return `CONTENT SCOPE: whole page (no main content region detected)\n${formatted}`;
 }
 
 // Global debug helpers for console testing
