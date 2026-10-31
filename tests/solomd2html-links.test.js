@@ -146,6 +146,30 @@ describe('renderInline link handling', () => {
         expect(root.textContent).toContain('[text](');
     });
 
+    it('stops a bare URL before inline code with no space', async () => {
+        const { root } = await render('See https://example.com/x`code` end.');
+
+        const anchor = root.querySelector('a');
+        const code = root.querySelector('code');
+        expect(anchor.getAttribute('href')).toBe('https://example.com/x');
+        expect(anchor.textContent).toBe('https://example.com/x');
+        expect(anchor.querySelector('code')).toBeNull();
+        expect(code.textContent).toBe('code');
+        expect(anchor.nextSibling).toBe(code);
+    });
+
+    it('stops a bare URL before an adjacent Markdown link', async () => {
+        const { root } = await render('See https://example.com/x[a](https://other.example/a) end.');
+
+        const anchors = Array.from(root.querySelectorAll('a'));
+        expect(anchors).toHaveLength(2);
+        expect(anchors[0].getAttribute('href')).toBe('https://example.com/x');
+        expect(anchors[0].textContent).toBe('https://example.com/x');
+        expect(anchors[1].getAttribute('href')).toBe('https://other.example/a');
+        expect(anchors[1].textContent).toBe('a');
+        expect(anchors[0].nextSibling).toBe(anchors[1]);
+    });
+
     it('keeps the link intact after a streamed render', async () => {
         globalThis.requestAnimationFrame = (callback) => setTimeout(callback, 0);
 

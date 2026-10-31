@@ -446,7 +446,7 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             .replace(/&lt;(https?:\/\/[^&]+?)&gt;/g, (_, url) => hold(anchor(url, url)))
             .replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, label, url) => hold(anchor(url, emphasise(label))))
             .replace(/\[(https?:\/\/[^\]]+?)\]/g, (_, url) => hold(anchor(url, url)))
-            .replace(/(?<!\])\b(https?:\/\/[^\s&]+)/g, (url) => hold(anchor(url, url)));
+            .replace(/(?<!\])\b(https?:\/\/[^\s&\u0000]+)/g, (url) => hold(anchor(url, url)));
 
         text = emphasise(text);
 
