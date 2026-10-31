@@ -1,5 +1,21 @@
 {
-  "provenance": {
+  "assessed": {
+    "commit": "b8a6f271387b9451631038d0fc1ee263d82d56da",
+    "runCommit": "b8a6f271387b9451631038d0fc1ee263d82d56da",
+    "sources": {
+      "src/jslib/content-extractor.js": "9d8c004cab7e047400f353162bb7666f63e5ae965a225c8e565f997afdcd1db8",
+      "src/jslib/solomd2html.js": "0fcbd8901e5d5c4ee1688f13e69aa0e0929c37b1b54a50f1cc1ae30d2de719dc",
+      "src/content.js": "536dc1cf991bc1197045de4dae941095bc46a0f2ec89bc3d7e4a41a001e4c643"
+    },
+    "gradedSources": {
+      "src/jslib/content-extractor.js": "9d8c004cab7e047400f353162bb7666f63e5ae965a225c8e565f997afdcd1db8",
+      "src/jslib/solomd2html.js": "0fcbd8901e5d5c4ee1688f13e69aa0e0929c37b1b54a50f1cc1ae30d2de719dc",
+      "src/content.js": "536dc1cf991bc1197045de4dae941095bc46a0f2ec89bc3d7e4a41a001e4c643"
+    },
+    "gradesStale": false,
+    "cssEscape": "polyfill"
+  },
+  "pins": {
     "turndown": {
       "url": "https://unpkg.com/turndown@7.2.4/dist/turndown.js",
       "sha256": "c97187f436d41638bf7acf346a39d9d42f2f2c02af18245a297c09e796f8e46f",
@@ -11,7 +27,314 @@
       "file": "turndown-plugin-gfm-1.0.2.js"
     }
   },
+  "checks": [
+    {
+      "id": "E1",
+      "description": "Current extraction splits one sentence into many lines; Turndown keeps it on one line with inline markup.",
+      "expected": "current non-empty lines > 5; first Turndown line contains **bold**, _italic_ and a link",
+      "actual": "current lines=11; turndown first line=\"Alpha **bold** and _italic_ with [a link](/docs/a) plus `fn()`.\"",
+      "pass": true
+    },
+    {
+      "id": "E2",
+      "description": "Nested list leaf appears exactly once at depth under Turndown; current output repeats the leaf.",
+      "expected": "Turndown: one leaf item at depth >= 3; current: more than one \"Leaf\" occurrence",
+      "actual": "turndown leaf lines=1, depth=5; current \"Leaf\" occurrences=4",
+      "pass": true
+    },
+    {
+      "id": "E3",
+      "description": "Ordered-list start=5 survives Turndown and the renderer; current extraction renumbers from 1.",
+      "expected": "current starts \"1. Five\"; Turndown render contains ol(start=5)",
+      "actual": "current first line=\"1. Five\"; turndown render=\"ol(start=5)\"",
+      "pass": true
+    },
+    {
+      "id": "E7",
+      "description": "A pre>code block is emitted twice by current extraction and once by Turndown.",
+      "expected": "current occurrences of \"const a = 1;\" = 2; Turndown = 1",
+      "actual": "current=2; turndown=1",
+      "pass": true
+    },
+    {
+      "id": "E8",
+      "description": "Current extraction puts all prose before lists and code; Turndown follows document order.",
+      "expected": "current: \"End.\" before \"- one\"; Turndown: list before \"Middle.\", code before \"End.\"",
+      "actual": "current order lost=true; turndown order kept=true",
+      "pass": true
+    },
+    {
+      "id": "E13",
+      "description": "A list inside a blockquote stays inside the quote under Turndown; current extraction moves it after the quote text.",
+      "expected": "current: \"After\" before \"- item\"; Turndown: \"> -   item\" between \"> Before\" and \"> After\"",
+      "actual": "current index(After)=7, index(- item)=14; turndown quoted list=true",
+      "pass": true
+    },
+    {
+      "id": "E15",
+      "description": "A fenced code block containing pipes is emitted twice by current extraction and once by Turndown.",
+      "expected": "current occurrences of \"| a | b |\" = 2; Turndown = 1",
+      "actual": "current=2; turndown=1",
+      "pass": true
+    },
+    {
+      "id": "R1",
+      "description": "Three source lines render as three paragraphs instead of one paragraph with soft breaks.",
+      "expected": "1 paragraph",
+      "actual": "3 paragraphs",
+      "pass": false
+    },
+    {
+      "id": "R2",
+      "description": "An absolute Markdown link keeps its destination.",
+      "expected": "https://example.com/a",
+      "actual": "\"<a href=\"",
+      "pass": false
+    },
+    {
+      "id": "R3",
+      "description": "A switch from \"-\" to \"1.\" at the same level produces a second list.",
+      "expected": "two top-level lists (ul then ol)",
+      "actual": "1 top-level list(s): UL",
+      "pass": false
+    },
+    {
+      "id": "R6b",
+      "description": "Delimiter-less pipe text is not a GFM table; the renderer consumes the second row as alignment data.",
+      "expected": "unsupported input; the test records the actual handling",
+      "actual": "1 body row(s)",
+      "pass": true
+    },
+    {
+      "id": "R13",
+      "description": "An escaped pipe inside a table cell stays inside that cell.",
+      "expected": "2 cells in the first body row",
+      "actual": "3 cells",
+      "pass": false
+    },
+    {
+      "id": "R15",
+      "description": "A lazily continued ordered list keeps both items in one list.",
+      "expected": "2 ordered list items",
+      "actual": "1 ordered list item(s)",
+      "pass": false
+    },
+    {
+      "id": "P1",
+      "description": "getARIAContext() resolves aria-labelledby through CSS.escape (polyfilled in jsdom).",
+      "expected": "extraction contains \"[aria-labelledby: Label text]\"",
+      "actual": "\"[aria-labelledby: Label text] Labelled text\"",
+      "pass": true
+    },
+    {
+      "id": "P2",
+      "description": "aria-hidden=\"true\" content is excluded by hasVisibleText().",
+      "expected": "extraction contains \"visible text\" and not \"secret text\"",
+      "actual": "\"visible text\"",
+      "pass": true
+    }
+  ],
+  "grades": {
+    "extraction": {
+      "E1": {
+        "grade": "bug",
+        "note": "Each inline text node becomes its own line; emphasis is dropped; inline <code> becomes a fenced block."
+      },
+      "E2": {
+        "grade": "bug",
+        "note": "Nested lists are emitted twice: once by extractList recursion and again when the outer walker visits the nested <ul>/<ol>."
+      },
+      "E3": {
+        "grade": "bug",
+        "note": "formatList numbers from 1 and drops the start attribute."
+      },
+      "E4": {
+        "grade": "bug",
+        "note": "Quote markers are not emitted; the quoted text is indistinguishable from body text."
+      },
+      "E5": {
+        "grade": "bug",
+        "note": "extractTable uses cell textContent, so emphasis and links in cells are lost."
+      },
+      "E6": {
+        "grade": "bug",
+        "note": "Emits rows without a delimiter row, so the Markdown is not a valid GFM table. The renderer behaviour on such input is graded unsupported (R6b)."
+      },
+      "E7": {
+        "grade": "bug",
+        "note": "Inline <code> becomes a block; the pre>code pair is pushed twice (PRE and CODE)."
+      },
+      "E8": {
+        "grade": "bug",
+        "note": "formatEnhancedPageContent emits all prose of a section first, then lists, tables and code, so document order is lost."
+      },
+      "E9": {
+        "grade": "bug",
+        "note": "extractList uses the cloned item textContent, so links and emphasis inside items are lost."
+      },
+      "E10": {
+        "grade": "pass",
+        "note": "Heading level and order preserved."
+      },
+      "E11": {
+        "grade": "partial",
+        "note": "Alt text and caption text survive as bracket labels; emphasis in the caption and the image src are lost."
+      },
+      "E12": {
+        "grade": "pass",
+        "note": "The source newline is kept, which is a soft line break in the model-facing text."
+      },
+      "E13": {
+        "grade": "bug",
+        "note": "Quote structure is dropped and the list is emitted separately after the quoted prose."
+      },
+      "E14": {
+        "grade": "pass",
+        "note": "Extraction emits a valid Markdown link with balanced parentheses. Display of the same link is graded separately (R9a)."
+      },
+      "E15": {
+        "grade": "bug",
+        "note": "The pre>code pair is emitted twice; the code content itself is preserved."
+      }
+    },
+    "renderer": {
+      "R1": {
+        "grade": "bug",
+        "note": "Each source line becomes its own <p>; soft line breaks are not joined (solomd2html.js renderMultilineContent)."
+      },
+      "R2": {
+        "grade": "bug",
+        "note": "The bare-URL rule runs after link construction and rewrites the generated href; the link breaks and the URL is shown as text."
+      },
+      "R3": {
+        "grade": "bug",
+        "note": "renderListContent fixes the list type from the first line, so a following ordered list becomes items of the first list."
+      },
+      "R4": {
+        "grade": "bug",
+        "note": "CommonMark allows \"1)\" and \"1.\" delimiters; only \"\\d+.\" is detected."
+      },
+      "R5": {
+        "grade": "bug",
+        "note": "normaliseMd splits quote lines and renderBlockquoteContent emits one blockquote per line; a list inside a quote is rendered as literal \"- item\" text."
+      },
+      "R6a": {
+        "grade": "pass",
+        "note": "Header, alignment and body rows preserved."
+      },
+      "R6b": {
+        "grade": "unsupported",
+        "note": "Not a valid GFM table. The renderer treats the second row as alignment data; this is a limitation of the supported subset, not a defect claim."
+      },
+      "R7": {
+        "grade": "pass",
+        "note": "Fence language and content preserved."
+      },
+      "R8": {
+        "grade": "pass",
+        "note": "Nested strong/em handled; an unclosed \"**\" stays literal, which is standard behaviour."
+      },
+      "R9a": {
+        "grade": "bug",
+        "note": "Valid CommonMark destination, broken by the link construction plus the bare-URL rule."
+      },
+      "R9b": {
+        "grade": "unsupported",
+        "note": "Bare-URL autolinking is a local extension, not CommonMark; the link stops at \"&\" and the remainder is plain text."
+      },
+      "R10a": {
+        "grade": "unsupported",
+        "note": "Images are outside the supported subset; output is a literal \"!\" plus a link, not an image."
+      },
+      "R10b": {
+        "grade": "unsupported",
+        "note": "GFM task lists are outside the supported subset; brackets are shown literally."
+      },
+      "R11": {
+        "grade": "unsupported",
+        "note": "Setext heading and two-space hard break are valid CommonMark but outside the supported subset."
+      },
+      "R12": {
+        "grade": "unsupported",
+        "note": "Raw HTML is escaped and shown as preformatted text. This may be an intentional safety choice; no defect is claimed."
+      },
+      "R13": {
+        "grade": "bug",
+        "note": "GFM allows \"\\|\" inside a cell; the split ignores the escape and produces an extra cell."
+      },
+      "R14": {
+        "grade": "pass",
+        "note": "normaliseMd inserts the separating blank lines."
+      },
+      "R15": {
+        "grade": "bug",
+        "note": "The continuation line becomes a paragraph and the following ordered item stops being list content."
+      },
+      "R16": {
+        "grade": "unsupported",
+        "note": "Backslash escapes are not decoded, so \"\\*\" and \"\\#\" would display with the backslash. Relevant if escaped text reaches the renderer."
+      }
+    },
+    "turndownCompat": {
+      "E1": {
+        "result": "pass"
+      },
+      "E2": {
+        "result": "pass"
+      },
+      "E3": {
+        "result": "pass"
+      },
+      "E4": {
+        "result": "fail",
+        "reason": "renderer: one blockquote per line (R5)"
+      },
+      "E5": {
+        "result": "pass",
+        "note": "gfm plugin only"
+      },
+      "E6": {
+        "result": "fail",
+        "reason": "adoption rule: gfm emits raw HTML for a header-less table"
+      },
+      "E7": {
+        "result": "pass"
+      },
+      "E8": {
+        "result": "pass",
+        "note": "gfm plugin only"
+      },
+      "E9": {
+        "result": "pass"
+      },
+      "E10": {
+        "result": "pass"
+      },
+      "E11": {
+        "result": "fail",
+        "reason": "renderer: images unsupported (R10a)"
+      },
+      "E12": {
+        "result": "pass"
+      },
+      "E13": {
+        "result": "fail",
+        "reason": "renderer: blockquote fragmentation and literal list text (R5)"
+      },
+      "E14": {
+        "result": "fail",
+        "reason": "renderer: link corruption (R2, R9a)"
+      },
+      "E15": {
+        "result": "pass"
+      }
+    }
+  },
   "counts": {
+    "checks": {
+      "passed": 10,
+      "total": 15
+    },
     "extraction": {
       "bug": 11,
       "pass": 3,
@@ -31,242 +354,158 @@
     {
       "id": "E1",
       "title": "Inline prose (strong, em, link, inline code)",
-      "classification": "bug",
-      "note": "Each inline text node becomes its own line; emphasis is dropped; inline <code> becomes a fenced block.",
       "html": "<main><p>Alpha <strong>bold</strong> and <em>italic</em> with <a href=\"/docs/a\">a link</a> plus <code>fn()</code>.</p></main>",
       "current": "Alpha\nbold\nand\nitalic\nwith\n[a link](https://example.com/docs/a)\nplus\n.\n\n```plaintext\nfn()\n```",
       "turndownPlain": "Alpha **bold** and _italic_ with [a link](/docs/a) plus `fn()`.",
       "turndownGfm": "Alpha **bold** and _italic_ with [a link](/docs/a) plus `fn()`.",
       "turndownPlainRender": "p: <span>Alpha <strong>bold</strong> and <em>italic</em> with <a href=\"/docs/a\">a link</a> plus <code>fn()</code>.</span>",
-      "turndownGfmRender": "p: <span>Alpha <strong>bold</strong> and <em>italic</em> with <a href=\"/docs/a\">a link</a> plus <code>fn()</code>.</span>",
-      "turndownCompat": {
-        "result": "pass"
-      }
+      "turndownGfmRender": "p: <span>Alpha <strong>bold</strong> and <em>italic</em> with <a href=\"/docs/a\">a link</a> plus <code>fn()</code>.</span>"
     },
     {
       "id": "E2",
       "title": "Nested ul > li > ol > li > ul",
-      "classification": "bug",
-      "note": "Nested lists are emitted twice: once by extractList recursion and again when the outer walker visits the nested <ul>/<ol>.",
       "html": "<main><ul>\n  <li>Parent one\n    <ol><li>First</li><li>Second\n      <ul><li>Leaf</li></ul>\n    </li></ol>\n  </li>\n  <li>Parent two</li>\n</ul></main>",
       "current": "- Parent one\n  - First\n  - Second\n    - Leaf\n- Leaf\n- Parent two\n\n1. First\n2. Second\n  1. Leaf\n\n- Leaf",
       "turndownPlain": "-   Parent one\n    1.  First\n    2.  Second\n        -   Leaf\n-   Parent two",
       "turndownGfm": "-   Parent one\n    1.  First\n    2.  Second\n        -   Leaf\n-   Parent two",
       "turndownPlainRender": "ul\n  li: <span>Parent one</span><ol><li><span>First</span></li><li><span>Second</span><ul><li><span>Leaf</span></li></ul></li></ol>\n    ol(start=1)\n      li: <span>First</span>\n      li: <span>Second</span><ul><li><span>Leaf</span></li></ul>\n        ul\n          li: <span>Leaf</span>\n  li: <span>Parent two</span>",
-      "turndownGfmRender": "ul\n  li: <span>Parent one</span><ol><li><span>First</span></li><li><span>Second</span><ul><li><span>Leaf</span></li></ul></li></ol>\n    ol(start=1)\n      li: <span>First</span>\n      li: <span>Second</span><ul><li><span>Leaf</span></li></ul>\n        ul\n          li: <span>Leaf</span>\n  li: <span>Parent two</span>",
-      "turndownCompat": {
-        "result": "pass"
-      }
+      "turndownGfmRender": "ul\n  li: <span>Parent one</span><ol><li><span>First</span></li><li><span>Second</span><ul><li><span>Leaf</span></li></ul></li></ol>\n    ol(start=1)\n      li: <span>First</span>\n      li: <span>Second</span><ul><li><span>Leaf</span></li></ul>\n        ul\n          li: <span>Leaf</span>\n  li: <span>Parent two</span>"
     },
     {
       "id": "E3",
       "title": "Ordered list starting at 5",
-      "classification": "bug",
-      "note": "formatList numbers from 1 and drops the start attribute.",
       "html": "<main><ol start=\"5\"><li>Five</li><li>Six</li></ol></main>",
       "current": "1. Five\n2. Six",
       "turndownPlain": "5.  Five\n6.  Six",
       "turndownGfm": "5.  Five\n6.  Six",
       "turndownPlainRender": "ol(start=5)\n  li: <span>Five</span>\n  li: <span>Six</span>",
-      "turndownGfmRender": "ol(start=5)\n  li: <span>Five</span>\n  li: <span>Six</span>",
-      "turndownCompat": {
-        "result": "pass"
-      }
+      "turndownGfmRender": "ol(start=5)\n  li: <span>Five</span>\n  li: <span>Six</span>"
     },
     {
       "id": "E4",
       "title": "Blockquote with two paragraphs",
-      "classification": "bug",
-      "note": "Quote markers are not emitted; the quoted text is indistinguishable from body text.",
       "html": "<main><blockquote><p>Quoted <strong>strong</strong> text.</p><p>Second paragraph.</p></blockquote></main>",
       "current": "Quoted\nstrong\ntext.\nSecond paragraph.",
       "turndownPlain": "> Quoted **strong** text.\n> \n> Second paragraph.",
       "turndownGfm": "> Quoted **strong** text.\n> \n> Second paragraph.",
       "turndownPlainRender": "blockquote: <blockquote><p><span>Quoted <strong>strong</strong> text.</span></p></blockquote>\n  blockquote: <p><span>Quoted <strong>strong</strong> text.</span></p>\n    p: <span>Quoted <strong>strong</strong> text.</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>Second paragraph.</span></p></blockquote>\n  blockquote: <p><span>Second paragraph.</span></p>\n    p: <span>Second paragraph.</span>",
-      "turndownGfmRender": "blockquote: <blockquote><p><span>Quoted <strong>strong</strong> text.</span></p></blockquote>\n  blockquote: <p><span>Quoted <strong>strong</strong> text.</span></p>\n    p: <span>Quoted <strong>strong</strong> text.</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>Second paragraph.</span></p></blockquote>\n  blockquote: <p><span>Second paragraph.</span></p>\n    p: <span>Second paragraph.</span>",
-      "turndownCompat": {
-        "result": "fail",
-        "reason": "renderer: one blockquote per line (R5)"
-      }
+      "turndownGfmRender": "blockquote: <blockquote><p><span>Quoted <strong>strong</strong> text.</span></p></blockquote>\n  blockquote: <p><span>Quoted <strong>strong</strong> text.</span></p>\n    p: <span>Quoted <strong>strong</strong> text.</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>Second paragraph.</span></p></blockquote>\n  blockquote: <p><span>Second paragraph.</span></p>\n    p: <span>Second paragraph.</span>"
     },
     {
       "id": "E5",
       "title": "Table with thead and inline markup in cells",
-      "classification": "bug",
-      "note": "extractTable uses cell textContent, so emphasis and links in cells are lost.",
       "html": "<main><table><thead><tr><th>Name</th><th>Value</th></tr></thead>\n<tbody><tr><td><strong>a</strong></td><td><a href=\"/x\">link</a></td></tr>\n<tr><td>b</td><td>2</td></tr></tbody></table></main>",
       "current": "| Name | Value |\n| --- | --- |\n| a | link |\n| b | 2 |",
       "turndownPlain": "Name\n\nValue\n\n**a**\n\n[link](/x)\n\nb\n\n2",
       "turndownGfm": "| Name | Value |\n| --- | --- |\n| **a** | [link](/x) |\n| b | 2 |",
       "turndownPlainRender": "p: <span>Name</span>\np: <span>Value</span>\np: <span><strong>a</strong></span>\np: <span><a href=\"/x\">link</a></span>\np: <span>b</span>\np: <span>2</span>",
-      "turndownGfmRender": "table(thead:1,tbody:2)\n  row: th:<span>Name</span> | th:<span>Value</span>\n  row: td:<span><strong>a</strong></span> | td:<span><a href=\"/x\">link</a></span>\n  row: td:<span>b</span> | td:<span>2</span>",
-      "turndownCompat": {
-        "result": "pass",
-        "note": "gfm plugin only"
-      }
+      "turndownGfmRender": "table(thead:1,tbody:2)\n  row: th:<span>Name</span> | th:<span>Value</span>\n  row: td:<span><strong>a</strong></span> | td:<span><a href=\"/x\">link</a></span>\n  row: td:<span>b</span> | td:<span>2</span>"
     },
     {
       "id": "E6",
       "title": "Table without thead",
-      "classification": "bug",
-      "note": "Emits rows without a delimiter row, so the Markdown is not a valid GFM table. The renderer behaviour on such input is separately classified as unsupported.",
       "html": "<main><table><tbody><tr><td>Name</td><td>Value</td></tr><tr><td>a</td><td>1</td></tr></tbody></table></main>",
       "current": "| Name | Value |\n| a | 1 |",
       "turndownPlain": "Name\n\nValue\n\na\n\n1",
       "turndownGfm": "<table><tbody><tr><td>Name</td><td>Value</td></tr><tr><td>a</td><td>1</td></tr></tbody></table>",
       "turndownPlainRender": "p: <span>Name</span>\np: <span>Value</span>\np: <span>a</span>\np: <span>1</span>",
-      "turndownGfmRender": "pre: \"\\n<table><tbody><tr><td>Name</td><td>Value</td></tr><tr><td>a</td><td>1</td></tr></tbody></table>\\n\"",
-      "turndownCompat": {
-        "result": "fail",
-        "reason": "adoption rule: gfm emits raw HTML for a header-less table"
-      }
+      "turndownGfmRender": "pre: \"\\n<table><tbody><tr><td>Name</td><td>Value</td></tr><tr><td>a</td><td>1</td></tr></tbody></table>\\n\""
     },
     {
       "id": "E7",
       "title": "Inline code in prose plus a fenced code block",
-      "classification": "bug",
-      "note": "Inline <code> becomes a block; the pre>code pair is pushed twice (PRE and CODE).",
       "html": "<main><p>Run <code>npm test</code> first.</p><pre><code class=\"language-js\">const a = 1;\nconst b = 2;</code></pre></main>",
       "current": "Run\nfirst.\n\n```plaintext\nnpm test\n```\n\n```plaintext\nconst a = 1;\nconst b = 2;\n```\n\n```js\nconst a = 1;\nconst b = 2;\n```",
       "turndownPlain": "Run `npm test` first.\n\n```js\nconst a = 1;\nconst b = 2;\n```",
       "turndownGfm": "Run `npm test` first.\n\n```js\nconst a = 1;\nconst b = 2;\n```",
       "turndownPlainRender": "p: <span>Run <code>npm test</code> first.</span>\npre: \"const a = 1;\\nconst b = 2;\"",
-      "turndownGfmRender": "p: <span>Run <code>npm test</code> first.</span>\npre: \"const a = 1;\\nconst b = 2;\"",
-      "turndownCompat": {
-        "result": "pass"
-      }
+      "turndownGfmRender": "p: <span>Run <code>npm test</code> first.</span>\npre: \"const a = 1;\\nconst b = 2;\""
     },
     {
       "id": "E8",
       "title": "Interleaved heading, prose, list, code and table",
-      "classification": "bug",
-      "note": "formatEnhancedPageContent emits all prose of a section first, then lists, tables and code, so document order is lost.",
       "html": "<main><h2>Steps</h2><p>Intro text.</p><ul><li>one</li><li>two</li></ul>\n<p>Middle.</p><pre><code class=\"language-sh\">echo hi</code></pre><p>After code.</p>\n<table><thead><tr><th>K</th><th>V</th></tr></thead><tbody><tr><td>k</td><td>v</td></tr></tbody></table>\n<p>End.</p></main>",
       "current": "## Steps\n\nIntro text.\nMiddle.\nAfter code.\nEnd.\n\n- one\n- two\n\n| K | V |\n| --- | --- |\n| k | v |\n\n```plaintext\necho hi\n```\n\n```sh\necho hi\n```",
       "turndownPlain": "## Steps\n\nIntro text.\n\n-   one\n-   two\n\nMiddle.\n\n```sh\necho hi\n```\n\nAfter code.\n\nK\n\nV\n\nk\n\nv\n\nEnd.",
       "turndownGfm": "## Steps\n\nIntro text.\n\n-   one\n-   two\n\nMiddle.\n\n```sh\necho hi\n```\n\nAfter code.\n\n| K | V |\n| --- | --- |\n| k | v |\n\nEnd.",
       "turndownPlainRender": "h2: <span>Steps</span>\np: <span>Intro text.</span>\nul\n  li: <span>one</span>\n  li: <span>two</span>\np: <span>Middle.</span>\npre: \"echo hi\"\np: <span>After code.</span>\np: <span>K</span>\np: <span>V</span>\np: <span>k</span>\np: <span>v</span>\np: <span>End.</span>",
-      "turndownGfmRender": "h2: <span>Steps</span>\np: <span>Intro text.</span>\nul\n  li: <span>one</span>\n  li: <span>two</span>\np: <span>Middle.</span>\npre: \"echo hi\"\np: <span>After code.</span>\ntable(thead:1,tbody:1)\n  row: th:<span>K</span> | th:<span>V</span>\n  row: td:<span>k</span> | td:<span>v</span>\np: <span>End.</span>",
-      "turndownCompat": {
-        "result": "pass",
-        "note": "gfm plugin only"
-      }
+      "turndownGfmRender": "h2: <span>Steps</span>\np: <span>Intro text.</span>\nul\n  li: <span>one</span>\n  li: <span>two</span>\np: <span>Middle.</span>\npre: \"echo hi\"\np: <span>After code.</span>\ntable(thead:1,tbody:1)\n  row: th:<span>K</span> | th:<span>V</span>\n  row: td:<span>k</span> | td:<span>v</span>\np: <span>End.</span>"
     },
     {
       "id": "E9",
       "title": "List item containing a link and emphasis",
-      "classification": "bug",
-      "note": "extractList uses the cloned item textContent, so links and emphasis inside items are lost.",
       "html": "<main><ul><li>See <a href=\"/a\">docs</a> and <strong>note</strong></li></ul></main>",
       "current": "- See docs and note",
       "turndownPlain": "-   See [docs](/a) and **note**",
       "turndownGfm": "-   See [docs](/a) and **note**",
       "turndownPlainRender": "ul\n  li: <span>See <a href=\"/a\">docs</a> and <strong>note</strong></span>",
-      "turndownGfmRender": "ul\n  li: <span>See <a href=\"/a\">docs</a> and <strong>note</strong></span>",
-      "turndownCompat": {
-        "result": "pass"
-      }
+      "turndownGfmRender": "ul\n  li: <span>See <a href=\"/a\">docs</a> and <strong>note</strong></span>"
     },
     {
       "id": "E10",
       "title": "Two heading levels and sections",
-      "classification": "pass",
-      "note": "Heading level and order preserved.",
       "html": "<main><h1>Title</h1><p>Intro</p><h3>Sub</h3><p>More</p></main>",
       "current": "# Title\n\nIntro\n\n### Sub\n\nMore",
       "turndownPlain": "# Title\n\nIntro\n\n### Sub\n\nMore",
       "turndownGfm": "# Title\n\nIntro\n\n### Sub\n\nMore",
       "turndownPlainRender": "h1: <span>Title</span>\np: <span>Intro</span>\nh3: <span>Sub</span>\np: <span>More</span>",
-      "turndownGfmRender": "h1: <span>Title</span>\np: <span>Intro</span>\nh3: <span>Sub</span>\np: <span>More</span>",
-      "turndownCompat": {
-        "result": "pass"
-      }
+      "turndownGfmRender": "h1: <span>Title</span>\np: <span>Intro</span>\nh3: <span>Sub</span>\np: <span>More</span>"
     },
     {
       "id": "E11",
       "title": "Figure with image alt and caption",
-      "classification": "partial",
-      "note": "Alt text and caption text survive as bracket labels; emphasis in the caption and the image src are lost.",
       "html": "<main><figure><img alt=\"Diagram\" src=\"/d.png\"><figcaption>Caption <em>here</em></figcaption></figure></main>",
       "current": "[Image: Diagram]\n\n[Figure: Caption here]",
       "turndownPlain": "![Diagram](/d.png)\n\nCaption _here_",
       "turndownGfm": "![Diagram](/d.png)\n\nCaption _here_",
       "turndownPlainRender": "p: <span>!<a href=\"/d.png\">Diagram</a></span>\np: <span>Caption <em>here</em></span>",
-      "turndownGfmRender": "p: <span>!<a href=\"/d.png\">Diagram</a></span>\np: <span>Caption <em>here</em></span>",
-      "turndownCompat": {
-        "result": "fail",
-        "reason": "renderer: images unsupported (R10a)"
-      }
+      "turndownGfmRender": "p: <span>!<a href=\"/d.png\">Diagram</a></span>\np: <span>Caption <em>here</em></span>"
     },
     {
       "id": "E12",
       "title": "Paragraph with a source newline",
-      "classification": "pass",
-      "note": "The source newline is kept, which is a soft line break in the model-facing text.",
       "html": "<main><p>Line one\nline two</p></main>",
       "current": "Line one\nline two",
       "turndownPlain": "Line one line two",
       "turndownGfm": "Line one line two",
       "turndownPlainRender": "p: <span>Line one line two</span>",
-      "turndownGfmRender": "p: <span>Line one line two</span>",
-      "turndownCompat": {
-        "result": "pass"
-      }
+      "turndownGfmRender": "p: <span>Line one line two</span>"
     },
     {
       "id": "E13",
       "title": "Blockquote containing a list",
-      "classification": "bug",
-      "note": "Quote structure is dropped and the list is emitted separately after the quoted prose.",
       "html": "<main><blockquote><p>Before</p><ul><li>item</li></ul><p>After</p></blockquote></main>",
       "current": "Before\nAfter\n\n- item",
       "turndownPlain": "> Before\n> \n> -   item\n> \n> After",
       "turndownGfm": "> Before\n> \n> -   item\n> \n> After",
       "turndownPlainRender": "blockquote: <blockquote><p><span>Before</span></p></blockquote>\n  blockquote: <p><span>Before</span></p>\n    p: <span>Before</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>- item</span></p></blockquote>\n  blockquote: <p><span>- item</span></p>\n    p: <span>- item</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>After</span></p></blockquote>\n  blockquote: <p><span>After</span></p>\n    p: <span>After</span>",
-      "turndownGfmRender": "blockquote: <blockquote><p><span>Before</span></p></blockquote>\n  blockquote: <p><span>Before</span></p>\n    p: <span>Before</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>- item</span></p></blockquote>\n  blockquote: <p><span>- item</span></p>\n    p: <span>- item</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>After</span></p></blockquote>\n  blockquote: <p><span>After</span></p>\n    p: <span>After</span>",
-      "turndownCompat": {
-        "result": "fail",
-        "reason": "renderer: blockquote fragmentation and literal list text (R5)"
-      }
+      "turndownGfmRender": "blockquote: <blockquote><p><span>Before</span></p></blockquote>\n  blockquote: <p><span>Before</span></p>\n    p: <span>Before</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>- item</span></p></blockquote>\n  blockquote: <p><span>- item</span></p>\n    p: <span>- item</span>\nblockquote: <blockquote><p><span></span></p></blockquote>\n  blockquote: <p><span></span></p>\n    p: <span></span>\nblockquote: <blockquote><p><span>After</span></p></blockquote>\n  blockquote: <p><span>After</span></p>\n    p: <span>After</span>"
     },
     {
       "id": "E14",
       "title": "Link whose URL contains balanced parentheses",
-      "classification": "pass",
-      "note": "Extraction emits a valid Markdown link with balanced parentheses. Display of the same link is a separate renderer fixture (R9a).",
       "html": "<main><p>See <a href=\"https://en.wikipedia.org/wiki/Foo_(bar)\">the article</a>.</p></main>",
       "current": "See\n[the article](https://en.wikipedia.org/wiki/Foo_(bar))\n.",
       "turndownPlain": "See [the article](https://en.wikipedia.org/wiki/Foo_\\(bar\\)).",
       "turndownGfm": "See [the article](https://en.wikipedia.org/wiki/Foo_\\(bar\\)).",
       "turndownPlainRender": "p: <span>See <a href=\"<a href=\">https://en.wikipedia.org/wiki/Foo_\\(bar\\\"</a> target=\"_blank\" rel=\"noopener noreferrer\">the article).</span>",
-      "turndownGfmRender": "p: <span>See <a href=\"<a href=\">https://en.wikipedia.org/wiki/Foo_\\(bar\\\"</a> target=\"_blank\" rel=\"noopener noreferrer\">the article).</span>",
-      "turndownCompat": {
-        "result": "fail",
-        "reason": "renderer: link corruption (R2, R9a)"
-      }
+      "turndownGfmRender": "p: <span>See <a href=\"<a href=\">https://en.wikipedia.org/wiki/Foo_\\(bar\\\"</a> target=\"_blank\" rel=\"noopener noreferrer\">the article).</span>"
     },
     {
       "id": "E15",
       "title": "Fenced code whose content contains a pipe table",
-      "classification": "bug",
-      "note": "The pre>code pair is emitted twice; the code content itself is preserved.",
       "html": "<main><pre><code class=\"language-md\">| a | b |\n| --- | --- |\n| 1 | 2 |</code></pre></main>",
       "current": "```plaintext\n| a | b |\n| --- | --- |\n| 1 | 2 |\n```\n\n```md\n| a | b |\n| --- | --- |\n| 1 | 2 |\n```",
       "turndownPlain": "```md\n| a | b |\n| --- | --- |\n| 1 | 2 |\n```",
       "turndownGfm": "```md\n| a | b |\n| --- | --- |\n| 1 | 2 |\n```",
       "turndownPlainRender": "pre: \"\\n| a | b |\\n| --- | --- |\\n| 1 | 2 |\"",
-      "turndownGfmRender": "pre: \"\\n| a | b |\\n| --- | --- |\\n| 1 | 2 |\"",
-      "turndownCompat": {
-        "result": "pass"
-      }
+      "turndownGfmRender": "pre: \"\\n| a | b |\\n| --- | --- |\\n| 1 | 2 |\""
     }
   ],
   "renderer": [
     {
       "id": "R1",
       "title": "Single newlines in prose",
-      "classification": "bug",
-      "note": "Each source line becomes its own <p>; soft line breaks are not joined (solomd2html.js renderMultilineContent).",
       "markdown": "Line one\nLine two\nLine three",
       "rendered": "p: <span>Line one</span>\np: <span>Line two</span>\np: <span>Line three</span>",
       "html": "<p><span>Line one</span></p><p><span>Line two</span></p><p><span>Line three</span></p>"
@@ -274,8 +513,6 @@
     {
       "id": "R2",
       "title": "Inline strong, em, strike, code and absolute link",
-      "classification": "bug",
-      "note": "The bare-URL rule runs after link construction and rewrites the generated href; the link breaks and the URL is shown as text.",
       "markdown": "Alpha **bold** and *italic* and ~~gone~~ with [a link](https://example.com/a) plus `fn()`.",
       "rendered": "p: <span>Alpha <strong>bold</strong> and <em>italic</em> and <del>gone</del> with <a href=\"<a href=\">https://example.com/a\"</a> target=\"_blank\" rel=\"noopener noreferrer\">a link plus <code>fn()</code>.</span>",
       "html": "<p><span>Alpha <strong>bold</strong> and <em>italic</em> and <del>gone</del> with <a href=\"<a href=\" https:=\"\" example.com=\"\" a\"\"=\"\" target=\"_blank\" rel=\"noopener noreferrer\">https://example.com/a\"</a> target=\"_blank\" rel=\"noopener noreferrer\"&gt;a link plus <code>fn()</code>.</span></p>"
@@ -283,8 +520,6 @@
     {
       "id": "R3",
       "title": "Nested list with a marker-type switch at the same level",
-      "classification": "bug",
-      "note": "renderListContent fixes the list type from the first line, so a following ordered list becomes items of the first list.",
       "markdown": "- Parent one\n  - Child a\n  - Child b\n    - Grandchild\n1. Second top\n2. Third top",
       "rendered": "ul\n  li: <span>Parent one</span><ul><li><span>Child a</span></li><li><span>Child b</span><ul><li><span>Grandchild</span></li></ul></li></ul>\n    ul\n      li: <span>Child a</span>\n      li: <span>Child b</span><ul><li><span>Grandchild</span></li></ul>\n        ul\n          li: <span>Grandchild</span>\n  li: <span>Second top</span>\n  li: <span>Third top</span>",
       "html": "<ul><li><span>Parent one</span><ul><li><span>Child a</span></li><li><span>Child b</span><ul><li><span>Grandchild</span></li></ul></li></ul></li><li><span>Second top</span></li><li><span>Third top</span></li></ul>"
@@ -292,8 +527,6 @@
     {
       "id": "R4",
       "title": "Ordered list using the \")\" delimiter",
-      "classification": "bug",
-      "note": "CommonMark allows \"1)\" and \"1.\" delimiters; only \"\\d+.\" is detected.",
       "markdown": "7) Seven\n8) Eight",
       "rendered": "p: <span>7) Seven</span>\np: <span>8) Eight</span>",
       "html": "<p><span>7) Seven</span></p><p><span>8) Eight</span></p>"
@@ -301,8 +534,6 @@
     {
       "id": "R5",
       "title": "Blockquote with nested quote and list",
-      "classification": "bug",
-      "note": "normaliseMd splits quote lines and renderBlockquoteContent emits one blockquote per line; a list inside a quote is rendered as literal \"- item\" text.",
       "markdown": "> Outer quote\n> > Inner quote\n> >\n> > - item one\n> > - item two",
       "rendered": "blockquote: <blockquote><p><span>Outer quote</span></p></blockquote>\n  blockquote: <p><span>Outer quote</span></p>\n    p: <span>Outer quote</span>\nblockquote: <blockquote><blockquote><p><span>Inner quote</span></p></blockquote></blockquote>\n  blockquote: <blockquote><p><span>Inner quote</span></p></blockquote>\n    blockquote: <p><span>Inner quote</span></p>\n      p: <span>Inner quote</span>\nblockquote: <blockquote><blockquote><p><span></span></p></blockquote></blockquote>\n  blockquote: <blockquote><p><span></span></p></blockquote>\n    blockquote: <p><span></span></p>\n      p: <span></span>\nblockquote: <blockquote><blockquote><p><span>- item one</span></p></blockquote></blockquote>\n  blockquote: <blockquote><p><span>- item one</span></p></blockquote>\n    blockquote: <p><span>- item one</span></p>\n      p: <span>- item one</span>\nblockquote: <blockquote><blockquote><p><span>- item two</span></p></blockquote></blockquote>\n  blockquote: <blockquote><p><span>- item two</span></p></blockquote>\n    blockquote: <p><span>- item two</span></p>\n      p: <span>- item two</span>",
       "html": "<blockquote><blockquote><p><span>Outer quote</span></p></blockquote></blockquote><blockquote><blockquote><blockquote><p><span>Inner quote</span></p></blockquote></blockquote></blockquote><blockquote><blockquote><blockquote><p><span></span></p></blockquote></blockquote></blockquote><blockquote><blockquote><blockquote><p><span>- item one</span></p></blockquote></blockquote></blockquote><blockquote><blockquote><blockquote><p><span>- item two</span></p></blockquote></blockquote></blockquote>"
@@ -310,8 +541,6 @@
     {
       "id": "R6a",
       "title": "Table with delimiter row and alignment",
-      "classification": "pass",
-      "note": "Header, alignment and body rows preserved.",
       "markdown": "| Left | Right |\n| :--- | ---: |\n| a | 1 |\n| b | 2 |",
       "rendered": "table(thead:1,tbody:2)\n  row: th:<span>Left</span> | th:<span>Right</span>\n  row: td:<span>a</span> | td:<span>1</span>\n  row: td:<span>b</span> | td:<span>2</span>",
       "html": "<table><thead><tr><th style=\"text-align: left;\"><span>Left</span></th><th style=\"text-align: right;\"><span>Right</span></th></tr></thead><tbody><tr><td><span>a</span></td><td><span>1</span></td></tr><tr><td><span>b</span></td><td><span>2</span></td></tr></tbody></table>"
@@ -319,8 +548,6 @@
     {
       "id": "R6b",
       "title": "Pipe text without a delimiter row",
-      "classification": "unsupported",
-      "note": "Not a valid GFM table. The renderer treats the second row as alignment data; this is a limitation of the supported subset, not a defect claim.",
       "markdown": "| Name | Value |\n| a | 1 |\n| b | 2 |",
       "rendered": "table(thead:1,tbody:1)\n  row: th:<span>Name</span> | th:<span>Value</span>\n  row: td:<span>b</span> | td:<span>2</span>",
       "html": "<table><thead><tr><th><span>Name</span></th><th><span>Value</span></th></tr></thead><tbody><tr><td><span>b</span></td><td><span>2</span></td></tr></tbody></table>"
@@ -328,8 +555,6 @@
     {
       "id": "R7",
       "title": "Fenced code with language, pipes and regex",
-      "classification": "pass",
-      "note": "Fence language and content preserved.",
       "markdown": "Before\n\n```js\nconst re = /|/;\n```\n\nAfter",
       "rendered": "p: <span>Before</span>\npre: \"const re = /|/;\"\np: <span>After</span>",
       "html": "<p><span>Before</span></p><div class=\"code-block\"><div class=\"code-ribbon\">js</div><pre><code>const re = /|/;</code></pre></div><p><span>After</span></p>"
@@ -337,8 +562,6 @@
     {
       "id": "R8",
       "title": "Nested emphasis and intraword underscores",
-      "classification": "pass",
-      "note": "Nested strong/em handled; an unclosed \"**\" stays literal, which is standard behaviour.",
       "markdown": "This is **bold and *italic*** plus snake_case_name and **unclosed",
       "rendered": "p: <span>This is <strong>bold and <em>italic</em></strong> plus snake_case_name and **unclosed</span>",
       "html": "<p><span>This is <strong>bold and <em>italic</em></strong> plus snake_case_name and **unclosed</span></p>"
@@ -346,8 +569,6 @@
     {
       "id": "R9a",
       "title": "Link destination containing balanced parentheses",
-      "classification": "bug",
-      "note": "Valid CommonMark destination, broken by the link construction plus bare-URL rule.",
       "markdown": "See [wiki](https://en.wikipedia.org/wiki/Foo_(bar)).",
       "rendered": "p: <span>See <a href=\"<a href=\">https://en.wikipedia.org/wiki/Foo_(bar\"</a> target=\"_blank\" rel=\"noopener noreferrer\">wiki).</span>",
       "html": "<p><span>See <a href=\"<a href=\" https:=\"\" en.wikipedia.org=\"\" wiki=\"\" foo_(bar\"\"=\"\" target=\"_blank\" rel=\"noopener noreferrer\">https://en.wikipedia.org/wiki/Foo_(bar\"</a> target=\"_blank\" rel=\"noopener noreferrer\"&gt;wiki).</span></p>"
@@ -355,8 +576,6 @@
     {
       "id": "R9b",
       "title": "Bare URL containing an ampersand",
-      "classification": "unsupported",
-      "note": "Bare-URL autolinking is a local extension, not CommonMark; the link stops at \"&\" and the remainder is plain text.",
       "markdown": "See https://example.com/a_b?q=1&x=2.",
       "rendered": "p: <span>See <a href=\"https://example.com/a_b?q=1\">https://example.com/a_b?q=1</a>&x=2.</span>",
       "html": "<p><span>See <a href=\"https://example.com/a_b?q=1\" target=\"_blank\" rel=\"noopener noreferrer\">https://example.com/a_b?q=1</a>&amp;x=2.</span></p>"
@@ -364,8 +583,6 @@
     {
       "id": "R10a",
       "title": "Image syntax",
-      "classification": "unsupported",
-      "note": "Images are outside the supported subset; output is a literal \"!\" plus a link, not an image.",
       "markdown": "![Alt text](/img.png)",
       "rendered": "p: <span>!<a href=\"/img.png\">Alt text</a></span>",
       "html": "<p><span>!<a href=\"/img.png\" target=\"_blank\" rel=\"noopener noreferrer\">Alt text</a></span></p>"
@@ -373,8 +590,6 @@
     {
       "id": "R10b",
       "title": "Task-list syntax",
-      "classification": "unsupported",
-      "note": "GFM task lists are outside the supported subset; brackets are shown literally.",
       "markdown": "- [ ] todo\n- [x] done",
       "rendered": "ul\n  li: <span>[ ] todo</span>\n  li: <span>[x] done</span>",
       "html": "<ul><li><span>[ ] todo</span></li><li><span>[x] done</span></li></ul>"
@@ -382,8 +597,6 @@
     {
       "id": "R11",
       "title": "Setext heading and two-space hard break",
-      "classification": "unsupported",
-      "note": "Both are valid CommonMark but outside the supported subset.",
       "markdown": "Title\n=====\n\nfirst line  \nsecond line",
       "rendered": "p: <span>Title</span>\np: <span>=====</span>\np: <span>first line </span>\np: <span>second line</span>",
       "html": "<p><span>Title</span></p><p><span>=====</span></p><p><span>first line  </span></p><p><span>second line</span></p>"
@@ -391,8 +604,6 @@
     {
       "id": "R12",
       "title": "Raw HTML block",
-      "classification": "unsupported",
-      "note": "Raw HTML is escaped and shown as preformatted text. This may be an intentional safety choice; no defect is claimed.",
       "markdown": "<div class=\"note\"><strong>Raw</strong> HTML</div>",
       "rendered": "pre: \"\\n<div class=\\\"note\\\"><strong>Raw</strong> HTML</div>\\n\"",
       "html": "<pre>\n&lt;div class=\"note\"&gt;&lt;strong&gt;Raw&lt;/strong&gt; HTML&lt;/div&gt;\n</pre>"
@@ -400,8 +611,6 @@
     {
       "id": "R13",
       "title": "Escaped pipe inside a table cell",
-      "classification": "bug",
-      "note": "GFM allows \"\\|\" inside a cell; the split ignores the escape and produces an extra cell.",
       "markdown": "| Col | Note |\n| --- | --- |\n| a | pipe \\| here |",
       "rendered": "table(thead:1,tbody:1)\n  row: th:<span>Col</span> | th:<span>Note</span>\n  row: td:<span>a</span> | td:<span>pipe \\</span> | td:<span>here</span>",
       "html": "<table><thead><tr><th><span>Col</span></th><th><span>Note</span></th></tr></thead><tbody><tr><td><span>a</span></td><td><span>pipe \\</span></td><td><span>here</span></td></tr></tbody></table>"
@@ -409,8 +618,6 @@
     {
       "id": "R14",
       "title": "Heading and list immediately after prose",
-      "classification": "pass",
-      "note": "normaliseMd inserts the separating blank lines.",
       "markdown": "Intro sentence\n## Heading\n- item one\n- item two",
       "rendered": "p: <span>Intro sentence</span>\nh2: <span>Heading</span>\nul\n  li: <span>item one</span>\n  li: <span>item two</span>",
       "html": "<p><span>Intro sentence</span></p><h2><span>Heading</span></h2><ul><li><span>item one</span></li><li><span>item two</span></li></ul>"
@@ -418,8 +625,6 @@
     {
       "id": "R15",
       "title": "Ordered list with a lazy continuation line",
-      "classification": "bug",
-      "note": "The continuation line becomes a paragraph and the following ordered item stops being list content.",
       "markdown": "1. First item\n   continued on next line\n2. Second item",
       "rendered": "ol(start=1)\n  li: <span>First item</span>\np: <span> continued on next line</span>\np: <span>2. Second item</span>",
       "html": "<ol start=\"1\"><li><span>First item</span></li></ol><p><span>   continued on next line</span></p><p><span>2. Second item</span></p>"
@@ -427,8 +632,6 @@
     {
       "id": "R16",
       "title": "Backslash escapes for Markdown punctuation",
-      "classification": "unsupported",
-      "note": "Backslash escapes are not decoded, so \"\\*\" and \"\\#\" would display with the backslash. Relevant if escaped text reaches the renderer.",
       "markdown": "A \\*literal\\* star and \\# hash and snake\\_case.",
       "rendered": "p: <span>A \\*literal\\* star and \\# hash and snake\\_case.</span>",
       "html": "<p><span>A \\*literal\\* star and \\# hash and snake\\_case.</span></p>"

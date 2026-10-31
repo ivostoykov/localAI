@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import { JSDOM } from 'jsdom';
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -17,56 +18,65 @@ export const dom = new JSDOM(
 export const { window } = dom;
 export const { document } = window;
 
-// --- helpers the extractor calls, copied verbatim from src/content.js ---
+// --- helpers the extractor calls, loaded from src/content.js itself ---
+// content.js cannot be evaluated on its own (it registers listeners and uses
+// browser globals), so the two functions the extractor calls are sliced out of
+// the file by name and evaluated as-is. No logic is copied.
+//
 // hasVisibleText(): src/content.js:388
 // getARIAContext(): src/content.js:301
-// They are copies only so the harness can load content-extractor.js without
-// the rest of content.js. Keep them in step with the source when it changes.
+//
+// jsdom has no CSS.escape, which getARIAContext() uses for aria-labelledby.
+// A spec-shaped polyfill is supplied only for that missing browser global.
 
-function getARIAContext(element, rootElement) {
-  if (!element || !element.attributes) return '';
-  if (element.getAttribute('aria-hidden') === 'true') return null;
-  const textAriaAttrs = ['aria-label', 'aria-labelledby', 'aria-describedby', 'aria-description'];
-  const relevantAttrs = Array.from(element.attributes).filter(a => textAriaAttrs.includes(a.name));
-  if (relevantAttrs.length < 1) return '';
-  const parts = [];
-  for (const attr of relevantAttrs) {
-    const value = attr.value.trim();
-    if (!value) continue;
-    switch (attr.name) {
-      case 'aria-label':
-      case 'aria-description':
-        parts.push(`${attr.name}: ${value}`);
-        break;
-      case 'aria-labelledby':
-      case 'aria-describedby': {
-        if (!rootElement) continue;
-        let ref = null;
-        try { ref = rootElement.querySelector(`#${value}`); } catch { ref = null; }
-        const t = ref?.textContent.trim();
-        if (t) parts.push(`${attr.name}: ${t}`);
-        break;
-      }
+function sliceFunction(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  if (start < 0) throw new Error(`function ${name} not found`);
+  const open = source.indexOf('{', start);
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}' && --depth === 0) return source.slice(start, i + 1);
+  }
+  throw new Error(`unbalanced braces for ${name}`);
+}
+
+function loadSourceFunction(file, name, globals) {
+  const source = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
+  const body = sliceFunction(source, name);
+  const names = Object.keys(globals);
+  return new Function(...names, `${body}; return ${name};`)(...names.map(n => globals[n]));
+}
+
+// CSS.escape per the CSSOM algorithm, used only when the environment lacks it.
+function cssEscape(value) {
+  const s = String(value);
+  let out = '';
+  const first = s.charCodeAt(0);
+  if (first === 0x2D && s.length === 1) return '\\-';
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0) { out += '\uFFFD'; continue; }
+    if ((c >= 1 && c <= 0x1f) || c === 0x7f ||
+        (i === 0 && c >= 0x30 && c <= 0x39) ||
+        (i === 1 && c >= 0x30 && c <= 0x39 && first === 0x2D)) {
+      out += `\\${c.toString(16)} `;
+      continue;
     }
+    if (c >= 0x80 || c === 0x2d || c === 0x5f ||
+        (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a)) {
+      out += s[i];
+      continue;
+    }
+    out += `\\${s[i]}`;
   }
-  return parts.length > 0 ? `[${parts.join('; ')}] ` : '';
+  return out;
 }
 
-function hasVisibleText(node) {
-  if (!node?.nodeValue || !/[^\n\r\t ]/.test(node.nodeValue)) return false;
-  const parent = node.parentElement;
-  if (!parent) return false;
-  const parentTag = parent.tagName?.toLowerCase();
-  if (parentTag === 'script' || parentTag === 'style' || parentTag === 'noscript') return false;
-  let element = parent;
-  while (element && element !== document.body) {
-    if (element.getAttribute('aria-hidden') === 'true') return false;
-    element = element.parentElement;
-  }
-  const cs = window.getComputedStyle(parent);
-  if (cs.display === 'none' || cs.visibility === 'hidden') return false;
-  return true;
-}
+const cssGlobal = window.CSS?.escape ? window.CSS : { escape: cssEscape };
+
+const hasVisibleText = loadSourceFunction('src/content.js', 'hasVisibleText', { document, window });
+const getARIAContext = loadSourceFunction('src/content.js', 'getARIAContext', { CSS: cssGlobal });
 
 // --- project extractor, unmodified ---
 const extractorSrc = fs.readFileSync(path.join(REPO_ROOT, 'src/jslib/content-extractor.js'), 'utf8');
@@ -232,4 +242,20 @@ export async function loadTurndown() {
     },
     provenance: { turndown: TURNDOWN, gfm: GFM }
   };
+}
+
+// --- recorded provenance for the report ---
+export function sourceInfo() {
+  const files = ['src/jslib/content-extractor.js', 'src/jslib/solomd2html.js', 'src/content.js'];
+  const hashes = {};
+  for (const file of files) {
+    hashes[file] = crypto.createHash('sha256').update(fs.readFileSync(path.join(REPO_ROOT, file))).digest('hex');
+  }
+  let commit = 'unknown';
+  try {
+    commit = execSync('git rev-parse HEAD', { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+  } catch {
+    commit = 'unknown (git unavailable)';
+  }
+  return { commit, hashes, cssEscape: window.CSS?.escape ? 'native' : 'polyfill' };
 }
