@@ -5,9 +5,12 @@
 ### Page Content Extraction
 
 - Fixed generic page extraction returning a single block, such as one comment of a discussion thread, as the whole page: the largest-block guess is removed and all matching content regions (`main`, `[role="main"]`, `article`, common content classes) are kept together
-- Layout tables (nested, single row or column, or `role="presentation"`) are now read as text instead of being flattened into Markdown tables
+- Layout tables (nested, single row or column, or `role="presentation"`) are now read as text instead of being flattened into Markdown tables; unheaded tables of 10 cells or fewer are also read as text, and layout tables with header cells are still rendered as tables
 - Content inside an already-extracted list or table is no longer extracted a second time
-- When no main content region is found, the main-content tool returns the whole page marked `CONTENT SCOPE: whole page (no main content region detected)` instead of an error message
+- Nested lists inside a list item are all kept, including several sibling lists and lists wrapped in another element
+- When no main content region is found, or the matching regions only share the page body, the main-content tool returns the whole page marked `CONTENT SCOPE: whole page (no main content region detected)` instead of an error message
+- Web search summaries still skip pages without a detected main content region
+- Code blocks inside list items are kept as list text rather than separate code blocks
 
 ## [1.29.77] - 2026-11-01
 

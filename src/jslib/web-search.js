@@ -117,7 +117,8 @@ async function fetchPageSummary(searchTabId, url) {
             argument: null
         });
         const raw = response?.error ? '' : (response?.result || '');
-        const content = raw.startsWith('Could not detect') ? '' : raw;
+        // No detected region: whole-page text is mostly navigation, so keep the summary empty.
+        const content = raw.startsWith('CONTENT SCOPE: whole page') ? '' : raw;
         return { url, content };
     } catch (err) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - fetchPageSummary failed for ${url}:`, err.message);

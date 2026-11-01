@@ -149,7 +149,10 @@ function detectMainContent(domClone) {
         const enclosing = el.parentElement?.closest(selector);
         return !enclosing || enclosing === domClone;
       });
-    if (outermost.length > 0) return lowestCommonAncestor(outermost);
+    if (outermost.length > 0) {
+      const region = lowestCommonAncestor(outermost);
+      return region === domClone ? null : region;
+    }
   }
 
   return null;
@@ -183,6 +186,8 @@ function isInsideProcessedElement(node, processedElements, root) {
 /**
  * Distinguishes data tables from layout tables (Readability-style rules), so
  * page layout built from tables is walked as text instead of being flattened.
+ * Limitation: unheaded tables of 10 cells or fewer are read as text, and layout
+ * tables that use header cells are rendered as Markdown tables.
  */
 function isDataTable(table) {
   const role = table.getAttribute('role');
@@ -346,7 +351,7 @@ function extractEnhancedTextStructure(domClone) {
  */
 function extractList(listElement) {
   const items = [];
-  const listItems = listElement.querySelectorAll(':scope > li');
+  const listItems = Array.from(listElement.children).filter(child => child.tagName === 'LI');
 
   listItems.forEach(li => {
     const clone = li.cloneNode(true);
@@ -355,11 +360,15 @@ function extractList(listElement) {
 
     const text = clone.textContent?.trim() || '';
 
-    const nestedList = li.querySelector(':scope > ul, :scope > ol');
+    // Descendants of an extracted list are not walked again, so every list owned
+    // by this item (sibling or wrapped) must be extracted here.
+    const ownedLists = Array.from(li.querySelectorAll('ul, ol'))
+      .filter(nl => nl.parentElement?.closest('li') === li);
+    const nested = ownedLists.flatMap(nl => extractList(nl));
     const item = { text };
 
-    if (nestedList) {
-      item.nested = extractList(nestedList);
+    if (nested.length > 0) {
+      item.nested = nested;
     }
 
     if (text || item.nested) {
