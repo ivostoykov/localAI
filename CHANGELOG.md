@@ -1,6 +1,15 @@
 # Local AI - Changelog
 
-## [1.29.77] - 2026-11-01 - latest
+## [1.29.78] - 2026-11-01 - latest
+
+### Page Content Extraction
+
+- Fixed generic page extraction returning a single block, such as one comment of a discussion thread, as the whole page: the largest-block guess is removed and all matching content regions (`main`, `[role="main"]`, `article`, common content classes) are kept together
+- Layout tables (nested, single row or column, or `role="presentation"`) are now read as text instead of being flattened into Markdown tables
+- Content inside an already-extracted list or table is no longer extracted a second time
+- When no main content region is found, the main-content tool returns the whole page marked `CONTENT SCOPE: whole page (no main content region detected)` instead of an error message
+
+## [1.29.77] - 2026-11-01
 
 ### Markdown Rendering
 
