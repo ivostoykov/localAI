@@ -347,7 +347,9 @@ function extractEnhancedTextStructure(domClone) {
 }
 
 /**
- * Extract list items with hierarchy
+ * Extract list items with hierarchy.
+ * Limitation: structured content inside a list item (code blocks, tables) is
+ * flattened into the item text; the text is retained but not formatted.
  */
 function extractList(listElement) {
   const items = [];

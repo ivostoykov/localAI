@@ -632,7 +632,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Extract only the main content area (article/blog post) without navigation, sidebars, ads, or footer. Use when user asks to summarise, analyse, or understand the main article/post. More focused than get_current_tab_page_content. If main content cannot be detected, use get_enhanced_page_content instead.",
+            "description": "Extract only the main content area (article/blog post) without navigation, sidebars, ads, or footer. Use when user asks to summarise, analyse, or understand the main article/post. More focused than get_current_tab_page_content. If no main content area is detected, the whole page is returned, including navigation and footer, and the result starts with 'CONTENT SCOPE: whole page (no main content region detected)'.",
             "name": "get_main_content",
             "parameters": {
                 "properties": {},

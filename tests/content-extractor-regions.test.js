@@ -118,6 +118,20 @@ describe('generic extraction keeps every content region', () => {
         expect(large).toMatch(/\|\s*cell 0-0\s*\|\s*cell 0-1\s*\|\s*cell 0-2\s*\|/);
     });
 
+    // Known limitation: header cells or a caption mark a table as data, even when it is used for layout.
+    it('renders a two-column layout table with header cells as a Markdown table', async () => {
+        document.body.innerHTML = `
+            <main><table>
+                <tr><th>Sidebar heading marker</th><th>Body heading marker</th></tr>
+                <tr><td>Sidebar text marker</td><td>Body text marker</td></tr>
+            </table></main>`;
+
+        const out = await ce.getEnhancedPageContent();
+
+        expect(out).toMatch(/\|\s*Sidebar heading marker\s*\|\s*Body heading marker\s*\|/);
+        expect(occurrences(out, 'Body text marker')).toBe(1);
+    });
+
     it('main-content tool falls back to the whole page with an explicit scope note', async () => {
         const comments = ['Short comment alpha marker.', `Beta marker. ${longText}`, 'Short comment gamma marker.'];
         document.body.innerHTML = layoutTableThread(comments);

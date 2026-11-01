@@ -10,7 +10,8 @@
 - Nested lists inside a list item are all kept, including several sibling lists and lists wrapped in another element
 - When no main content region is found, or the matching regions only share the page body, the main-content tool returns the whole page marked `CONTENT SCOPE: whole page (no main content region detected)` instead of an error message
 - Web search summaries still skip pages without a detected main content region
-- Code blocks inside list items are kept as list text rather than separate code blocks
+- Structured content inside list items, such as code blocks and tables, is flattened into the item text; the text is retained but not formatted separately
+- The `get_main_content` tool description now states that the whole page, marked with the scope note, is returned when no main content area is detected
 
 ## [1.29.77] - 2026-11-01
 
