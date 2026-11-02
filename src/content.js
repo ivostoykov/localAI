@@ -248,7 +248,7 @@ function removeAllExtensionInjectedElements(domClone) {
   try {
     Array.from(domClone.querySelectorAll('*')).forEach(el => {
       if (
-        el.tagName.includes('-') ||
+        el.tagName === 'LOCAL-AI' ||
         Array.from(el.attributes).some(attr =>
           attr.value.includes('chrome-extension://') ||
           attr.value.includes('moz-extension://')
@@ -266,6 +266,7 @@ async function removeElementsBySelectors() {
   const filterConfig = await loadFilteringConfig();
   const selectors = filterConfig?.selectors ?? null;
   const domClone = document.body.cloneNode(true);
+  removeHiddenContentFromClone(document.body, domClone);
 
   console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Filter config:`, {
     enabled: filterConfig?.enabled,
@@ -296,6 +297,55 @@ async function removeElementsBySelectors() {
   }
   console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - after cleaning`, domClone);
   return domClone;
+}
+
+// Must run synchronously straight after cloneNode(): it pairs live and clone nodes by
+// position, and computed styles are only meaningful on the connected live DOM.
+function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => window.getComputedStyle(el)) {
+  if (!liveRoot || !cloneRoot) {  return;  }
+
+  const hiddenNodes = [];
+  const hiddenContentHosts = [];
+  const visibilityCache = new Map();
+  const isVisibilityHidden = el => {
+    if (!visibilityCache.has(el)) {
+      const visibility = getStyle(el)?.visibility;
+      visibilityCache.set(el, visibility === 'hidden' || visibility === 'collapse');
+    }
+    return visibilityCache.get(el);
+  };
+
+  try {
+    const pairs = [[liveRoot, cloneRoot]];
+    while (pairs.length > 0) {
+      const [liveParent, cloneParent] = pairs.pop();
+      let live = liveParent.firstChild;
+      let copy = cloneParent.firstChild;
+
+      while (live && copy) {
+        if (live.nodeType === Node.ELEMENT_NODE) {
+          const style = getStyle(live);
+          if (style?.display === 'none') {
+            hiddenNodes.push(copy);
+          } else if (style?.contentVisibility === 'hidden') {
+            hiddenContentHosts.push(copy);
+          } else if (live.firstChild) {
+            pairs.push([live, copy]);
+          }
+        } else if (live.nodeType === Node.TEXT_NODE && live.parentElement && isVisibilityHidden(live.parentElement)) {
+          hiddenNodes.push(copy);
+        }
+        live = live.nextSibling;
+        copy = copy.nextSibling;
+      }
+    }
+  } catch (err) {
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error pairing live and cloned nodes for visibility filtering`, err);
+  }
+
+  hiddenNodes.forEach(node => node.remove());
+  hiddenContentHosts.forEach(host => host.replaceChildren());
+  console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Visibility filtering removed ${hiddenNodes.length} node(s) and emptied ${hiddenContentHosts.length} content-visibility:hidden element(s)`);
 }
 
 function getARIAContext(element, rootElement) {
