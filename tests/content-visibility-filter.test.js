@@ -5,6 +5,13 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const contentCode = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf-8');
+const ceCode = fs.readFileSync(path.join(__dirname, '../src/jslib/content-extractor.js'), 'utf-8');
+
+function sliceConst(source, name) {
+    const match = source.match(new RegExp(`^const ${name} = .*;$`, 'm'));
+    if (!match) { throw new Error(`${name} not found in content.js`); }
+    return match[0];
+}
 
 function sliceFunction(source, name) {
     const start = source.search(new RegExp(`^(async )?function ${name}\\(`, 'm'));
@@ -17,14 +24,21 @@ const helperNames = [
     'getDocumentContentFiltered',
     'removeAllExtensionInjectedElements',
     'removeElementsBySelectors',
-    'removeHiddenContentFromClone'
+    'removeHiddenContentFromClone',
+    'hasVisibleText',
+    'getARIAContext'
 ];
 
 let filterConfig;
 const helpers = new Function(
     'loadFilteringConfig',
-    `${helperNames.map(n => sliceFunction(contentCode, n)).join('\n')}\nreturn { ${helperNames.join(', ')} };`
+    `${sliceConst(contentCode, 'HIDDEN_ELEMENT_TEXT_ATTRIBUTES')}\n${helperNames.map(n => sliceFunction(contentCode, n)).join('\n')}\nreturn { ${helperNames.join(', ')} };`
 )(async () => filterConfig);
+
+const extractor = new Function(
+    'getDocumentContentFiltered', 'hasVisibleText', 'getARIAContext',
+    `${ceCode}\nreturn { getEnhancedPageContent };`
+)(helpers.getDocumentContentFiltered, helpers.hasVisibleText, helpers.getARIAContext);
 
 // jsdom has no layout engine and does not resolve content-visibility, so these
 // unit tests drive the pairing logic through declared styles. Real computed-style
@@ -58,6 +72,8 @@ function words(node) {
 describe('removeHiddenContentFromClone', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
+        document.body.removeAttribute('data-style');
+        document.body.removeAttribute('title');
     });
 
     it('removes display:none subtrees including descendants that declare visibility', () => {
@@ -84,6 +100,51 @@ describe('removeHiddenContentFromClone', () => {
             <p>Kept</p>`);
         expect(words(clone)).toEqual(['Kept']);
         expect(clone.querySelector('#cv')).not.toBeNull();
+    });
+
+    it('keeps children of content-visibility:hidden hosts that are display:contents or inline', () => {
+        const clone = filterClone(`
+            <div data-style="display:contents;content-visibility:hidden"><p>ContentsChild</p></div>
+            <span data-style="display:inline;content-visibility:hidden">InlineText <b>InlineChild</b></span>
+            <span id="block" data-style="display:block;content-visibility:hidden">Skipped</span>
+            <span id="atomic" data-style="display:inline-block;content-visibility:hidden">AlsoSkipped</span>`);
+        expect(words(clone)).toEqual(['ContentsChild', 'InlineText', 'InlineChild']);
+        expect(clone.querySelector('#block')).not.toBeNull();
+        expect(clone.querySelector('#atomic')).not.toBeNull();
+    });
+
+    it('strips text-bearing attributes from visibility:hidden elements but not from visible overrides', () => {
+        const clone = filterClone(`
+            <div id="hidden" data-style="visibility:hidden" title="HiddenTitle" aria-label="HiddenLabel">
+                <img id="hidden-img" alt="HiddenAlt" title="HiddenImgTitle" aria-describedby="x" aria-labelledby="y" aria-description="d" src="a.png">
+                <img id="shown-img" data-style="visibility:visible" alt="ShownAlt" title="ShownTitle" src="b.png">
+            </div>`);
+        for (const id of ['hidden', 'hidden-img']) {
+            const el = clone.querySelector(`#${id}`);
+            for (const attr of ['alt', 'title', 'aria-label', 'aria-labelledby', 'aria-describedby', 'aria-description']) {
+                expect(el.hasAttribute(attr), `${id} ${attr}`).toBe(false);
+            }
+        }
+        expect(clone.querySelector('#hidden-img').getAttribute('src')).toBe('a.png');
+        expect(clone.querySelector('#shown-img').getAttribute('alt')).toBe('ShownAlt');
+        expect(clone.querySelector('#shown-img').getAttribute('title')).toBe('ShownTitle');
+    });
+
+    it.each([
+        ['display:none'],
+        ['content-visibility:hidden'],
+        ['visibility:hidden']
+    ])('applies %s set on the root itself without mutating the live root', (rootStyle) => {
+        document.body.innerHTML = '<p>Text</p><img alt="RootAlt" src="a.png">';
+        document.body.setAttribute('data-style', rootStyle);
+        document.body.setAttribute('title', 'RootTitle');
+        const before = document.body.outerHTML;
+        const clone = document.body.cloneNode(true);
+        helpers.removeHiddenContentFromClone(document.body, clone, declaredStyle);
+        expect(words(clone)).toEqual([]);
+        expect(clone.hasAttribute('title')).toBe(rootStyle !== 'visibility:hidden');
+        expect(clone.querySelector('img')?.getAttribute('alt') ?? null).toBeNull();
+        expect(document.body.outerHTML).toBe(before);
     });
 
     it('keeps children of display:contents wrappers and zero-size elements', () => {
@@ -161,6 +222,20 @@ describe('getDocumentContentFiltered', () => {
         const filtered = await helpers.getDocumentContentFiltered();
         expect(words(filtered)).toEqual(['Article', 'WidgetText']);
         expect(document.body.innerHTML).toBe(before);
+    });
+
+    it('keeps hidden image alt text out of enhanced extraction', async () => {
+        document.body.innerHTML = `
+            <main>
+                <h1>Title</h1>
+                <p>Body text</p>
+                <div style="visibility:hidden"><img alt="HiddenAltText" src="hidden.png"></div>
+                <img alt="VisibleAltText" src="shown.png">
+            </main>`;
+        const out = await extractor.getEnhancedPageContent();
+        expect(out).toContain('VisibleAltText');
+        expect(out).not.toContain('HiddenAltText');
+        expect(document.querySelector('img[alt="HiddenAltText"]')).not.toBeNull();
     });
 
     it('still removes hidden content when selector filtering is disabled', async () => {

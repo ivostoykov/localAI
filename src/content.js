@@ -299,6 +299,8 @@ async function removeElementsBySelectors() {
   return domClone;
 }
 
+const HIDDEN_ELEMENT_TEXT_ATTRIBUTES = ['alt', 'title', 'aria-label', 'aria-labelledby', 'aria-describedby', 'aria-description'];
+
 // Must run synchronously straight after cloneNode(): it pairs live and clone nodes by
 // position, and computed styles are only meaningful on the connected live DOM.
 function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => window.getComputedStyle(el)) {
@@ -306,6 +308,7 @@ function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => wind
 
   const hiddenNodes = [];
   const hiddenContentHosts = [];
+  const hiddenAttributeHosts = [];
   const visibilityCache = new Map();
   const isVisibilityHidden = el => {
     if (!visibilityCache.has(el)) {
@@ -314,9 +317,27 @@ function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => wind
     }
     return visibilityCache.get(el);
   };
+  // display:contents and non-atomic inline boxes do not get size containment, so
+  // content-visibility:hidden does not skip their children.
+  const classify = (live, copy) => {
+    const style = getStyle(live);
+    if (style?.display === 'none') {  return 'remove';  }
+    if (isVisibilityHidden(live)) {  hiddenAttributeHosts.push(copy);  }
+    if (style?.contentVisibility === 'hidden' && style.display !== 'contents' && style.display !== 'inline') {
+      return 'empty';
+    }
+    return 'descend';
+  };
 
   try {
-    const pairs = [[liveRoot, cloneRoot]];
+    const rootAction = classify(liveRoot, cloneRoot);
+    const pairs = [];
+    if (rootAction === 'descend') {
+      pairs.push([liveRoot, cloneRoot]);
+    } else {
+      hiddenContentHosts.push(cloneRoot);
+    }
+
     while (pairs.length > 0) {
       const [liveParent, cloneParent] = pairs.pop();
       let live = liveParent.firstChild;
@@ -324,10 +345,10 @@ function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => wind
 
       while (live && copy) {
         if (live.nodeType === Node.ELEMENT_NODE) {
-          const style = getStyle(live);
-          if (style?.display === 'none') {
+          const action = classify(live, copy);
+          if (action === 'remove') {
             hiddenNodes.push(copy);
-          } else if (style?.contentVisibility === 'hidden') {
+          } else if (action === 'empty') {
             hiddenContentHosts.push(copy);
           } else if (live.firstChild) {
             pairs.push([live, copy]);
@@ -343,9 +364,10 @@ function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => wind
     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error pairing live and cloned nodes for visibility filtering`, err);
   }
 
+  hiddenAttributeHosts.forEach(el => HIDDEN_ELEMENT_TEXT_ATTRIBUTES.forEach(attr => el.removeAttribute(attr)));
   hiddenNodes.forEach(node => node.remove());
   hiddenContentHosts.forEach(host => host.replaceChildren());
-  console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Visibility filtering removed ${hiddenNodes.length} node(s) and emptied ${hiddenContentHosts.length} content-visibility:hidden element(s)`);
+  console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Visibility filtering removed ${hiddenNodes.length} node(s), emptied ${hiddenContentHosts.length} element(s) and stripped text attributes from ${hiddenAttributeHosts.length} visibility:hidden element(s)`);
 }
 
 function getARIAContext(element, rootElement) {
