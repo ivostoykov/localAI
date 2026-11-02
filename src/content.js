@@ -248,7 +248,7 @@ function removeAllExtensionInjectedElements(domClone) {
   try {
     Array.from(domClone.querySelectorAll('*')).forEach(el => {
       if (
-        el.tagName.includes('-') ||
+        el.tagName === 'LOCAL-AI' ||
         Array.from(el.attributes).some(attr =>
           attr.value.includes('chrome-extension://') ||
           attr.value.includes('moz-extension://')
@@ -266,6 +266,7 @@ async function removeElementsBySelectors() {
   const filterConfig = await loadFilteringConfig();
   const selectors = filterConfig?.selectors ?? null;
   const domClone = document.body.cloneNode(true);
+  removeHiddenContentFromClone(document.body, domClone);
 
   console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Filter config:`, {
     enabled: filterConfig?.enabled,
@@ -296,6 +297,77 @@ async function removeElementsBySelectors() {
   }
   console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - after cleaning`, domClone);
   return domClone;
+}
+
+const HIDDEN_ELEMENT_TEXT_ATTRIBUTES = ['alt', 'title', 'aria-label', 'aria-labelledby', 'aria-describedby', 'aria-description'];
+
+// Must run synchronously straight after cloneNode(): it pairs live and clone nodes by
+// position, and computed styles are only meaningful on the connected live DOM.
+function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => window.getComputedStyle(el)) {
+  if (!liveRoot || !cloneRoot) {  return;  }
+
+  const hiddenNodes = [];
+  const hiddenContentHosts = [];
+  const hiddenAttributeHosts = [];
+  const visibilityCache = new Map();
+  const isVisibilityHidden = el => {
+    if (!visibilityCache.has(el)) {
+      const visibility = getStyle(el)?.visibility;
+      visibilityCache.set(el, visibility === 'hidden' || visibility === 'collapse');
+    }
+    return visibilityCache.get(el);
+  };
+  // display:contents and non-atomic inline boxes do not get size containment, so
+  // content-visibility:hidden does not skip their children.
+  const classify = (live, copy) => {
+    const style = getStyle(live);
+    if (style?.display === 'none') {  return 'remove';  }
+    if (isVisibilityHidden(live)) {  hiddenAttributeHosts.push(copy);  }
+    if (style?.contentVisibility === 'hidden' && style.display !== 'contents' && style.display !== 'inline') {
+      return 'empty';
+    }
+    return 'descend';
+  };
+
+  try {
+    const rootAction = classify(liveRoot, cloneRoot);
+    const pairs = [];
+    if (rootAction === 'descend') {
+      pairs.push([liveRoot, cloneRoot]);
+    } else {
+      hiddenContentHosts.push(cloneRoot);
+    }
+
+    while (pairs.length > 0) {
+      const [liveParent, cloneParent] = pairs.pop();
+      let live = liveParent.firstChild;
+      let copy = cloneParent.firstChild;
+
+      while (live && copy) {
+        if (live.nodeType === Node.ELEMENT_NODE) {
+          const action = classify(live, copy);
+          if (action === 'remove') {
+            hiddenNodes.push(copy);
+          } else if (action === 'empty') {
+            hiddenContentHosts.push(copy);
+          } else if (live.firstChild) {
+            pairs.push([live, copy]);
+          }
+        } else if (live.nodeType === Node.TEXT_NODE && live.parentElement && isVisibilityHidden(live.parentElement)) {
+          hiddenNodes.push(copy);
+        }
+        live = live.nextSibling;
+        copy = copy.nextSibling;
+      }
+    }
+  } catch (err) {
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error pairing live and cloned nodes for visibility filtering`, err);
+  }
+
+  hiddenAttributeHosts.forEach(el => HIDDEN_ELEMENT_TEXT_ATTRIBUTES.forEach(attr => el.removeAttribute(attr)));
+  hiddenNodes.forEach(node => node.remove());
+  hiddenContentHosts.forEach(host => host.replaceChildren());
+  console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Visibility filtering removed ${hiddenNodes.length} node(s), emptied ${hiddenContentHosts.length} element(s) and stripped text attributes from ${hiddenAttributeHosts.length} visibility:hidden element(s)`);
 }
 
 function getARIAContext(element, rootElement) {
