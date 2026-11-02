@@ -177,9 +177,9 @@ describe('web-search.js', () => {
             vi.spyOn(chrome.tabs, 'sendMessage');
         });
 
-        it('returns empty content when getMainContentOnly returns its diagnostic string', async () => {
+        it('returns empty content when getMainContentOnly found no main content region', async () => {
             chrome.tabs.sendMessage.mockResolvedValue({
-                result: 'Could not detect main content area. The page may not have semantic HTML structure. Use get_enhanced_page_content to get all content.'
+                result: 'CONTENT SCOPE: whole page (no main content region detected)\n=== PAGE METADATA ===\nNavigation and footer text'
             });
             const { url, content } = await fetchPageSummary(TAB_ID, 'https://example.com');
             expect(url).toBe('https://example.com');

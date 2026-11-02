@@ -425,17 +425,36 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
 
-        span.innerHTML = escaped
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/&lt;(https?:\/\/[^&]+?)&gt;/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-            .replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-            .replace(/\[(https?:\/\/[^\]]+?)\]/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
-            .replace(/(?<!\])\b(https?:\/\/[^\s&]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+        // HTML generated below is held in placeholders until the end, so later
+        // rules cannot rewrite it. In particular the bare-URL rule used to
+        // match the href of an anchor built moments earlier.
+        const held = [];
+        const token = `\u0000${Date.now().toString(36)}${Math.random().toString(36).slice(2)}\u0000`;
+        const hold = (html) => `${token}${held.push(html) - 1}${token}`;
+        const anchor = (href, label) =>
+            `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        const emphasise = (text) => text
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/__(.*?)__/g, '<strong>$1</strong>')
             .replace(/(^|\s)\*([^*]+)\*(?=\s|$)/g, '$1<em>$2</em>')
             .replace(/(^|\s)_([^_]+)_(?=\s|$)/g, '$1<em>$2</em>')
             .replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+        let text = escaped.replace(/`([^`]+)`/g, (_, code) => hold(`<code>${code}</code>`));
+
+        text = text
+            .replace(/&lt;(https?:\/\/[^&]+?)&gt;/g, (_, url) => hold(anchor(url, url)))
+            .replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, label, url) => hold(anchor(url, emphasise(label))))
+            .replace(/\[(https?:\/\/[^\]]+?)\]/g, (_, url) => hold(anchor(url, url)))
+            .replace(/(?<!\])\b(https?:\/\/[^\s&\u0000]+)/g, (url) => hold(anchor(url, url)));
+
+        text = emphasise(text);
+
+        while (text.includes(token)) {
+            text = text.replace(new RegExp(`${token}(\\d+)${token}`, 'g'), (_, index) => held[Number(index)]);
+        }
+
+        span.innerHTML = text;
         return span;
     }
 

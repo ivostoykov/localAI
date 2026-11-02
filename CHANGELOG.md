@@ -1,6 +1,34 @@
 # Local AI - Changelog
 
-## [1.29.76] - 2026-10-24 - latest
+## [1.29.79] - 2026-11-02 - latest
+
+### Page Content Extraction
+
+- Filtered hidden page content using live computed styles while preserving visible descendants, visible content in `display: contents` wrappers, and zero-size elements
+- Preserved ordinary custom elements and their light-DOM text during extension-element cleanup
+
+## [1.29.78] - 2026-11-01
+
+### Page Content Extraction
+
+- Fixed generic page extraction returning a single block, such as one comment of a discussion thread, as the whole page: the largest-block guess is removed and all matching content regions (`main`, `[role="main"]`, `article`, common content classes) are kept together
+- Layout tables (nested, single row or column, or `role="presentation"`) are now read as text instead of being flattened into Markdown tables; unheaded tables of 10 cells or fewer are also read as text, and layout tables with header cells are still rendered as tables
+- Content inside an already-extracted list or table is no longer extracted a second time
+- Nested lists inside a list item are all kept, including several sibling lists and lists wrapped in another element
+- When no main content region is found, or the matching regions only share the page body, the main-content tool returns the whole page marked `CONTENT SCOPE: whole page (no main content region detected)` instead of an error message
+- Web search summaries still skip pages without a detected main content region
+- Structured content inside list items, such as code blocks and tables, is flattened into the item text; the text is retained but not formatted separately
+- The `get_main_content` tool description now states that the whole page, marked with the scope note, is returned when no main content area is detected
+
+## [1.29.77] - 2026-11-01
+
+### Markdown Rendering
+
+- Fixed absolute Markdown links and bare URLs being corrupted by later inline formatting
+- Preserved literal URLs and emphasis markers inside inline code, and bold and italic text inside link labels
+- Kept bare URLs separate from immediately adjacent inline code and labelled links
+
+## [1.29.76] - 2026-10-24
 
 ### URL Browsing
 
