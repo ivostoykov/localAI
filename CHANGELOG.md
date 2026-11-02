@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.29.78] - 2026-11-01 - latest
+## [1.29.79] - 2026-11-02 - latest
+
+### Page Content Extraction
+
+- Filtered hidden page content using live computed styles while preserving visible descendants, visible content in `display: contents` wrappers, and zero-size elements
+- Preserved ordinary custom elements and their light-DOM text during extension-element cleanup
+
+## [1.29.78] - 2026-11-01
 
 ### Page Content Extraction
 
