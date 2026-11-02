@@ -1,13 +1,6 @@
 # Local AI - Changelog
 
-## [1.29.79] - 2026-11-02 - latest
-
-### Page Content Extraction
-
-- Filtered hidden page content using live computed styles while preserving visible descendants, visible content in `display: contents` wrappers, and zero-size elements
-- Preserved ordinary custom elements and their light-DOM text during extension-element cleanup
-
-## [1.29.78] - 2026-11-01
+## [1.29.80] - 2026-11-02 - latest
 
 ### Page Content Extraction
 
@@ -19,8 +12,8 @@
 - Web search summaries still skip pages without a detected main content region
 - Structured content inside list items, such as code blocks and tables, is flattened into the item text; the text is retained but not formatted separately
 - The `get_main_content` tool description now states that the whole page, marked with the scope note, is returned when no main content area is detected
-
-## [1.29.77] - 2026-11-01
+- Filtered hidden page content using live computed styles while preserving visible descendants, visible content in `display: contents` wrappers, and zero-size elements
+- Preserved ordinary custom elements and their light-DOM text during extension-element cleanup
 
 ### Markdown Rendering
 
