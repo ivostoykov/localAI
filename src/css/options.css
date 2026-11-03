@@ -77,14 +77,24 @@ h1#pageTitle {
     gap: .5rem;
 }
 
+#laiOptionsForm {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .content-section {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
 .content-section .container {
+  flex: 1;
+  min-height: 0;
   margin: 1rem;
   overflow-y: auto;
 }
