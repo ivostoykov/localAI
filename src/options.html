@@ -17,7 +17,7 @@
       <ul class="menu">
         <li class="menu-item" data-section="general">General Settings</li>
         <li class="menu-item" data-section="filtering">Filtering</li>
-        <li class="menu-item" data-section="prompts">User Commands</li>
+        <li class="menu-item" data-section="prompts">User Prompts</li>
         <li class="menu-item" data-section="tools">Functions</li>
       </ul>
       <div class="keyboard-hints">
@@ -37,6 +37,8 @@
         <div id="generalRibbon" class="ribbon">
           <button type="submit" id="btnSaveForm">Save</button>
           <button type="button" id="cancelButton">Close</button>
+          <button type="button" id="exportAllBtn">Export All</button>
+          <button type="button" id="importAllBtn">Import All</button>
           <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#general-settings" target="_blank">
             <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
           </a>
@@ -308,10 +310,10 @@
         <section id="prompts" class="content-section invisible">
           <div id="promptRibbon" class="ribbon">
             <button id="newPromptBtn">New</button>
-            <button id="exportPromptBtn">Export</button>
-            <button id="importPromptBtn">Import</button>
+            <button id="exportPromptBtn">Export Prompts</button>
+            <button id="importPromptBtn">Import Prompts</button>
             <button id="deletePromptBtn">Delete All</button>
-            <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#user-commands" target="_blank">
+            <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#user-prompts" target="_blank">
               <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">
             </a>
           </div>
@@ -324,8 +326,8 @@
         <section id="tools" class="content-section invisible">
           <div id="toolsRibbon" class="ribbon">
             <button id="newFuncBtn">New</button>
-            <button id="exportFuncBtn">Export</button>
-            <button id="importFuncBtn">Import</button>
+            <button id="exportFuncBtn">Export Functions</button>
+            <button id="importFuncBtn">Import Functions</button>
             <button id="deleteFuncBtn">Delete All</button>
             <a href="https://github.com/ivostoykov/localAI/blob/main/documentation.md#functions-tools" target="_blank">
               <img src="img/help.svg" class="model-icon-button" data-action="help" alt="Help" title="Help">

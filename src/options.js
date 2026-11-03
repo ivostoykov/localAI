@@ -270,6 +270,9 @@ function attachListeners(e) {
     document.querySelectorAll('#importPromptBtn, #importFuncBtn')?.forEach(btn => btn.addEventListener('click', e => { e.preventDefault(); importUserCommand(e); }));
     document.querySelectorAll('#deletePromptBtn, #deleteFuncBtn')?.forEach(btn => btn.addEventListener('click', async e => { e.preventDefault(); await deleteStorageCollection(e); }));
 
+    document.querySelector('#exportAllBtn')?.addEventListener('click', async e => { e.preventDefault(); await exportAllAsFile(); });
+    document.querySelector('#importAllBtn')?.addEventListener('click', e => { e.preventDefault(); importUserCommand(e); });
+
     document.querySelector('#newFuncBtn')?.addEventListener('click', async e => { e.preventDefault(); await createNewToolFunc(e); });
     document.getElementById("dlgBtnOK").addEventListener('click', e => { e.preventDefault(); closeDialog(e); });
     document.getElementById("dlgBtnCancel").addEventListener('click', e => { e.preventDefault(); closeDialog(e); });
@@ -814,12 +817,140 @@ async function exportAsFile(e) {
 
     const obj = await chrome.storage.local.get([storageKey]);
     const json = obj[storageKey] || [];
-    var blob = new Blob([JSON.stringify(json, null, 4)], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var link = document.createElement('a');
+    downloadJson(json, fileName);
+}
+
+const FULL_EXPORT_COLLECTIONS = ['laiOptions', 'aiUserCommands', 'aiTools'];
+const FULL_EXPORT_LABELS = { laiOptions: 'settings', aiUserCommands: 'user prompts', aiTools: 'functions' };
+
+function exportDateSuffix(date = new Date()) {
+    return date.toISOString().split('T')[0].replace(/\D/g, '');
+}
+
+function isPlainObject(value) {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function downloadJson(json, fileName) {
+    const blob = new Blob([JSON.stringify(json, null, 4)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
     link.href = url;
     link.download = `${fileName}.json`;
     link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function buildFullExport(stored = {}, version = '', now = new Date()) {
+    const data = {};
+    FULL_EXPORT_COLLECTIONS.forEach(key => {
+        if (Object.prototype.hasOwnProperty.call(stored, key)) { data[key] = stored[key]; }
+    });
+
+    return {
+        app: 'localAI',
+        type: 'full-export',
+        formatVersion: 1,
+        extensionVersion: version,
+        exportedAt: now.toISOString(),
+        data
+    };
+}
+
+function validateFullImport(obj) {
+    if (!isPlainObject(obj)) { return { ok: false, error: 'the file does not contain a JSON object' }; }
+    if (obj.app !== 'localAI') { return { ok: false, error: 'the file is not a localAI export' }; }
+    if (obj.type !== 'full-export') { return { ok: false, error: 'the file is not a full export' }; }
+    if (obj.formatVersion !== 1) { return { ok: false, error: `unsupported export format version (${obj.formatVersion})` }; }
+    if (!isPlainObject(obj.data)) { return { ok: false, error: 'the export has no data object' }; }
+
+    const keys = FULL_EXPORT_COLLECTIONS.filter(key => Object.prototype.hasOwnProperty.call(obj.data, key));
+    if (keys.length < 1) { return { ok: false, error: 'the export contains none of the supported collections' }; }
+    if (keys.includes('laiOptions') && !isPlainObject(obj.data.laiOptions)) { return { ok: false, error: 'the exported settings are not an object' }; }
+    if (keys.includes('aiUserCommands') && !Array.isArray(obj.data.aiUserCommands)) { return { ok: false, error: 'the exported user prompts are not a list' }; }
+    if (keys.includes('aiTools') && !Array.isArray(obj.data.aiTools)) { return { ok: false, error: 'the exported functions are not a list' }; }
+
+    return { ok: true, keys };
+}
+
+function describeCollections(keys = []) {
+    const labels = keys.map(key => FULL_EXPORT_LABELS[key]).filter(Boolean);
+    if (labels.length < 2) { return labels[0] || ''; }
+    return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
+async function exportAllAsFile() {
+    try {
+        const syncData = await chrome.storage.sync.get(['laiOptions']);
+        const localData = await chrome.storage.local.get(['aiUserCommands', 'aiTools']);
+        const envelope = buildFullExport({ ...syncData, ...localData }, manifest?.version || '', new Date());
+        downloadJson(envelope, `localAI_full_export_${exportDateSuffix()}`);
+    } catch (err) {
+        console.error(`>>> [${getLineNumber()}] - ${err.message}`, err);
+        showMessage(`Export failed - ${err?.message}`, 'error');
+    }
+}
+
+function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => (reader.error ? reject(reader.error) : resolve(reader.result));
+        reader.onerror = () => reject(reader.error || new Error('the file could not be read'));
+        reader.readAsText(file);
+    });
+}
+
+async function writeFullImport(data, keys = []) {
+    if (keys.includes('laiOptions')) { await chrome.storage.sync.set({ laiOptions: data.laiOptions }); }
+
+    const localData = {};
+    ['aiUserCommands', 'aiTools'].forEach(key => {
+        if (keys.includes(key)) { localData[key] = data[key]; }
+    });
+    if (Object.keys(localData).length > 0) { await chrome.storage.local.set(localData); }
+}
+
+async function refreshAfterFullImport(keys = [], refreshers = {}) {
+    const callbacks = { loadSettings, getAiUserCommands, getTools, ...refreshers };
+    if (keys.includes('laiOptions')) { await callbacks.loadSettings(); }
+    if (keys.includes('aiUserCommands')) { await callbacks.getAiUserCommands(); }
+    if (keys.includes('aiTools')) { await callbacks.getTools(); }
+}
+
+async function importAllFromFile(file, refreshers) {
+    const fileName = file?.name || 'the selected file';
+    showSpinner();
+    try {
+        let parsed;
+        try {
+            parsed = JSON.parse(await readFileAsText(file));
+        } catch (err) {
+            console.error(`>>> [${getLineNumber()}] - ${err.message}`, err);
+            showMessage(`${fileName} could not be read: ${err?.message}. Nothing was imported.`, 'error');
+            return;
+        }
+
+        const validation = validateFullImport(parsed);
+        if (!validation.ok) {
+            console.error(`>>> [${getLineNumber()}] - Rejected full import: ${validation.error}`, parsed);
+            showMessage(`${fileName} was rejected: ${validation.error}. Nothing was imported.`, 'error');
+            return;
+        }
+
+        if (!window.confirm(`Replace ${describeCollections(validation.keys)} with the contents of ${fileName}?`)) {
+            showMessage('Import cancelled. Nothing was changed.', 'info');
+            return;
+        }
+
+        await writeFullImport(parsed.data, validation.keys);
+        await refreshAfterFullImport(validation.keys, refreshers);
+        showMessage(`${fileName} imported successfully.`, 'success');
+    } catch (err) {
+        console.error(`>>> [${getLineNumber()}] - ${err.message}`, err);
+        showMessage(`Import failed - ${err?.message}`, 'error');
+    } finally {
+        hideSpinner();
+    }
 }
 
 function importUserCommand(e) {
@@ -828,7 +959,7 @@ function importUserCommand(e) {
     fileInput.click();
 }
 
-function importFromFile(e) {
+async function importFromFile(e) {
     let storageKey = e.target.dataset.key || 'unknown';
     let callback;
     if (storageKey === 'unknown') {
@@ -844,6 +975,9 @@ function importFromFile(e) {
     }
 
     switch (storageKey) {
+        case 'importAllBtn':
+            await importAllFromFile(file);
+            return;
         case 'importSessions':
             storageKey = 'aiSessions';
             break;
