@@ -1,6 +1,16 @@
 # Local AI - Changelog
 
-## [1.29.80] - 2026-11-03 - latest
+## [1.29.81] - 2026-11-03 - latest
+
+### Options
+
+- Added `Export All` and `Import All` to the main Options ribbon: settings, user prompts and functions are exported together in one versioned JSON file (chat sessions and caches are not included)
+- `Import All` validates the whole file before writing anything, asks for confirmation, then replaces only the collections present in the file and refreshes the page
+- Per-section buttons are relabelled `Export Prompts` / `Import Prompts` and `Export Functions` / `Import Functions`; their behaviour and file format are unchanged
+- The `User Commands` menu item is renamed `User Prompts`
+- The same file can now be selected again after a cancelled or completed import
+
+## [1.29.80] - 2026-11-03
 
 ### Page Content Extraction
 

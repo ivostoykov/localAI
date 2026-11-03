@@ -284,6 +284,10 @@ This will send the content of the page from current active tab to the AI with a 
 
 <img src="media/default_temp.png" width="250" alt="Temperature" title="Temperature"/> Use temperature slider to set default temperature, adjustable anytime from the [Ribbon](#ribbon). The short description is: the lower the value, the stricter the response; conversely, a higher value allows for a more relaxed and creative outcome. If you're interested in learning more about temperature, here is a [helpful article](https://www.hopsworks.ai/dictionary/llm-temperature), or you can simply Google it.
 
+### Export All / Import All
+
+The `Export All` and `Import All` buttons in the General Settings ribbon move your settings, user prompts and functions together in one file. Chat sessions, caches and other transient data are not included. Importing first validates the whole file, then asks for confirmation, and finally replaces only the collections present in it; anything absent from the file stays as it is. A file that fails validation, or a cancelled confirmation, changes nothing. The per-section buttons are labelled `Export Prompts` / `Import Prompts` and `Export Functions` / `Import Functions`; they continue to handle only their own collection.
+
 ### Allow navigation
 
 Off by default. The built-in `browse_url` tool lets the model open a link in a separate, inactive background tab and read its content; your current tab, its form state and the chat are not changed. While this option is off, a small Local AI pop-up window asks before every page the model wants to open (the chat status bar points to it). The question is asked in an extension window rather than in the chat panel, because the visited page can read and change the panel's content:
@@ -332,7 +336,7 @@ If a valid URL is provided, documents dropped into the panel will be converted b
 > ![Note]
 > This is experimental
 
-Similar to [User Commands](#user-commands) container for [tool & functions](https://platform.openai.com/docs/guides/agents#tools). Here are all the tools your system has ready to serve.
+Similar to [User Prompts](#user-prompts) container for [tool & functions](https://platform.openai.com/docs/guides/agents#tools). Here are all the tools your system has ready to serve.
 
 As defined in OpenAI's specification, tools are defined functionalities the model can access to perform specific tasks beyond its typical capabilities. They act as interfaces to external systems or functions, enabling the model to execute commands, retrieve data, or perform calculations directly.
 
@@ -373,7 +377,7 @@ There is one built-in fool function related wtih the active tab, allowing to get
 
 For those seeking ideas on implementing the functions, I've created a small project available [here](https://github.com/ivostoykov/llmTools). It can be used "as is" or modified to suit specific needs. For any suggestions, issues, or assistance related to this project, please use the project's own [issue tracking system](https://github.com/ivostoykov/llmTools/issues).
 
-## User Commands
+## User Prompts
 
 ![User Commands](media/user_cmd.png)
 
