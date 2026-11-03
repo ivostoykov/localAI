@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.29.80] - 2026-11-02 - latest
+## [1.29.80] - 2026-11-03 - latest
 
 ### Page Content Extraction
 
@@ -20,6 +20,10 @@
 - Fixed absolute Markdown links and bare URLs being corrupted by later inline formatting
 - Preserved literal URLs and emphasis markers inside inline code, and bold and italic text inside link labels
 - Kept bare URLs separate from immediately adjacent inline code and labelled links
+
+### Options
+
+- All four Options sections (General Settings, Filtering, User Commands and Functions) now scroll within the viewport when their content is taller than the window, with the section ribbons kept in place
 
 ## [1.29.76] - 2026-10-24
 
