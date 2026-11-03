@@ -1,13 +1,6 @@
 # Local AI - Changelog
 
-## [1.29.79] - 2026-11-02 - latest
-
-### Page Content Extraction
-
-- Filtered hidden page content using live computed styles while preserving visible descendants, visible content in `display: contents` wrappers, and zero-size elements
-- Preserved ordinary custom elements and their light-DOM text during extension-element cleanup
-
-## [1.29.78] - 2026-11-01
+## [1.29.80] - 2026-11-03 - latest
 
 ### Page Content Extraction
 
@@ -19,14 +12,18 @@
 - Web search summaries still skip pages without a detected main content region
 - Structured content inside list items, such as code blocks and tables, is flattened into the item text; the text is retained but not formatted separately
 - The `get_main_content` tool description now states that the whole page, marked with the scope note, is returned when no main content area is detected
-
-## [1.29.77] - 2026-11-01
+- Filtered hidden page content using live computed styles while preserving visible descendants, visible content in `display: contents` wrappers, and zero-size elements
+- Preserved ordinary custom elements and their light-DOM text during extension-element cleanup
 
 ### Markdown Rendering
 
 - Fixed absolute Markdown links and bare URLs being corrupted by later inline formatting
 - Preserved literal URLs and emphasis markers inside inline code, and bold and italic text inside link labels
 - Kept bare URLs separate from immediately adjacent inline code and labelled links
+
+### Options
+
+- All four Options sections (General Settings, Filtering, User Commands and Functions) now scroll within the viewport when their content is taller than the window, with the section ribbons kept in place
 
 ## [1.29.76] - 2026-10-24
 
