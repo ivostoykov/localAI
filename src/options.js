@@ -955,6 +955,7 @@ async function importAllFromFile(file, refreshers) {
 
 function importUserCommand(e) {
     const fileInput = document.getElementById('fileInput');;
+    fileInput.value = '';
     fileInput.dataset.key = e.target.id || 'unknown';
     fileInput.click();
 }
