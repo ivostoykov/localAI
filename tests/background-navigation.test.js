@@ -463,6 +463,7 @@ describe('background.js navigation lifecycle', () => {
             deps.saveSession.mockImplementation(async () => {
                 writes++;
                 if (writes === 2) { await gate.promise; }
+                return true;
             });
             const fetchDataAction = loadFetchDataAction(deps);
 
@@ -620,5 +621,138 @@ describe('storeImageHandler session identity (#29)', () => {
 
         expect(result).toEqual({ status: 'error', message: deps.missingSessionMessage });
         expect(deps.sessionRepository.storeImage).not.toHaveBeenCalled();
+    });
+});
+
+describe('concurrent first prompts with real session storage (#29)', () => {
+    const sessionsCode = fs.readFileSync(path.join(__dirname, '../src/jslib/sessions.js'), 'utf-8');
+    const sessionsExports = 'getOrCreateActiveSessionId, getActiveSessionId, getSessionForRequest, saveSession, queueSessionMutation, getAllSessions, setAllSessions';
+    // Models chrome.storage.local: values are structured clones and every call resolves on a later task,
+    // so concurrent read-modify-write sequences interleave as they do in the extension.
+    const nextTask = () => new Promise(resolve => setTimeout(resolve, 0));
+    const localStore = new Map();
+    const latentStorageChrome = {
+        ...global.chrome,
+        storage: {
+            ...global.chrome.storage,
+            local: {
+                get: async (keys) => {
+                    await nextTask();
+                    const wanted = keys == null ? [...localStore.keys()] : [].concat(keys);
+                    return Object.fromEntries(wanted.filter(k => localStore.has(k)).map(k => [k, structuredClone(localStore.get(k))]));
+                },
+                set: async (items) => {
+                    await nextTask();
+                    for (const [k, v] of Object.entries(items)) { localStore.set(k, structuredClone(v)); }
+                },
+                remove: async (keys) => {
+                    await nextTask();
+                    [].concat(keys).forEach(k => localStore.delete(k));
+                }
+            }
+        }
+    };
+    const loadSessionsRealm = () => new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands',
+        `${sessionsCode}; return { ${sessionsExports} };`
+    )(latentStorageChrome, global.manifest, global.getLineNumber, global.allSessionsStorageKey, global.activeSessionIdKey, global.storageUserCommandsKey, global.storageOptionKey, global.activePageStorageKey, []);
+    const titleCode = backgroundCode.match(/async function generateAndUpdateSessionTitle\([\s\S]*?\n}\n/)[0];
+    const loadTitleUpdater = new Function('deps', `with (deps) { ${titleCode}; return generateAndUpdateSessionTitle; }`);
+
+    beforeEach(() => {
+        localStore.clear();
+    });
+
+    it('serialises concurrent creation and saving of two sessions in the background realm', async () => {
+        const background = loadSessionsRealm();
+
+        const [created1, created2] = await Promise.all([
+            background.getSessionForRequest('session-A'),
+            background.getSessionForRequest('session-B')
+        ]);
+        created1.messages.push({ role: 'user', content: 'A1' });
+        created2.messages.push({ role: 'user', content: 'B1' });
+        const saved = await Promise.all([background.saveSession(created1), background.saveSession(created2)]);
+
+        expect(saved).toEqual([true, true]);
+        const stored = await background.getAllSessions();
+        expect(stored.map(s => [s.id, s.messages.map(m => m.content)]).sort()).toEqual([['session-A', ['A1']], ['session-B', ['B1']]]);
+    });
+
+    it('keeps an empty session created by another tab when saving, and appends a missing record', async () => {
+        const background = loadSessionsRealm();
+        await background.setAllSessions([{ id: 'empty-B', title: 'B', messages: [] }]);
+
+        const saved = await background.saveSession({ id: 'session-A', title: 'A', messages: [{ role: 'user', content: 'A1' }] });
+
+        expect(saved).toBe(true);
+        expect((await background.getAllSessions()).map(s => s.id)).toEqual(['empty-B', 'session-A']);
+    });
+
+    it('preserves both sessions and their histories when two tabs send their first prompts at once', async () => {
+        const background = loadSessionsRealm();
+        const tabA = loadSessionsRealm();
+        const tabB = loadSessionsRealm();
+        const sessionIdA = await tabA.getOrCreateActiveSessionId();
+        const sessionIdB = await tabB.getOrCreateActiveSessionId();
+
+        const { deps } = createDeps([]);
+        deps.getSessionForRequest = background.getSessionForRequest;
+        deps.saveSession = background.saveSession;
+        deps.generateAndUpdateSessionTitle = loadTitleUpdater({
+            generateSessionTitle: async (text) => `Title ${text}`,
+            queueSessionMutation: background.queueSessionMutation,
+            getAllSessions: background.getAllSessions,
+            setAllSessions: background.setAllSessions
+        });
+        deps.consumeStreamResponse.mockImplementation(async () => ({
+            responseText: '',
+            body: { message: { role: 'assistant', content: `answer ${deps.consumeStreamResponse.mock.calls.length}` } }
+        }));
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const results = await Promise.all([
+            fetchDataAction({ ...request(), sessionId: sessionIdA, data: { userInput: 'LinkedIn question' } }, { tab: { id: 1, url: 'https://www.linkedin.com/jobs/' } }),
+            fetchDataAction({ ...request(), sessionId: sessionIdB, data: { userInput: 'HN question' } }, { tab: { id: 2, url: 'https://news.ycombinator.com/' } })
+        ]);
+
+        expect(results.map(r => r.status)).toEqual(['success', 'success']);
+        const stored = await background.getAllSessions();
+        const byId = Object.fromEntries(stored.map(s => [s.id, s]));
+        expect(Object.keys(byId).sort()).toEqual([sessionIdA, sessionIdB].sort());
+        expect(byId[sessionIdA].messages.map(m => m.content)).toEqual(['LinkedIn question', expect.stringMatching(/^answer /)]);
+        expect(byId[sessionIdB].messages.map(m => m.content)).toEqual(['HN question', expect.stringMatching(/^answer /)]);
+        expect(byId[sessionIdA].title).toBe('Title LinkedIn question');
+        expect(byId[sessionIdB].title).toBe('Title HN question');
+        expect(await background.getActiveSessionId()).toBeNull();
+    });
+
+    it('refuses to continue when the session cannot be persisted', async () => {
+        const background = loadSessionsRealm();
+        const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
+        deps.getSessionForRequest = background.getSessionForRequest;
+        deps.saveSession = vi.fn(async () => false);
+        deps.sessionSaveFailedMessage = 'Failed to save the chat session, so the request was stopped. Please try again.';
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const result = await fetchDataAction({ ...request(), sessionId: 'session-X' }, sender);
+
+        expect(result).toEqual({ status: 'error', message: deps.sessionSaveFailedMessage });
+        expect(deps.fetch).not.toHaveBeenCalled();
+        expect(deps.backgroundMemory.storeTurnWithEmbeddings).not.toHaveBeenCalled();
+    });
+
+    it('stops before storing the turn when the final save fails', async () => {
+        const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
+        deps.sessionSaveFailedMessage = 'Failed to save the chat session, so the request was stopped. Please try again.';
+        let writes = 0;
+        deps.saveSession = vi.fn(async () => ++writes === 1);
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const result = await fetchDataAction(request(), sender);
+
+        expect(result).toEqual({ status: 'error', message: deps.sessionSaveFailedMessage });
+        expect(deps.backgroundMemory.storeTurnWithEmbeddings).not.toHaveBeenCalled();
+        expect(deps.handleStreamEnd).not.toHaveBeenCalled();
+        expect(deps.generateAndUpdateSessionTitle).not.toHaveBeenCalled();
     });
 });

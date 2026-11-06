@@ -208,6 +208,30 @@ describe('background-memory.js', () => {
                 expect(textB).not.toContain('LINKEDIN');
             });
 
+            it('keeps the last page stored for a session restored in two tabs without leaking it either way', async () => {
+                const hackerNewsPage = 'HN THREAD: Show HN discussion about compilers. ' + 'Comment '.repeat(20);
+                const textOf = (context) => context.map(msg => msg.content).join('\n');
+                await backgroundMemory.buildOptimisedContext('shared-session', 'Summarise @{{page}}', 1, null, linkedInPage, [], 'hash-a', false, 11);
+                await backgroundMemory.buildOptimisedContext('shared-session', 'Summarise @{{page}}', 2, null, hackerNewsPage, [], 'hash-b', false, 22);
+
+                const tabA = textOf(await backgroundMemory.buildOptimisedContext('shared-session', 'Anything else?', 3, null, null, [], null, false, 11));
+                const tabB = textOf(await backgroundMemory.buildOptimisedContext('shared-session', 'Anything else?', 3, null, null, [], null, false, 22));
+
+                expect(tabA).not.toContain('HN THREAD');
+                expect(tabA).not.toContain('SecretCo');
+                expect(tabB).toContain('HN THREAD');
+                expect(tabB).not.toContain('SecretCo');
+
+                await backgroundMemory.buildOptimisedContext('shared-session', 'Summarise @{{page}}', 4, null, linkedInPage, [], 'hash-a', false, 11);
+                const tabBAfter = textOf(await backgroundMemory.buildOptimisedContext('shared-session', 'Explain @{{page}}', 5, null, null, [], null, false, 22));
+                const tabAAfter = textOf(await backgroundMemory.buildOptimisedContext('shared-session', 'Anything else?', 5, null, null, [], null, false, 11));
+
+                expect(tabBAfter).not.toContain('SecretCo');
+                expect(tabBAfter).not.toContain('HN THREAD');
+                expect(tabAAfter).toContain('SecretCo');
+                expect(tabAAfter).not.toContain('HN THREAD');
+            });
+
             it('refuses to store context without an explicit session id', async () => {
                 global.getActiveSessionId = vi.fn(async () => 'global-session');
 

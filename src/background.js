@@ -998,7 +998,11 @@ async function fetchDataAction(request, sender) {
             ...getVisibleSessionMessages(activeSession.messages),
             { role: 'user', content: userInput }
         ];
-        await saveSession(activeSession);
+        if (!await saveSession(activeSession)) {
+            await showUIMessage(sessionSaveFailedMessage, 'error', sender?.tab);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to save session ${activeSession.id}; request not sent.`);
+            return { "status": "error", "message": sessionSaveFailedMessage };
+        }
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - updated request`, request.data);
 
         if (promptTools.length > 0 && await modelCanUseTools(model, sender?.tab)) {
@@ -1078,7 +1082,7 @@ async function fetchDataAction(request, sender) {
 
                 if (sessionUpdatedWithTools) {
                     await throwIfRequestCancelled(controller, tabId);
-                    await saveSession(activeSession);
+                    if (!await saveSession(activeSession)) { throw new Error(sessionSaveFailedMessage); }
                     // delete request.data.tools;
                 }
             };
@@ -1095,7 +1099,7 @@ async function fetchDataAction(request, sender) {
                 activeSession.messages.push(historyMessage);
             }
             delete activeSession.attachments;
-            await saveSession(activeSession);
+            if (!await saveSession(activeSession)) { throw new Error(sessionSaveFailedMessage); }
             await throwIfRequestCancelled(controller, tabId);
 
             const assistantResponse = responseMessage?.content || '';
@@ -1534,19 +1538,21 @@ async function generateAndUpdateSessionTitle(text, sessionId, tab) {
     if (!sessionId) { return false; }
     const titleSeed = await generateSessionTitle(text, tab);
     if (!titleSeed) { return false; }
-    const sessions = await getAllSessions();
-    const sessionIndex = sessions.findIndex(session => session?.id === sessionId);
-    if (sessionIndex < 0) { return false; }
+    return queueSessionMutation(async () => {
+        const sessions = await getAllSessions();
+        const sessionIndex = sessions.findIndex(session => session?.id === sessionId);
+        if (sessionIndex < 0) { return false; }
 
-    const session = sessions[sessionIndex];
-    if (session?.titleManual) { return false; }
+        const session = sessions[sessionIndex];
+        if (session?.titleManual) { return false; }
 
-    sessions[sessionIndex] = {
-        ...session,
-        title: titleSeed,
-        titleGenerated: true
-    };
-    return await setAllSessions(sessions);
+        sessions[sessionIndex] = {
+            ...session,
+            title: titleSeed,
+            titleGenerated: true
+        };
+        return await setAllSessions(sessions);
+    });
 }
 
 function normaliseGeneratedTitle(rawTitle = '') {

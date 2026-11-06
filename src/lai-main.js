@@ -1118,8 +1118,9 @@ async function queryAI(userInput) {
     // tools could be temporary disabled from the UI regardless of the general options state
     const toolFunctions = !shadowRoot?.querySelector('#toolFunctions')?.classList?.contains('disabled') || false;
     const sysInstruct = getCurrentSystemInstructions();
-    const session = await getActiveSession();
-    if (!session?.id) {
+    // The background creates the session record from this id, serialised with every other tab's writes.
+    const sessionId = await getOrCreateActiveSessionId();
+    if (!sessionId) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No session available for this sidebar; request not sent.`);
         showMessage('Failed to start a chat session. Please reload the page and try again.', 'error');
         shadowRoot?.getElementById('laiAbort')?.classList.add('invisible');
@@ -1128,7 +1129,7 @@ async function queryAI(userInput) {
     }
     const requestData = {
         action: "fetchData",
-        sessionId: session.id,
+        sessionId: sessionId,
         systemInstructions: sysInstruct || '',
         url: laiOptions.aiUrl,
         data: data,
@@ -2024,6 +2025,30 @@ function clearChatHistoryUI() {
         messageList.innerHTML = '';
     }
 }
+
+/**
+ * When the session this panel is bound to is deleted elsewhere (another tab, Options or "delete all"),
+ * unbind it and clear the visible history so the panel never shows a conversation the next prompt would not use.
+ */
+async function reconcileActiveSessionWithStorage(changes, areaName) {
+    if (areaName !== 'local' || !changes || !(allSessionsStorageKey in changes)) { return false; }
+
+    const sessionId = await getActiveSessionId();
+    if (!sessionId) { return false; }
+
+    const { oldValue, newValue } = changes[allSessionsStorageKey];
+    const wasStored = (Array.isArray(oldValue) ? oldValue : []).some(s => s?.id === sessionId);
+    const isStored = (Array.isArray(newValue) ? newValue : []).some(s => s?.id === sessionId);
+    if (!wasStored || isStored) { return false; }
+
+    await deleteActiveSessionId();
+    clearChatHistoryUI();
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Active session ${sessionId} was deleted elsewhere; panel unbound.`);
+    showMessage('This session was deleted. Your next prompt starts a new session.', 'info');
+    return true;
+}
+
+chrome?.storage?.onChanged?.addListener(reconcileActiveSessionWithStorage);
 
 function adjustFontSize(elm, direction) {
     if (direction === 0) { return; }

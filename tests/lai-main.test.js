@@ -561,7 +561,7 @@ describe('queryAI session identity (#29)', () => {
     });
 
     it('sends the session id owned by this sidebar with the prompt', async () => {
-        global.getActiveSession = vi.fn(async () => ({ id: 'sidebar-session', messages: [] }));
+        global.getOrCreateActiveSessionId = vi.fn(async () => 'sidebar-session');
 
         await queryAI('Hello');
 
@@ -569,11 +569,62 @@ describe('queryAI session identity (#29)', () => {
     });
 
     it('does not send a prompt when no session can be established', async () => {
-        global.getActiveSession = vi.fn(async () => null);
+        global.getOrCreateActiveSessionId = vi.fn(async () => null);
 
         await queryAI('Hello');
 
         expect(sendMessage).not.toHaveBeenCalled();
         expect(global.showMessage).toHaveBeenCalledWith(expect.stringContaining('reload the page'), 'error');
+    });
+});
+
+describe('reconcileActiveSessionWithStorage (#29)', () => {
+    const executeReconcile = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
+        isMessagePersistableCode + '\n' + laiMainCode + '; return { reconcileActiveSessionWithStorage };'
+    );
+    let reconcileActiveSessionWithStorage;
+    let activeId;
+    const key = () => global.allSessionsStorageKey;
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        document.body.innerHTML = '<div id="laiChatMessageList"><div class="lai-chat-history">restored turn</div></div>';
+        activeId = 'restored-session';
+        global.getActiveSessionId = vi.fn(async () => activeId);
+        global.deleteActiveSessionId = vi.fn(async () => { activeId = null; });
+        const chrome = { runtime: { sendMessage: vi.fn(), onMessage: { addListener: vi.fn() } } };
+        ({ reconcileActiveSessionWithStorage } = executeReconcile(global.document, global.window, global.manifest, chrome, global.isMessagePersistable));
+    });
+
+    it('unbinds and clears the panel when its restored session is deleted elsewhere', async () => {
+        const changes = { [key()]: { oldValue: [{ id: 'restored-session' }, { id: 'other' }], newValue: [{ id: 'other' }] } };
+
+        expect(await reconcileActiveSessionWithStorage(changes, 'local')).toBe(true);
+
+        expect(activeId).toBeNull();
+        expect(document.getElementById('laiChatMessageList').children).toHaveLength(0);
+        expect(global.showMessage).toHaveBeenCalledWith(expect.stringContaining('deleted'), 'info');
+    });
+
+    it('reacts to all sessions being cleared', async () => {
+        const changes = { [key()]: { oldValue: [{ id: 'restored-session' }] } };
+
+        expect(await reconcileActiveSessionWithStorage(changes, 'local')).toBe(true);
+        expect(activeId).toBeNull();
+    });
+
+    it('keeps the panel when its session still exists or was never stored yet', async () => {
+        const stillThere = { [key()]: { oldValue: [{ id: 'restored-session' }], newValue: [{ id: 'restored-session' }, { id: 'new' }] } };
+        const notYetStored = { [key()]: { oldValue: [{ id: 'other' }], newValue: [] } };
+
+        expect(await reconcileActiveSessionWithStorage(stillThere, 'local')).toBe(false);
+        expect(await reconcileActiveSessionWithStorage(notYetStored, 'local')).toBe(false);
+        expect(await reconcileActiveSessionWithStorage({ unrelated: {} }, 'local')).toBe(false);
+        expect(await reconcileActiveSessionWithStorage(stillThere, 'sync')).toBe(false);
+
+        expect(activeId).toBe('restored-session');
+        expect(document.getElementById('laiChatMessageList').children).toHaveLength(1);
     });
 });

@@ -608,6 +608,7 @@ describe('background.js', () => {
             global.console = {
                 error: vi.fn()
             };
+            global.queueSessionMutation = vi.fn(async (mutation) => mutation());
         });
 
         it('updates the requested session by id', async () => {

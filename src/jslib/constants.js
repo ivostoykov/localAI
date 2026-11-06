@@ -6,6 +6,7 @@ var storageUserCommandsKey = 'aiUserCommands';
 var activeSessionKey = 'activeSession';
 var activeSessionIdKey = 'activeSessionId'; // legacy global pointer; only removed, never read (#29)
 var missingSessionMessage = 'No chat session was identified for this request. Please reload the page and try again.';
+var sessionSaveFailedMessage = 'Failed to save the chat session, so the request was stopped. Please try again.';
 var allSessionsStorageKey = 'aiSessions';
 var archivedSessionsStorageKey = 'archivedSessions';
 var storageToolsKey = 'aiTools';

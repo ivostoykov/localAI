@@ -4,6 +4,14 @@ if(typeof manifest === 'undefined'){
 
 // Each sidebar (content-script instance) owns its active session; it is never shared through storage (#29).
 var laiActiveSessionId = null;
+// Serialises read-modify-write of the session catalogue within one script realm (the background serves every tab).
+var laiSessionMutationQueue = Promise.resolve();
+
+function queueSessionMutation(mutation) {
+    const run = laiSessionMutationQueue.then(mutation, mutation);
+    laiSessionMutationQueue = run.catch(() => {});
+    return run;
+}
 
 async function createNewSession(text = `Session ${new Date().toISOString().replace(/[TZ]/g, ' ').trim()}`) {
     const newSession = await createSessionRecord(text);
@@ -44,7 +52,7 @@ async function createSessionRecord(text = `Session ${new Date().toISOString().re
     }
 
     sessions.push(newSession);
-    await setAllSessions(sessions);
+    if (!await setAllSessions(sessions)) { return null; }
 
     return newSession;
 }
@@ -127,7 +135,9 @@ async function getSession(sessionId = null, createIfMissing = true, updateAccess
         const session = sessions.find(sess => sess?.id === sessionId);
 
         if (!session && createIfMissing) {
-            return await createNewSession();
+            const created = await createSessionRecord(undefined, sessionId);
+            if (created?.id) { await setActiveSessionId(created.id); }
+            return created;
         }
 
         if (session && updateAccess) {
@@ -151,13 +161,23 @@ async function getActiveSessionById(sessionId) {
 }
 
 /**
- * Returns the session named by a request, recreating it under the same id if the stored
- * record has gone (e.g. an empty session pruned by another save), so identity is never
- * replaced by another tab's session.
+ * Returns the session named by a request, creating its record under that same id when it is
+ * not stored yet, so identity is never replaced by another tab's session.
  */
 async function getSessionForRequest(sessionId) {
     if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) { return null; }
-    return await getSession(sessionId, false) ?? await createSessionRecord(undefined, sessionId);
+    return queueSessionMutation(async () =>
+        await getSession(sessionId, false) ?? await createSessionRecord(undefined, sessionId)
+    );
+}
+
+async function getOrCreateActiveSessionId() {
+    const sessionId = await getActiveSessionId();
+    if (sessionId) { return sessionId; }
+
+    const newSessionId = crypto.randomUUID();
+    await setActiveSessionId(newSessionId);
+    return newSessionId;
 }
 
 async function getAllSessions() {
@@ -211,30 +231,50 @@ async function setActiveSession(session) {
     if (await saveSession(session)) { await setActiveSessionId(session.id); }
 }
 
+/**
+ * Writes only the given session into the latest catalogue (replacing or appending its record);
+ * other sessions, including empty ones that belong to other tabs, are left untouched.
+ */
 async function saveSession(session) {
-    try {
-        if (!session?.id) { throw new Error(`[${getLineNumber()}]: Session object is missing a valid id!`); }
-
-        if ((session?.messages?.length ?? 0) + (session?.attachments?.length ?? 0) === 0)  {
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping save of empty session ${session?.id}`);
-            return false;
-        }
-
-        const sessions = await getAllSessions();
-        const idx = sessions.findIndex(s => s?.id === session?.id);
-
-        if (idx < 0) { throw new Error(`Session with id ${session?.id} not found!`); }
-
-        session.lastAccessedAt = Date.now();
-        sessions[idx] = session;
-        const filteredSessions = sessions.filter(s => (s?.messages?.length ?? 0) + (s?.attachments?.length ?? 0) > 0);
-        await setAllSessions(filteredSessions);
-        return true;
-    } catch (e) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: ${e.message}`, e);
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - the session thrown the error`, session);
+    if (!session?.id) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: session object is missing a valid id!`, session);
         return false;
     }
+
+    if ((session?.messages?.length ?? 0) + (session?.attachments?.length ?? 0) === 0)  {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping save of empty session ${session?.id}`);
+        return false;
+    }
+
+    return queueSessionMutation(async () => {
+        try {
+            const sessions = await getAllSessions();
+            const idx = sessions.findIndex(s => s?.id === session.id);
+
+            session.lastAccessedAt = Date.now();
+            if (idx < 0) { sessions.push(session); }
+            else { sessions[idx] = session; }
+            return await setAllSessions(sessions);
+        } catch (e) {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: ${e.message}`, e);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - the session thrown the error`, session);
+            return false;
+        }
+    });
+}
+
+async function pruneStaleEmptySessions(maxAgeMs = 24 * 60 * 60 * 1000) {
+    return queueSessionMutation(async () => {
+        const sessions = await getAllSessions();
+        const cutoff = Date.now() - maxAgeMs;
+        const kept = sessions.filter(s =>
+            (s?.messages?.length ?? 0) + (s?.attachments?.length ?? 0) > 0 ||
+            (s?.lastAccessedAt ?? s?.createdAt ?? 0) > cutoff
+        );
+        if (kept.length === sessions.length) { return 0; }
+        await setAllSessions(kept);
+        return sessions.length - kept.length;
+    });
 }
 
 async function getArchivedSessions() {
@@ -332,6 +372,7 @@ async function pruneArchivedSessions() {
 async function cleanupOrphanedSessions() {
     try {
         await pruneArchivedSessions();
+        await pruneStaleEmptySessions();
 
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cleanup completed`);
         return true;

@@ -11,7 +11,7 @@ const sessionsCode = fs.readFileSync(
 );
 
 // Execute sessions.js code in global scope
-const executeSessionsCode = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', sessionsCode + '; return { createNewSession, deleteSession, deleteActiveSession, deleteSessionById, deleteActiveSessionId, getSession, getActiveSession, getActiveSessionById, getAllSessions, setAllSessions, setActiveSessionId, getActiveSessionId, setActiveSession, saveSession, getSessionForRequest, clearLegacyActiveSessionId, getAiUserCommands, setAiUserCommands, getOptions, setOptions, deleteSessionMemory, clearAllMemory, requestPageDataFromTab, getActiveSessionPageData };');
+const executeSessionsCode = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', sessionsCode + '; return { createNewSession, deleteSession, deleteActiveSession, deleteSessionById, deleteActiveSessionId, getSession, getActiveSession, getActiveSessionById, getAllSessions, setAllSessions, setActiveSessionId, getActiveSessionId, setActiveSession, saveSession, getSessionForRequest, getOrCreateActiveSessionId, pruneStaleEmptySessions, clearLegacyActiveSessionId, getAiUserCommands, setAiUserCommands, getOptions, setOptions, deleteSessionMemory, clearAllMemory, requestPageDataFromTab, getActiveSessionPageData };');
 
 let funcs;
 
@@ -226,18 +226,17 @@ describe('sessions.js', () => {
             expect(retrieved.messages).toHaveLength(1);
         });
 
-        it('filters out empty sessions when saving', async () => {
+        it('does not prune other empty sessions when saving (#29)', async () => {
             const session1 = await funcs.createNewSession('Session 1');
             session1.messages = [{ role: 'user', content: 'Message' }];
 
             const session2 = await funcs.createNewSession('Session 2');
-            // session2 has empty messages, so when we save session1, session2 gets filtered out
             await funcs.setActiveSession(session1);
 
             const sessions = await funcs.getAllSessions();
 
-            expect(sessions).toHaveLength(1);
-            expect(sessions[0].id).toBe(session1.id);
+            expect(sessions.map(s => s.id)).toEqual([session1.id, session2.id]);
+            expect(sessions[0].messages).toHaveLength(1);
         });
 
         it('skips save of empty session', async () => {
@@ -486,6 +485,40 @@ describe('sessions.js', () => {
             expect(session.id).toBe('pruned-id');
             expect((await background.getAllSessions()).map(s => s.id)).toEqual(['pruned-id']);
             expect(await background.getActiveSessionId()).toBeNull();
+        });
+
+        it('getOrCreateActiveSessionId binds a new id in memory without writing the catalogue', async () => {
+            const tab = loadInstance();
+
+            const first = await tab.getOrCreateActiveSessionId();
+            const second = await tab.getOrCreateActiveSessionId();
+
+            expect(first).toBeTruthy();
+            expect(second).toBe(first);
+            expect(await tab.getAllSessions()).toEqual([]);
+        });
+
+        it('getActiveSession creates the missing record under the bound id', async () => {
+            const tab = loadInstance();
+            const sessionId = await tab.getOrCreateActiveSessionId();
+
+            const session = await tab.getActiveSession();
+
+            expect(session.id).toBe(sessionId);
+            expect((await tab.getAllSessions()).map(s => s.id)).toEqual([sessionId]);
+        });
+
+        it('pruneStaleEmptySessions removes only old empty sessions', async () => {
+            const background = loadInstance();
+            const old = Date.now() - 2 * 24 * 60 * 60 * 1000;
+            await background.setAllSessions([
+                { id: 'old-empty', messages: [], lastAccessedAt: old },
+                { id: 'old-with-history', messages: [{ role: 'user', content: 'x' }], lastAccessedAt: old },
+                { id: 'fresh-empty', messages: [], lastAccessedAt: Date.now() }
+            ]);
+
+            expect(await background.pruneStaleEmptySessions()).toBe(1);
+            expect((await background.getAllSessions()).map(s => s.id)).toEqual(['old-with-history', 'fresh-empty']);
         });
     });
 });
