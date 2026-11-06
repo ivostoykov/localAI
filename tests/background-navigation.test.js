@@ -622,4 +622,3 @@ describe('storeImageHandler session identity (#29)', () => {
         expect(deps.sessionRepository.storeImage).not.toHaveBeenCalled();
     });
 });
-
