@@ -122,8 +122,6 @@ async function allDOMContentLoaded(e) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Starting page data initialization`);
     await removeLocalStorageObject('activeSessionIndex'); // TODO: for sync - to be removed
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Removed activeSessionIndex`);
-    await removeLocalStorageObject(activeSessionIdKey);
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Removed activeSessionIdKey`);
     const tabId = await getMyTabId();
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Got tabId:`, tabId);
     await getAiUserCommands(); //TODO: remove it as global

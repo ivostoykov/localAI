@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import fs from 'fs';
 import path from 'path';
@@ -165,6 +165,82 @@ describe('background-memory.js', () => {
     });
 
     describe('buildOptimisedContext', () => {
+        describe('tab isolation of stored page context (#29)', () => {
+            const linkedInPage = 'LINKEDIN JOB: Senior Engineer at SecretCo. Salary 120k. ' + 'Details '.repeat(20);
+            const pageMessages = (context) => context.filter(msg => /\[PAGE (CONTENT|SUMMARY)\]/.test(msg.content));
+
+            it('does not reuse page content or summary stored by another tab in the same restored session', async () => {
+                await backgroundMemory.buildOptimisedContext('restored-session', 'Summarise @{{page}}', 1, null, linkedInPage, [], 'hash-a', false, 11);
+                await backgroundMemory.storeTurn('restored-session', 1, 'Summarise @{{page}}', 'Answer about the job');
+
+                const laterTurn = await backgroundMemory.buildOptimisedContext('restored-session', 'And this thread?', 2, null, null, [], null, false, 22);
+                const pageRequest = await backgroundMemory.buildOptimisedContext('restored-session', 'Explain @{{page}}', 2, null, null, [], null, false, 22);
+                const firstTurn = await backgroundMemory.buildOptimisedContext('restored-session', 'Hello', 1, null, null, [], null, false, 22);
+
+                for (const context of [laterTurn, pageRequest, firstTurn]) {
+                    expect(pageMessages(context)).toHaveLength(0);
+                    expect(context.some(msg => msg.content.includes('SecretCo'))).toBe(false);
+                }
+            });
+
+            it('still reuses page context stored by the same tab', async () => {
+                await backgroundMemory.buildOptimisedContext('same-tab-session', 'Summarise @{{page}}', 1, null, linkedInPage, [], 'hash-a', false, 11);
+
+                const laterTurn = await backgroundMemory.buildOptimisedContext('same-tab-session', 'What is the salary?', 2, null, null, [], null, false, 11);
+
+                expect(pageMessages(laterTurn)).toHaveLength(1);
+                expect(pageMessages(laterTurn)[0].content).toContain('[PAGE SUMMARY]');
+            });
+
+            it('keeps two tabs with distinct sessions and pages apart', async () => {
+                const hackerNewsPage = 'HN THREAD: Show HN discussion about compilers. ' + 'Comment '.repeat(20);
+                await backgroundMemory.buildOptimisedContext('session-a', 'Summarise @{{page}}', 1, null, linkedInPage, [], 'hash-a', false, 11);
+                await backgroundMemory.storeTurn('session-a', 1, 'Summarise @{{page}}', 'SecretCo pays 120k');
+                await backgroundMemory.buildOptimisedContext('session-b', 'Summarise @{{page}}', 1, null, hackerNewsPage, [], 'hash-b', false, 22);
+                await backgroundMemory.storeTurn('session-b', 1, 'Summarise @{{page}}', 'A compiler thread');
+
+                const tabB = await backgroundMemory.buildOptimisedContext('session-b', 'Which comment is best?', 2, null, null, [], null, false, 22);
+                const textB = tabB.map(msg => msg.content).join('\n');
+
+                expect(textB).toContain('HN THREAD');
+                expect(textB).toContain('A compiler thread');
+                expect(textB).not.toContain('SecretCo');
+                expect(textB).not.toContain('LINKEDIN');
+            });
+
+            it('keeps the last page stored for a session restored in two tabs without leaking it either way', async () => {
+                const hackerNewsPage = 'HN THREAD: Show HN discussion about compilers. ' + 'Comment '.repeat(20);
+                const textOf = (context) => context.map(msg => msg.content).join('\n');
+                await backgroundMemory.buildOptimisedContext('shared-session', 'Summarise @{{page}}', 1, null, linkedInPage, [], 'hash-a', false, 11);
+                await backgroundMemory.buildOptimisedContext('shared-session', 'Summarise @{{page}}', 2, null, hackerNewsPage, [], 'hash-b', false, 22);
+
+                const tabA = textOf(await backgroundMemory.buildOptimisedContext('shared-session', 'Anything else?', 3, null, null, [], null, false, 11));
+                const tabB = textOf(await backgroundMemory.buildOptimisedContext('shared-session', 'Anything else?', 3, null, null, [], null, false, 22));
+
+                expect(tabA).not.toContain('HN THREAD');
+                expect(tabA).not.toContain('SecretCo');
+                expect(tabB).toContain('HN THREAD');
+                expect(tabB).not.toContain('SecretCo');
+
+                await backgroundMemory.buildOptimisedContext('shared-session', 'Summarise @{{page}}', 4, null, linkedInPage, [], 'hash-a', false, 11);
+                const tabBAfter = textOf(await backgroundMemory.buildOptimisedContext('shared-session', 'Explain @{{page}}', 5, null, null, [], null, false, 22));
+                const tabAAfter = textOf(await backgroundMemory.buildOptimisedContext('shared-session', 'Anything else?', 5, null, null, [], null, false, 11));
+
+                expect(tabBAfter).not.toContain('SecretCo');
+                expect(tabBAfter).not.toContain('HN THREAD');
+                expect(tabAAfter).toContain('SecretCo');
+                expect(tabAAfter).not.toContain('HN THREAD');
+            });
+
+            it('refuses to store context without an explicit session id', async () => {
+                global.getActiveSessionId = vi.fn(async () => 'global-session');
+
+                await expect(backgroundMemory.storeContext(null, linkedInPage, [], 'hash-a', 11)).rejects.toThrow('No session Id was provided.');
+                expect(global.getActiveSessionId).not.toHaveBeenCalled();
+                delete global.getActiveSessionId;
+            });
+        });
+
         it('builds context for turn 1', async () => {
             const context = await backgroundMemory.buildOptimisedContext(
                 'session-1',

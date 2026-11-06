@@ -95,15 +95,9 @@ class BackgroundMemory {
   async storeContext(sessionId, pageContent, attachments, pageHash, tabId = null) {
     await this.init();
 
-    if(!sessionId){  sessionId = await getActiveSessionId();  }
     if(!sessionId){
-      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No session ID available:`, {
-        providedSessionId: sessionId,
-        activeSessionId: await getActiveSessionId(),
-        tabId,
-        pageHash
-      });
-      throw new Error("No session Id was provided and no active session Id was found.");
+      console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No session ID provided:`, { tabId, pageHash });
+      throw new Error("No session Id was provided.");
     }
     const currentContext = await this.getContext(sessionId);
     const deduplicatedAttachments = this.getDeduplicatedAttachments(attachments, pageContent);
@@ -173,7 +167,7 @@ class BackgroundMemory {
       if (pageContent) {
         context.push({ role: 'user', content: `[PAGE CONTENT]:\n${pageContent}` });
         used += this.estimateTokens(pageContent);
-      } else if (sessionContext?.pageContent) {
+      } else if (sessionContext?.pageContent && sessionContext.tabId === tabId) {
         const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
         const currentPageData = await chrome.storage.local.get([key]);
         const currentHash = currentPageData[key]?.pageHash;
@@ -900,13 +894,17 @@ class BackgroundMemory {
   }
 }
 
-globalThis.debugShowMemory = async function() {
+globalThis.debugShowMemory = async function(sessionId) {
     console.debug('=== INDEXEDDB MEMORY DEBUG ===');
+    if (!sessionId) {
+        console.warn('debugShowMemory(sessionId): the background has no active session; pass a session id from the sidebar.');
+        return;
+    }
     try {
         await backgroundMemory.init();
 
-        const activeSession = await getActiveSession();
-        console.debug('Active session ID:', activeSession?.id);
+        const activeSession = { id: sessionId };
+        console.debug('Session ID:', activeSession.id);
 
         const conversations = await backgroundMemory.query('conversations', 'sessionId', activeSession?.id);
         console.debug('📝 Conversations (' + conversations.length + ' turns):');
@@ -1019,4 +1017,4 @@ globalThis.dbHelpers = {
 };
 
 console.log('🔍 DB helpers available: dbHelpers.listStores(), .getAll(store), .dump(), .getEmbeddings(), .searchEmbeddings(), etc.');
-console.log('🔍 Memory helper available: debugShowMemory()');
+console.log('🔍 Memory helper available: debugShowMemory(sessionId)');

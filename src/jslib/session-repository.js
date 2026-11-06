@@ -27,32 +27,8 @@ class SessionRepository {
         return promise;
     }
 
-    // ============================================================
-    // SESSION OPERATIONS (chrome.storage.local)
-    // ============================================================
-    // Delegates to sessions.js functions to avoid duplication
-
-    async getActiveSession() {
-        return await getActiveSession();
-    }
-
-    async saveActiveSession(session) {
-        return await setActiveSession(session);
-    }
-
-    async addMessage(role, content, timestamp = Date.now()) {
-        const session = await this.getActiveSession();
-        if (!session) {
-            throw new Error('No active session');
-        }
-
-        if (!session.messages) {
-            session.messages = [];
-        }
-
-        session.messages.push({ role, content, timestamp });
-        await this.saveActiveSession(session);
-    }
+    // Session records are read and written by explicit id via sessions.js (getSessionForRequest/saveSession);
+    // the background has no active session of its own (#29).
 
     // ============================================================
     // ATTACHMENT OPERATIONS (IndexedDB)

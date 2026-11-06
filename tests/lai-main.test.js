@@ -536,3 +536,102 @@ Third line of thinking`;
         });
     });
 });
+
+describe('queryAI session identity (#29)', () => {
+    const executeQueryAI = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
+        isMessagePersistableCode + '\n' + laiMainCode + '; return { queryAI };'
+    );
+    let queryAI;
+    let sendMessage;
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getOptions = vi.fn(async () => ({ aiUrl: 'http://localhost:11434/api/chat' }));
+        global.checkExtensionState = vi.fn(() => true);
+        global.getModelModifiers = vi.fn(() => null);
+        global.getCurrentSystemInstructions = vi.fn(() => '');
+        global.updateStatusBar = vi.fn();
+        global.resetStatusbar = vi.fn();
+        global.getSideBar = vi.fn(() => document.body);
+        sendMessage = vi.fn(async () => ({ status: 'success' }));
+        const chrome = { runtime: { sendMessage, onMessage: { addListener: vi.fn() } } };
+        ({ queryAI } = executeQueryAI(global.document, global.window, global.manifest, chrome, global.isMessagePersistable));
+    });
+
+    it('sends the session id owned by this sidebar with the prompt', async () => {
+        global.getOrCreateActiveSessionId = vi.fn(async () => 'sidebar-session');
+
+        await queryAI('Hello');
+
+        expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'fetchData', sessionId: 'sidebar-session' }));
+    });
+
+    it('does not send a prompt when no session can be established', async () => {
+        global.getOrCreateActiveSessionId = vi.fn(async () => null);
+
+        await queryAI('Hello');
+
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect(global.showMessage).toHaveBeenCalledWith(expect.stringContaining('reload the page'), 'error');
+    });
+});
+
+describe('reconcileActiveSessionWithStorage (#29)', () => {
+    const executeReconcile = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
+        isMessagePersistableCode + '\n' + laiMainCode + '; return { reconcileActiveSessionWithStorage };'
+    );
+    let reconcileActiveSessionWithStorage;
+    let activeId;
+    const key = () => global.allSessionsStorageKey;
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        document.body.innerHTML = '<div id="laiChatMessageList"><div class="lai-chat-history">restored turn</div></div>' +
+            '<div id="attachContainer" class="attachment-container active"><span class="attachment">job-ad.txt</span></div>';
+        activeId = 'restored-session';
+        global.getActiveSessionId = vi.fn(async () => activeId);
+        global.deleteActiveSessionId = vi.fn(async () => { activeId = null; });
+        const chrome = { runtime: { sendMessage: vi.fn(), onMessage: { addListener: vi.fn() } } };
+        ({ reconcileActiveSessionWithStorage } = executeReconcile(global.document, global.window, global.manifest, chrome, global.isMessagePersistable));
+    });
+
+    it('unbinds and clears the panel when its restored session is deleted elsewhere', async () => {
+        const changes = { [key()]: { oldValue: [{ id: 'restored-session' }, { id: 'other' }], newValue: [{ id: 'other' }] } };
+
+        expect(await reconcileActiveSessionWithStorage(changes, 'local')).toBe(true);
+
+        expect(activeId).toBeNull();
+        expect(document.getElementById('laiChatMessageList').children).toHaveLength(0);
+        expect(document.getElementById('attachContainer').children).toHaveLength(0);
+        expect(document.getElementById('attachContainer').classList.contains('active')).toBe(false);
+        expect(global.showMessage).toHaveBeenCalledWith(expect.stringContaining('deleted'), 'info');
+    });
+
+    it('reacts to all sessions being cleared', async () => {
+        const changes = { [key()]: { oldValue: [{ id: 'restored-session' }] } };
+
+        expect(await reconcileActiveSessionWithStorage(changes, 'local')).toBe(true);
+        expect(activeId).toBeNull();
+        expect(document.getElementById('attachContainer').children).toHaveLength(0);
+        expect(document.getElementById('attachContainer').classList.contains('active')).toBe(false);
+    });
+
+    it('keeps the panel when its session still exists or was never stored yet', async () => {
+        const stillThere = { [key()]: { oldValue: [{ id: 'restored-session' }], newValue: [{ id: 'restored-session' }, { id: 'new' }] } };
+        const notYetStored = { [key()]: { oldValue: [{ id: 'other' }], newValue: [] } };
+
+        expect(await reconcileActiveSessionWithStorage(stillThere, 'local')).toBe(false);
+        expect(await reconcileActiveSessionWithStorage(notYetStored, 'local')).toBe(false);
+        expect(await reconcileActiveSessionWithStorage({ unrelated: {} }, 'local')).toBe(false);
+        expect(await reconcileActiveSessionWithStorage(stillThere, 'sync')).toBe(false);
+
+        expect(activeId).toBe('restored-session');
+        expect(document.getElementById('laiChatMessageList').children).toHaveLength(1);
+        expect(document.getElementById('attachContainer').children).toHaveLength(1);
+        expect(document.getElementById('attachContainer').classList.contains('active')).toBe(true);
+    });
+});

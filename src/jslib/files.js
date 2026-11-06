@@ -89,8 +89,12 @@ async function handleImageFile(file) {
                 throw new Error(`Image format not supported: ${imageInfo.format}. File ${file.name} appears to be ${imageInfo.format} but only PNG, JPEG and GIF formats are supported.`);
             }
 
+            const sessionId = await getOrCreateActiveSessionId();
+            if (!sessionId) { throw new Error(`Failed to start a chat session for image ${file.name}. Please reload the page and try again.`); }
+
             const response = await chrome.runtime.sendMessage({
                 action: 'storeImage',
+                sessionId: sessionId,
                 base64: base64Content,
                 filename: file.name,
                 mimeType: imageInfo.mimeType

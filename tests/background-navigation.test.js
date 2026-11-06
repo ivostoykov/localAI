@@ -48,7 +48,8 @@ function createDeps(bodies) {
         getAiModel: vi.fn(async () => 'model'),
         resolveModelNameForRequest: vi.fn(async (model) => model),
         applyAutomaticModelOptions: vi.fn(async (data) => data),
-        getActiveSession: vi.fn(async () => ({ id: 'session-1', messages: [], titleGenerated: true })),
+        getSessionForRequest: vi.fn(async (sessionId) => sessionId ? ({ id: sessionId, messages: [], titleGenerated: true }) : null),
+        missingSessionMessage: 'No chat session was identified for this request. Please reload the page and try again.',
         processCommandArguments: vi.fn(async () => ({ pageContent: null, pageHash: null })),
         replaceCommandPlaceholders: (text) => text,
         backgroundMemory: {
@@ -58,7 +59,7 @@ function createDeps(bodies) {
             storeTurnWithEmbeddings: vi.fn(async () => undefined)
         },
         getVisibleSessionMessages: (messages) => messages,
-        setActiveSession: vi.fn(async () => undefined),
+        saveSession: vi.fn(async () => true),
         modelCanUseTools: vi.fn(async () => true),
         dumpInFrontConsole: vi.fn(async () => undefined),
         fetch: vi.fn(async () => ({ ok: true, status: 200 })),
@@ -87,7 +88,7 @@ function createDeps(bodies) {
     return { deps, sessions };
 }
 
-const request = () => ({ action: 'fetchData', url: 'http://localhost:11434/api/chat', tools: true, data: { userInput: 'Read these links' } });
+const request = () => ({ action: 'fetchData', url: 'http://localhost:11434/api/chat', tools: true, data: { userInput: 'Read these links' }, sessionId: 'session-1' });
 const sender = { tab: { id: 1, url: 'https://origin.example/' } };
 
 describe('background.js navigation lifecycle', () => {
@@ -274,7 +275,7 @@ describe('background.js navigation lifecycle', () => {
     it('stops an older request that is still in setup when the shared origin tab closes', async () => {
         const { deps, sessions } = createDeps([]);
         let releaseOlderSetup;
-        deps.getActiveSession
+        deps.getSessionForRequest
             .mockImplementationOnce(() => new Promise(resolve => {
                 releaseOlderSetup = () => resolve({ id: 'session-1', messages: [], titleGenerated: true });
             }))
@@ -317,7 +318,7 @@ describe('background.js navigation lifecycle', () => {
 
     it('releases its controller when setup fails before the tool loop', async () => {
         const { deps } = createDeps([]);
-        deps.getActiveSession.mockRejectedValueOnce(new Error('storage unavailable'));
+        deps.getSessionForRequest.mockRejectedValueOnce(new Error('storage unavailable'));
         const fetchDataAction = loadFetchDataAction(deps);
 
         await expect(fetchDataAction(request(), sender)).rejects.toThrow('storage unavailable');
@@ -347,7 +348,7 @@ describe('background.js navigation lifecycle', () => {
 
         const expectNothingAfterClose = (deps, result) => {
             expect(result.status).toBe('aborted');
-            expect(deps.setActiveSession).not.toHaveBeenCalled();
+            expect(deps.saveSession).not.toHaveBeenCalled();
             expect(deps.fetch).not.toHaveBeenCalled();
             expect(deps.createNavigationSession).not.toHaveBeenCalled();
             expect(deps.backgroundMemory.storeTurnWithEmbeddings).not.toHaveBeenCalled();
@@ -380,7 +381,7 @@ describe('background.js navigation lifecycle', () => {
         });
 
         it.each([
-            ['getActiveSession'],
+            ['getSessionForRequest'],
             ['processCommandArguments'],
             ['buildOptimisedContext'],
             ['getContext']
@@ -457,16 +458,17 @@ describe('background.js navigation lifecycle', () => {
         it('does not store the turn or generate a title when the origin closes while the final answer is being saved', async () => {
             const gate = deferred();
             const { deps } = createDeps([{ message: { role: 'assistant', content: 'Final answer' } }]);
-            deps.getActiveSession.mockImplementation(async () => ({ id: 'session-1', messages: [] }));
+            deps.getSessionForRequest.mockImplementation(async () => ({ id: 'session-1', messages: [] }));
             let writes = 0;
-            deps.setActiveSession.mockImplementation(async () => {
+            deps.saveSession.mockImplementation(async () => {
                 writes++;
                 if (writes === 2) { await gate.promise; }
+                return true;
             });
             const fetchDataAction = loadFetchDataAction(deps);
 
             const pending = fetchDataAction(request(), sender);
-            await vi.waitFor(() => expect(deps.setActiveSession).toHaveBeenCalledTimes(2));
+            await vi.waitFor(() => expect(deps.saveSession).toHaveBeenCalledTimes(2));
             await closeOrigin(deps);
             gate.release();
             await pending;
@@ -479,7 +481,7 @@ describe('background.js navigation lifecycle', () => {
 
         it('skips title generation but keeps the delivered answer when the origin closes after delivery', async () => {
             const { deps } = createDeps([{ message: { role: 'assistant', content: 'Final answer' } }]);
-            deps.getActiveSession.mockImplementation(async () => ({ id: 'session-1', messages: [] }));
+            deps.getSessionForRequest.mockImplementation(async () => ({ id: 'session-1', messages: [] }));
             deps.handleStreamEnd.mockImplementation(async () => { await closeOrigin(deps); });
             const fetchDataAction = loadFetchDataAction(deps);
 
@@ -504,16 +506,253 @@ describe('background.js navigation lifecycle', () => {
 
             const pending = fetchDataAction(request(), sender);
             await vi.waitFor(() => expect(deps.resolveToolCalls).toHaveBeenCalled());
-            const writesBefore = deps.setActiveSession.mock.calls.length;
+            const writesBefore = deps.saveSession.mock.calls.length;
             await closeOrigin(deps);
             gate.release();
             await pending;
 
-            expect(deps.setActiveSession.mock.calls.length).toBe(writesBefore);
+            expect(deps.saveSession.mock.calls.length).toBe(writesBefore);
             expect(deps.backgroundMemory.storeToolCallEmbedding).not.toHaveBeenCalled();
             expect(deps.fetch).toHaveBeenCalledTimes(1);
             expect(deps.disposeNavigationSession).toHaveBeenCalledTimes(1);
             expect(deps.originRequestControllers.size).toBe(0);
         });
+    });
+
+    describe('request session identity (#29)', () => {
+        const plainBodies = () => [{ message: { role: 'assistant', content: 'Answer' } }];
+        const deferred = () => {
+            let release;
+            const promise = new Promise(resolve => { release = resolve; });
+            return { promise, release };
+        };
+
+        it('refuses a request without a session id instead of selecting another session', async () => {
+            const { deps } = createDeps(plainBodies());
+            const fetchDataAction = loadFetchDataAction(deps);
+            const req = request();
+            delete req.sessionId;
+
+            const result = await fetchDataAction(req, sender);
+
+            expect(result).toEqual({ status: 'error', message: deps.missingSessionMessage });
+            expect(deps.showUIMessage).toHaveBeenCalledWith(deps.missingSessionMessage, 'error', sender.tab);
+            expect(deps.backgroundMemory.buildOptimisedContext).not.toHaveBeenCalled();
+            expect(deps.saveSession).not.toHaveBeenCalled();
+            expect(deps.fetch).not.toHaveBeenCalled();
+            expect(deps.originRequestControllers.size).toBe(0);
+        });
+
+        it('keeps concurrent requests from two tabs bound to their own sessions throughout', async () => {
+            const { deps } = createDeps([]);
+            deps.getSessionForRequest.mockImplementation(async (sessionId) => ({ id: sessionId, messages: [] }));
+            const gate = deferred();
+            deps.consumeStreamResponse
+                .mockImplementationOnce(async () => { await gate.promise; return { responseText: '', body: { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://a.example/')] } } }; })
+                .mockImplementationOnce(async () => { await gate.promise; return { responseText: '', body: { message: { role: 'assistant', content: '', tool_calls: [toolCall('https://b.example/')] } } }; })
+                .mockImplementation(async () => ({ responseText: '', body: { message: { role: 'assistant', content: 'Done' } } }));
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            const tabA = fetchDataAction({ ...request(), sessionId: 'session-A' }, { tab: { id: 1, url: 'https://www.linkedin.com/jobs/' } });
+            const tabB = fetchDataAction({ ...request(), sessionId: 'session-B' }, { tab: { id: 2, url: 'https://news.ycombinator.com/' } });
+            await vi.waitFor(() => expect(deps.consumeStreamResponse).toHaveBeenCalledTimes(2));
+            gate.release();
+            await Promise.all([tabA, tabB]);
+
+            const bySession = (calls, idx) => calls.map(call => call[idx]);
+            expect(bySession(deps.backgroundMemory.buildOptimisedContext.mock.calls, 0).sort()).toEqual(['session-A', 'session-B']);
+            for (const call of deps.backgroundMemory.buildOptimisedContext.mock.calls) {
+                expect(call[8]).toBe(call[0] === 'session-A' ? 1 : 2);
+            }
+            for (const call of deps.resolveToolCalls.mock.calls) {
+                expect(call[3]).toBe(call[2].id === 1 ? 'session-A' : 'session-B');
+            }
+            for (const call of deps.saveSession.mock.calls) {
+                expect(['session-A', 'session-B']).toContain(call[0].id);
+            }
+            for (const call of deps.backgroundMemory.storeTurnWithEmbeddings.mock.calls) {
+                expect(call[0]).toBe(call[1] === 1 ? 'session-A' : 'session-B');
+            }
+            for (const call of deps.generateAndUpdateSessionTitle.mock.calls) {
+                expect(call[1]).toBe(call[2].id === 1 ? 'session-A' : 'session-B');
+            }
+            expect(deps.generateAndUpdateSessionTitle).toHaveBeenCalledTimes(2);
+        });
+
+        it('reads images and stored context of the request session only', async () => {
+            const { deps } = createDeps(plainBodies());
+            deps.getSessionForRequest.mockImplementation(async (sessionId) => ({ id: sessionId, messages: [], titleGenerated: true }));
+            const fetchDataAction = loadFetchDataAction(deps);
+
+            await fetchDataAction({ ...request(), sessionId: 'session-B' }, { tab: { id: 2, url: 'https://news.ycombinator.com/' } });
+
+            expect(deps.backgroundMemory.getContext).toHaveBeenCalledWith('session-B');
+            expect(deps.backgroundMemory.getContext.mock.calls.every(call => call[0] === 'session-B')).toBe(true);
+        });
+    });
+});
+
+describe('storeImageHandler session identity (#29)', () => {
+    const storeImageHandlerCode = backgroundCode.match(/async function storeImageHandler\([\s\S]*?\n}\n/)[0];
+    const loadStoreImageHandler = new Function('deps', `with (deps) { ${storeImageHandlerCode}; return storeImageHandler; }`);
+    const createImageDeps = () => ({
+        manifest: { name: 'Local AI helper' },
+        getLineNumber: () => 'test',
+        missingSessionMessage: 'No chat session was identified for this request. Please reload the page and try again.',
+        getSessionForRequest: vi.fn(async (sessionId) => sessionId ? { id: sessionId, messages: [] } : null),
+        sessionRepository: { storeImage: vi.fn(async () => undefined) }
+    });
+
+    it('stores the image under the session named by the request', async () => {
+        const deps = createImageDeps();
+        const storeImageHandler = loadStoreImageHandler(deps);
+
+        const result = await storeImageHandler('aGVsbG8=', 'a.png', 'image/png', 'session-B');
+
+        expect(result.status).toBe('success');
+        expect(deps.sessionRepository.storeImage).toHaveBeenCalledWith('session-B', expect.objectContaining({ id: result.imageId, filename: 'a.png' }));
+    });
+
+    it('refuses an image without a session id instead of attaching it to another session', async () => {
+        const deps = createImageDeps();
+        const storeImageHandler = loadStoreImageHandler(deps);
+
+        const result = await storeImageHandler('aGVsbG8=', 'a.png', 'image/png');
+
+        expect(result).toEqual({ status: 'error', message: deps.missingSessionMessage });
+        expect(deps.sessionRepository.storeImage).not.toHaveBeenCalled();
+    });
+});
+
+describe('concurrent first prompts with real session storage (#29)', () => {
+    const sessionsCode = fs.readFileSync(path.join(__dirname, '../src/jslib/sessions.js'), 'utf-8');
+    const sessionsExports = 'getOrCreateActiveSessionId, getActiveSessionId, getSessionForRequest, saveSession, queueSessionMutation, getAllSessions, setAllSessions';
+    // Models chrome.storage.local: values are structured clones and every call resolves on a later task,
+    // so concurrent read-modify-write sequences interleave as they do in the extension.
+    const nextTask = () => new Promise(resolve => setTimeout(resolve, 0));
+    const localStore = new Map();
+    const latentStorageChrome = {
+        ...global.chrome,
+        storage: {
+            ...global.chrome.storage,
+            local: {
+                get: async (keys) => {
+                    await nextTask();
+                    const wanted = keys == null ? [...localStore.keys()] : [].concat(keys);
+                    return Object.fromEntries(wanted.filter(k => localStore.has(k)).map(k => [k, structuredClone(localStore.get(k))]));
+                },
+                set: async (items) => {
+                    await nextTask();
+                    for (const [k, v] of Object.entries(items)) { localStore.set(k, structuredClone(v)); }
+                },
+                remove: async (keys) => {
+                    await nextTask();
+                    [].concat(keys).forEach(k => localStore.delete(k));
+                }
+            }
+        }
+    };
+    const loadSessionsRealm = () => new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands',
+        `${sessionsCode}; return { ${sessionsExports} };`
+    )(latentStorageChrome, global.manifest, global.getLineNumber, global.allSessionsStorageKey, global.activeSessionIdKey, global.storageUserCommandsKey, global.storageOptionKey, global.activePageStorageKey, []);
+    const titleCode = backgroundCode.match(/async function generateAndUpdateSessionTitle\([\s\S]*?\n}\n/)[0];
+    const loadTitleUpdater = new Function('deps', `with (deps) { ${titleCode}; return generateAndUpdateSessionTitle; }`);
+
+    beforeEach(() => {
+        localStore.clear();
+    });
+
+    it('serialises concurrent creation and saving of two sessions in the background realm', async () => {
+        const background = loadSessionsRealm();
+
+        const [created1, created2] = await Promise.all([
+            background.getSessionForRequest('session-A'),
+            background.getSessionForRequest('session-B')
+        ]);
+        created1.messages.push({ role: 'user', content: 'A1' });
+        created2.messages.push({ role: 'user', content: 'B1' });
+        const saved = await Promise.all([background.saveSession(created1), background.saveSession(created2)]);
+
+        expect(saved).toEqual([true, true]);
+        const stored = await background.getAllSessions();
+        expect(stored.map(s => [s.id, s.messages.map(m => m.content)]).sort()).toEqual([['session-A', ['A1']], ['session-B', ['B1']]]);
+    });
+
+    it('keeps an empty session created by another tab when saving, and appends a missing record', async () => {
+        const background = loadSessionsRealm();
+        await background.setAllSessions([{ id: 'empty-B', title: 'B', messages: [] }]);
+
+        const saved = await background.saveSession({ id: 'session-A', title: 'A', messages: [{ role: 'user', content: 'A1' }] });
+
+        expect(saved).toBe(true);
+        expect((await background.getAllSessions()).map(s => s.id)).toEqual(['empty-B', 'session-A']);
+    });
+
+    it('preserves both sessions and their histories when two tabs send their first prompts at once', async () => {
+        const background = loadSessionsRealm();
+        const tabA = loadSessionsRealm();
+        const tabB = loadSessionsRealm();
+        const sessionIdA = await tabA.getOrCreateActiveSessionId();
+        const sessionIdB = await tabB.getOrCreateActiveSessionId();
+
+        const { deps } = createDeps([]);
+        deps.getSessionForRequest = background.getSessionForRequest;
+        deps.saveSession = background.saveSession;
+        deps.generateAndUpdateSessionTitle = loadTitleUpdater({
+            generateSessionTitle: async (text) => `Title ${text}`,
+            queueSessionMutation: background.queueSessionMutation,
+            getAllSessions: background.getAllSessions,
+            setAllSessions: background.setAllSessions
+        });
+        deps.consumeStreamResponse.mockImplementation(async () => ({
+            responseText: '',
+            body: { message: { role: 'assistant', content: `answer ${deps.consumeStreamResponse.mock.calls.length}` } }
+        }));
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const results = await Promise.all([
+            fetchDataAction({ ...request(), sessionId: sessionIdA, data: { userInput: 'LinkedIn question' } }, { tab: { id: 1, url: 'https://www.linkedin.com/jobs/' } }),
+            fetchDataAction({ ...request(), sessionId: sessionIdB, data: { userInput: 'HN question' } }, { tab: { id: 2, url: 'https://news.ycombinator.com/' } })
+        ]);
+
+        expect(results.map(r => r.status)).toEqual(['success', 'success']);
+        const stored = await background.getAllSessions();
+        const byId = Object.fromEntries(stored.map(s => [s.id, s]));
+        expect(Object.keys(byId).sort()).toEqual([sessionIdA, sessionIdB].sort());
+        expect(byId[sessionIdA].messages.map(m => m.content)).toEqual(['LinkedIn question', expect.stringMatching(/^answer /)]);
+        expect(byId[sessionIdB].messages.map(m => m.content)).toEqual(['HN question', expect.stringMatching(/^answer /)]);
+        expect(byId[sessionIdA].title).toBe('Title LinkedIn question');
+        expect(byId[sessionIdB].title).toBe('Title HN question');
+        expect(await background.getActiveSessionId()).toBeNull();
+    });
+
+    it('refuses to continue when the session cannot be persisted', async () => {
+        const background = loadSessionsRealm();
+        const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
+        deps.getSessionForRequest = background.getSessionForRequest;
+        deps.saveSession = vi.fn(async () => false);
+        deps.sessionSaveFailedMessage = 'Failed to save the chat session, so the request was stopped. Please try again.';
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const result = await fetchDataAction({ ...request(), sessionId: 'session-X' }, sender);
+
+        expect(result).toEqual({ status: 'error', message: deps.sessionSaveFailedMessage });
+        expect(deps.fetch).not.toHaveBeenCalled();
+        expect(deps.backgroundMemory.storeTurnWithEmbeddings).not.toHaveBeenCalled();
+    });
+
+    it('stops before storing the turn when the final save fails', async () => {
+        const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
+        deps.sessionSaveFailedMessage = 'Failed to save the chat session, so the request was stopped. Please try again.';
+        let writes = 0;
+        deps.saveSession = vi.fn(async () => ++writes === 1);
+        const fetchDataAction = loadFetchDataAction(deps);
+
+        const result = await fetchDataAction(request(), sender);
+
+        expect(result).toEqual({ status: 'error', message: deps.sessionSaveFailedMessage });
+        expect(deps.backgroundMemory.storeTurnWithEmbeddings).not.toHaveBeenCalled();
+        expect(deps.handleStreamEnd).not.toHaveBeenCalled();
+        expect(deps.generateAndUpdateSessionTitle).not.toHaveBeenCalled();
     });
 });

@@ -30,6 +30,7 @@ importBackgroundScript('jslib/page-navigation.js');
 
 init();
 clearLegacyPageContentStorage();
+clearLegacyActiveSessionId();
 
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
     if (areaName !== 'sync') { return; }
@@ -150,7 +151,7 @@ async function handleRuntimeMessage(request, sender) {
             return { status: response?.status ?? 500, text: response?.statusText ?? 'Unknown error', ok: response?.ok ?? false };
 
         case "storeImage":
-            return await storeImageHandler(request.base64, request.filename, request.mimeType);
+            return await storeImageHandler(request.base64, request.filename, request.mimeType, request.sessionId);
 
         case "deleteSessionMemory":
             await backgroundMemory.deleteSession(request.sessionId);
@@ -688,7 +689,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, na
                         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab for internal tool execution`);
                     }
                 }
-                data = await execInternalTool(toolCall, validatedTabId, { navigationSession });
+                data = await execInternalTool(toolCall, validatedTabId, { navigationSession, sessionId });
                 break;
             case 'function':
                 res = await fetchExtResponse(funcUrl, {
@@ -941,7 +942,13 @@ async function fetchDataAction(request, sender) {
         delete request.data.userInput;
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - userInput:`, userInput);
 
-        let activeSession = await getActiveSession();
+        let activeSession = await getSessionForRequest(request?.sessionId);
+        if (!activeSession?.id) {
+            const msg = missingSessionMessage;
+            await showUIMessage(msg, 'error', sender?.tab);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - fetchData request without a session id; refusing to pick another session.`, { tabId, sessionId: request?.sessionId });
+            return { "status": "error", "message": msg };
+        }
         const userAssistantMessages = (activeSession?.messages || []).filter(m => m.role === 'user' || m.role === 'assistant');
         const turnNumber = Math.floor(userAssistantMessages.length / 2) + 1;
         let attachments = [...(activeSession?.attachments || [])];
@@ -991,7 +998,11 @@ async function fetchDataAction(request, sender) {
             ...getVisibleSessionMessages(activeSession.messages),
             { role: 'user', content: userInput }
         ];
-        await setActiveSession(activeSession);
+        if (!await saveSession(activeSession)) {
+            await showUIMessage(sessionSaveFailedMessage, 'error', sender?.tab);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to save session ${activeSession.id}; request not sent.`);
+            return { "status": "error", "message": sessionSaveFailedMessage };
+        }
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - updated request`, request.data);
 
         if (promptTools.length > 0 && await modelCanUseTools(model, sender?.tab)) {
@@ -1071,7 +1082,7 @@ async function fetchDataAction(request, sender) {
 
                 if (sessionUpdatedWithTools) {
                     await throwIfRequestCancelled(controller, tabId);
-                    await setActiveSession(activeSession);
+                    if (!await saveSession(activeSession)) { throw new Error(sessionSaveFailedMessage); }
                     // delete request.data.tools;
                 }
             };
@@ -1088,7 +1099,7 @@ async function fetchDataAction(request, sender) {
                 activeSession.messages.push(historyMessage);
             }
             delete activeSession.attachments;
-            await setActiveSession(activeSession);
+            if (!await saveSession(activeSession)) { throw new Error(sessionSaveFailedMessage); }
             await throwIfRequestCancelled(controller, tabId);
 
             const assistantResponse = responseMessage?.content || '';
@@ -1404,10 +1415,11 @@ function tryReloadExtension() {
     }
 }
 
-async function storeImageHandler(base64, filename, mimeType) {
-    let session = await sessionRepository.getActiveSession();
-    if (!session || !session.id) {
-        session = await createNewSession('New session');
+async function storeImageHandler(base64, filename, mimeType, sessionId) {
+    const session = await getSessionForRequest(sessionId);
+    if (!session?.id) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - storeImage request without a session id; refusing to pick another session.`);
+        return { status: 'error', message: missingSessionMessage };
     }
 
     const imageId = crypto.randomUUID();
@@ -1526,19 +1538,21 @@ async function generateAndUpdateSessionTitle(text, sessionId, tab) {
     if (!sessionId) { return false; }
     const titleSeed = await generateSessionTitle(text, tab);
     if (!titleSeed) { return false; }
-    const sessions = await getAllSessions();
-    const sessionIndex = sessions.findIndex(session => session?.id === sessionId);
-    if (sessionIndex < 0) { return false; }
+    return queueSessionMutation(async () => {
+        const sessions = await getAllSessions();
+        const sessionIndex = sessions.findIndex(session => session?.id === sessionId);
+        if (sessionIndex < 0) { return false; }
 
-    const session = sessions[sessionIndex];
-    if (session?.titleManual) { return false; }
+        const session = sessions[sessionIndex];
+        if (session?.titleManual) { return false; }
 
-    sessions[sessionIndex] = {
-        ...session,
-        title: titleSeed,
-        titleGenerated: true
-    };
-    return await setAllSessions(sessions);
+        sessions[sessionIndex] = {
+            ...session,
+            title: titleSeed,
+            titleGenerated: true
+        };
+        return await setAllSessions(sessions);
+    });
 }
 
 function normaliseGeneratedTitle(rawTitle = '') {

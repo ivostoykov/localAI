@@ -42,8 +42,7 @@ function relativeDate(str) {
     return new Date(Date.now() + multiplier * n * units[key]);
 }
 
-async function getAllSessionPages(tabId) {
-    const sessionId = await getActiveSessionId();
+async function getAllSessionPages(tabId, sessionId = null) {
     if (!sessionId) { return "No active session yet."; }
 
     const allPages = await backgroundMemory.getSessionPages(sessionId);
@@ -52,8 +51,7 @@ async function getAllSessionPages(tabId) {
         : "No pages stored in this session yet";
 }
 
-async function getLastSessionPages(count = 1, tabId) {
-    const sessionId = await getActiveSessionId();
+async function getLastSessionPages(count = 1, tabId, sessionId = null) {
     if (!sessionId) { return "No active session yet."; }
 
     const lastPages = await backgroundMemory.getLastSessionPages(sessionId, count);
@@ -62,8 +60,7 @@ async function getLastSessionPages(count = 1, tabId) {
             : "No pages stored in this session yet";
 }
 
-async function clearOldPageContext() {
-    const sessionId = await getActiveSessionId();
+async function clearOldPageContext(sessionId = null) {
     if (!sessionId) { return "No active session yet."; }
 
     const cleared = await backgroundMemory.clearSessionPages(sessionId);
@@ -88,8 +85,7 @@ async function calculateRelativeDateTimeByOffset(offset) {
     return res;
 }
 
-async function getConversationTurn(turnNumber) {
-    const sessionId = await getActiveSessionId();
+async function getConversationTurn(turnNumber, sessionId = null) {
     if (!sessionId) {
         return "No active session yet.";
     }
@@ -141,11 +137,11 @@ async function listRecentSessions(limit = 10) {
     })), null, 2);
 }
 
-async function searchConversationHistory(args, tabId) {
-    const sessionId = await getActiveSessionId();
+async function searchConversationHistory(args, tabId, sessionId = null) {
     const scope = args.scope ?? 'current_session';
+    if (scope !== 'all_sessions' && !sessionId) { return "No active session yet."; }
     const searchOptions = {
-        sessionId: scope === 'current_session' ? sessionId : null,
+        sessionId: scope === 'all_sessions' ? null : sessionId,
         tabId: scope === 'current_tab' ? tabId : null,
         type: args.type || null,
         limit: args.limit || 10,
@@ -204,22 +200,22 @@ async function execInternalTool(call = {}, tabId = null, context = {}) {
             return await callContentScriptExtractor(tabId, 'getEnhancedPageContent', null);
 
         case "get_all_session_pages":
-            return await getAllSessionPages(tabId);
+            return await getAllSessionPages(tabId, context?.sessionId);
 
         case "get_last_session_pages":
-            return await getLastSessionPages(call?.function?.arguments?.count, tabId);
+            return await getLastSessionPages(call?.function?.arguments?.count, tabId, context?.sessionId);
 
         case "clear_old_page_context":
-            return await clearOldPageContext();
+            return await clearOldPageContext(context?.sessionId);
 
         case "calculate_date_time":
             return calculateRelativeDateTimeByOffset(call?.function?.arguments?.offset || call?.arguments?.offset);
 
         case "search_conversation_history":
-            return await searchConversationHistory(call?.function?.arguments || {}, tabId);
+            return await searchConversationHistory(call?.function?.arguments || {}, tabId, context?.sessionId);
 
         case "get_conversation_turn":
-            return await getConversationTurn(call?.function?.arguments?.turn_number);
+            return await getConversationTurn(call?.function?.arguments?.turn_number, context?.sessionId);
 
         case "list_recent_sessions":
             return await listRecentSessions(call?.function?.arguments?.limit);
@@ -433,7 +429,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
                         "type": "string"
                     },
                     "scope": {
-                        "description": "Search scope: 'current_session' (default), 'current_tab', or 'all_sessions'",
+                        "description": "Search scope: 'current_session' (default), 'current_tab' (this tab within the current session), or 'all_sessions'",
                         "enum": ["current_session", "current_tab", "all_sessions"],
                         "type": "string"
                     },
