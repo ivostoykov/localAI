@@ -1,6 +1,18 @@
 # Local AI - Changelog
 
-## [1.29.81] - 2026-11-03 - latest
+## [1.29.82] - 2026-11-06 - latest
+
+### Sessions and Privacy
+
+- Fixed chat context leaking between tabs (#29): the active session was one browser-wide pointer, so a prompt from one tab could include another tab's earlier turns, page summary or page content, and pending attachments, even though its panel showed an empty history
+- Each tab's panel now owns its session; every prompt, image upload and conversation-history tool call names its session explicitly, and the background never picks another tab's session
+- Reloading or navigating a page starts the panel with a new, empty session; restoring a session from the list binds it to that tab only
+- Stored page content and page summaries are reused only in the tab that captured them, including when the same session is restored in two tabs
+- `search_conversation_history` with the `current_tab` scope is limited to the current session
+- A request without a session, for example from a page loaded before an update, is refused with a message asking to reload the page
+- The legacy `activeSessionId` storage key is removed once when the extension starts instead of on every page load
+
+## [1.29.81] - 2026-11-03
 
 ### Options
 

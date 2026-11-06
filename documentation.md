@@ -103,6 +103,8 @@ When you hover over the [Ribbon](#ribbon), you'll see the extension's version nu
 
 <img src="media/temperature.svg" height="30" alt="Modifiers"/> - Show some of the model's [modifiers](#modifiers).
 
+Each tab's panel has its own session. A prompt sent from one tab never includes the conversation, page content or attachments of another tab. Reloading or navigating a page starts the panel with a new, empty session; to continue an earlier conversation, open the session list and click it. A restored session is bound to the tab where it was restored only. If the same session is restored in two tabs, they share its history and attachments, but page content captured in one tab is not reused in the other.
+
 Sessions can be managed also from the [Options](#options) page.
 
 ### Modifiers

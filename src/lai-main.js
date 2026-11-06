@@ -185,7 +185,7 @@ async function createNewSessionClicked(e, shadowRoot) {
     } else {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
-    removeLocalStorageObject(activeSessionIdKey);
+    await deleteActiveSessionId();
     showMessage('New session created.', 'success');
 }
 
@@ -210,7 +210,7 @@ async function recycleAllSessions(e, shadowRoot) {
     try {
         await Promise.all([
             removeLocalStorageObject(activeSessionKey),
-            removeLocalStorageObject(activeSessionIdKey),
+            deleteActiveSessionId(),
             removeLocalStorageObject(allSessionsStorageKey),
             // chrome.storage.sync.remove(activeSessionKey),
             clearAllMemory()
@@ -1118,8 +1118,17 @@ async function queryAI(userInput) {
     // tools could be temporary disabled from the UI regardless of the general options state
     const toolFunctions = !shadowRoot?.querySelector('#toolFunctions')?.classList?.contains('disabled') || false;
     const sysInstruct = getCurrentSystemInstructions();
+    const session = await getActiveSession();
+    if (!session?.id) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No session available for this sidebar; request not sent.`);
+        showMessage('Failed to start a chat session. Please reload the page and try again.', 'error');
+        shadowRoot?.getElementById('laiAbort')?.classList.add('invisible');
+        shadowRoot?.getElementById('laiUserInput')?.classList.remove('invisible');
+        return;
+    }
     const requestData = {
         action: "fetchData",
+        sessionId: session.id,
         systemInstructions: sysInstruct || '',
         url: laiOptions.aiUrl,
         data: data,

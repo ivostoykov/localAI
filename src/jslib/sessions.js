@@ -2,9 +2,17 @@ if(typeof manifest === 'undefined'){
     var manifest = chrome.runtime.getManifest();
 }
 
+// Each sidebar (content-script instance) owns its active session; it is never shared through storage (#29).
+var laiActiveSessionId = null;
+
 async function createNewSession(text = `Session ${new Date().toISOString().replace(/[TZ]/g, ' ').trim()}`) {
+    const newSession = await createSessionRecord(text);
+    if (newSession?.id) { await setActiveSessionId(newSession.id); }
+    return newSession;
+}
+
+async function createSessionRecord(text = `Session ${new Date().toISOString().replace(/[TZ]/g, ' ').trim()}`, sessionId = crypto.randomUUID()) {
     let model;
-    const sessionId = crypto.randomUUID();
     let newSession = false;
     let sessions = [];
     try {
@@ -37,7 +45,6 @@ async function createNewSession(text = `Session ${new Date().toISOString().repla
 
     sessions.push(newSession);
     await setAllSessions(sessions);
-    await setActiveSessionId(newSession?.id);
 
     return newSession;
 }
@@ -97,12 +104,11 @@ async function renameSession(sessionId, newTitle) {
 }
 
 async function deleteActiveSessionId() {
-    try {
-        await chrome.storage.local.remove(activeSessionIdKey);
+    laiActiveSessionId = null;
+}
 
-    } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
-    }
+async function clearLegacyActiveSessionId() {
+    await removeLocalStorageObject(activeSessionIdKey);
 }
 
 async function getSession(sessionId = null, createIfMissing = true, updateAccess = true) {
@@ -144,6 +150,16 @@ async function getActiveSessionById(sessionId) {
     return getSession(sessionId, false);
 }
 
+/**
+ * Returns the session named by a request, recreating it under the same id if the stored
+ * record has gone (e.g. an empty session pruned by another save), so identity is never
+ * replaced by another tab's session.
+ */
+async function getSessionForRequest(sessionId) {
+    if (!sessionId || typeof sessionId !== 'string' || !sessionId.trim()) { return null; }
+    return await getSession(sessionId, false) ?? await createSessionRecord(undefined, sessionId);
+}
+
 async function getAllSessions() {
     try {
         const result = await chrome.storage.local.get([allSessionsStorageKey]);
@@ -155,26 +171,10 @@ async function getAllSessions() {
 }
 
 async function getActiveSessionId() {
-    try {
-        const result = await chrome.storage.local.get(activeSessionIdKey);
-        const sessionId = result[activeSessionIdKey];
-
-        if (sessionId && typeof sessionId === 'string' && sessionId.trim()) {
-            return sessionId;
-        }
-        return null;
-    } catch (error) {
-        if(error.message.indexOf("context invalidated") > -1){
-            try {
-                showMessage(`${error.message}. Please reload the page.`, "error");
-            } catch (e) {
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - showMessage unavailable: ${e.message}`);
-            }
-            return null;
-        }
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getActiveSessionId error: ${error.message}`, error);
-        return null;
+    if (laiActiveSessionId && typeof laiActiveSessionId === 'string' && laiActiveSessionId.trim()) {
+        return laiActiveSessionId;
     }
+    return null;
 }
 
 async function setAllSessions(obj = []) {
@@ -201,19 +201,23 @@ async function setActiveSessionId(sessionId) {
         if (!sessionId || typeof sessionId !== 'string') {
             throw new Error(`Invalid session ID provided: ${sessionId}`);
         }
-        await chrome.storage.local.set({ [activeSessionIdKey]: sessionId });
+        laiActiveSessionId = sessionId;
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - setActiveSessionId error: ${error.message}`, error);
     }
 }
 
 async function setActiveSession(session) {
+    if (await saveSession(session)) { await setActiveSessionId(session.id); }
+}
+
+async function saveSession(session) {
     try {
         if (!session?.id) { throw new Error(`[${getLineNumber()}]: Session object is missing a valid id!`); }
 
         if ((session?.messages?.length ?? 0) + (session?.attachments?.length ?? 0) === 0)  {
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping save of empty session ${session?.id}`);
-            return;
+            return false;
         }
 
         const sessions = await getAllSessions();
@@ -225,10 +229,11 @@ async function setActiveSession(session) {
         sessions[idx] = session;
         const filteredSessions = sessions.filter(s => (s?.messages?.length ?? 0) + (s?.attachments?.length ?? 0) > 0);
         await setAllSessions(filteredSessions);
-        await setActiveSessionId(session?.id);
+        return true;
     } catch (e) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - setActiveSession error: ${e.message}`, e);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: ${e.message}`, e);
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - the session thrown the error`, session);
+        return false;
     }
 }
 

@@ -536,3 +536,44 @@ Third line of thinking`;
         });
     });
 });
+
+describe('queryAI session identity (#29)', () => {
+    const executeQueryAI = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
+        isMessagePersistableCode + '\n' + laiMainCode + '; return { queryAI };'
+    );
+    let queryAI;
+    let sendMessage;
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getOptions = vi.fn(async () => ({ aiUrl: 'http://localhost:11434/api/chat' }));
+        global.checkExtensionState = vi.fn(() => true);
+        global.getModelModifiers = vi.fn(() => null);
+        global.getCurrentSystemInstructions = vi.fn(() => '');
+        global.updateStatusBar = vi.fn();
+        global.resetStatusbar = vi.fn();
+        global.getSideBar = vi.fn(() => document.body);
+        sendMessage = vi.fn(async () => ({ status: 'success' }));
+        const chrome = { runtime: { sendMessage, onMessage: { addListener: vi.fn() } } };
+        ({ queryAI } = executeQueryAI(global.document, global.window, global.manifest, chrome, global.isMessagePersistable));
+    });
+
+    it('sends the session id owned by this sidebar with the prompt', async () => {
+        global.getActiveSession = vi.fn(async () => ({ id: 'sidebar-session', messages: [] }));
+
+        await queryAI('Hello');
+
+        expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'fetchData', sessionId: 'sidebar-session' }));
+    });
+
+    it('does not send a prompt when no session can be established', async () => {
+        global.getActiveSession = vi.fn(async () => null);
+
+        await queryAI('Hello');
+
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect(global.showMessage).toHaveBeenCalledWith(expect.stringContaining('reload the page'), 'error');
+    });
+});

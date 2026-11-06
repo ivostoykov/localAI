@@ -11,7 +11,7 @@ const sessionsCode = fs.readFileSync(
 );
 
 // Execute sessions.js code in global scope
-const executeSessionsCode = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', sessionsCode + '; return { createNewSession, deleteSession, deleteActiveSession, deleteSessionById, deleteActiveSessionId, getSession, getActiveSession, getActiveSessionById, getAllSessions, setAllSessions, setActiveSessionId, getActiveSessionId, setActiveSession, getAiUserCommands, setAiUserCommands, getOptions, setOptions, deleteSessionMemory, clearAllMemory, requestPageDataFromTab, getActiveSessionPageData };');
+const executeSessionsCode = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', sessionsCode + '; return { createNewSession, deleteSession, deleteActiveSession, deleteSessionById, deleteActiveSessionId, getSession, getActiveSession, getActiveSessionById, getAllSessions, setAllSessions, setActiveSessionId, getActiveSessionId, setActiveSession, saveSession, getSessionForRequest, clearLegacyActiveSessionId, getAiUserCommands, setAiUserCommands, getOptions, setOptions, deleteSessionMemory, clearAllMemory, requestPageDataFromTab, getActiveSessionPageData };');
 
 let funcs;
 
@@ -61,11 +61,12 @@ describe('sessions.js', () => {
             expect(result[allSessionsStorageKey][0].id).toBe(session.id);
         });
 
-        it('sets created session as active', async () => {
+        it('sets created session as active for this instance without writing the legacy global key', async () => {
             const session = await funcs.createNewSession();
             const result = await fakeBrowser.storage.local.get(activeSessionIdKey);
 
-            expect(result[activeSessionIdKey]).toBe(session.id);
+            expect(await funcs.getActiveSessionId()).toBe(session.id);
+            expect(result[activeSessionIdKey]).toBeUndefined();
         });
 
         it('handles errors gracefully', async () => {
@@ -152,18 +153,16 @@ describe('sessions.js', () => {
         it('clears active session ID if deleted session was active', async () => {
             const session = await funcs.createNewSession('Active');
             await funcs.deleteSession(session.id);
-            const result = await fakeBrowser.storage.local.get(activeSessionIdKey);
 
-            expect(result[activeSessionIdKey]).toBeUndefined();
+            expect(await funcs.getActiveSessionId()).toBeNull();
         });
 
         it('preserves active session ID if different session deleted', async () => {
             const session1 = await funcs.createNewSession('Session 1');
             const session2 = await funcs.createNewSession('Session 2');
             await funcs.deleteSession(session1.id);
-            const result = await fakeBrowser.storage.local.get(activeSessionIdKey);
 
-            expect(result[activeSessionIdKey]).toBe(session2.id);
+            expect(await funcs.getActiveSessionId()).toBe(session2.id);
         });
 
         it('calls deleteSessionMemory', async () => {
@@ -397,4 +396,96 @@ describe('sessions.js', () => {
     // testing would require extensive mocking of cross-script dependencies. The function
     // is indirectly tested through requestPageDataFromTab coverage above and manual testing
     // of the capturePageData message flow.
+
+    describe('per-sidebar session identity (#29)', () => {
+        const loadInstance = () => executeSessionsCode(
+            global.chrome,
+            global.manifest,
+            global.getLineNumber,
+            global.allSessionsStorageKey,
+            global.activeSessionIdKey,
+            global.storageUserCommandsKey,
+            global.storageOptionKey,
+            global.activePageStorageKey,
+            global.aiUserCommands
+        );
+
+        it('keeps a distinct active session in each sidebar instance', async () => {
+            const tabA = loadInstance();
+            const tabB = loadInstance();
+
+            const sessionA = await tabA.getActiveSession();
+            const sessionB = await tabB.getActiveSession();
+
+            expect(sessionA.id).not.toBe(sessionB.id);
+            expect(await tabA.getActiveSessionId()).toBe(sessionA.id);
+            expect(await tabB.getActiveSessionId()).toBe(sessionB.id);
+        });
+
+        it('starts a reloaded sidebar empty instead of continuing the last session', async () => {
+            const beforeReload = loadInstance();
+            const session = await beforeReload.getActiveSession();
+            session.messages.push({ role: 'user', content: 'LinkedIn question' });
+            await beforeReload.setActiveSession(session);
+
+            const afterReload = loadInstance();
+
+            expect(await afterReload.getActiveSessionId()).toBeNull();
+            expect((await afterReload.getAllSessions()).map(s => s.id)).toContain(session.id);
+        });
+
+        it('binds a restored session to the restoring sidebar only', async () => {
+            const tabA = loadInstance();
+            const tabB = loadInstance();
+            const saved = await tabA.createNewSession('Saved');
+            saved.messages.push({ role: 'user', content: 'hello' });
+            await tabA.setActiveSession(saved);
+            await tabA.deleteActiveSessionId();
+
+            await tabB.setActiveSessionId(saved.id);
+
+            expect(await tabB.getActiveSessionId()).toBe(saved.id);
+            expect(await tabA.getActiveSessionId()).toBeNull();
+        });
+
+        it('ignores a legacy global activeSessionId left in storage', async () => {
+            await fakeBrowser.storage.local.set({ [activeSessionIdKey]: 'legacy-session' });
+            const instance = loadInstance();
+
+            expect(await instance.getActiveSessionId()).toBeNull();
+            await instance.clearLegacyActiveSessionId();
+            expect((await fakeBrowser.storage.local.get(activeSessionIdKey))[activeSessionIdKey]).toBeUndefined();
+        });
+
+        it('saveSession persists a session without binding it as active', async () => {
+            const background = loadInstance();
+            const session = { id: 'explicit-1', title: 't', messages: [{ role: 'user', content: 'x' }] };
+            await background.setAllSessions([{ id: 'explicit-1', messages: [] }]);
+
+            expect(await background.saveSession(session)).toBe(true);
+            expect(await background.getActiveSessionId()).toBeNull();
+            expect((await background.getAllSessions())[0].messages).toHaveLength(1);
+        });
+
+        it('getSessionForRequest returns the named session and never another one', async () => {
+            const background = loadInstance();
+            const tabA = loadInstance();
+            const sessionA = await tabA.createNewSession('A');
+
+            expect((await background.getSessionForRequest(sessionA.id)).id).toBe(sessionA.id);
+            expect(await background.getSessionForRequest(null)).toBeNull();
+            expect(await background.getSessionForRequest('')).toBeNull();
+            expect(await background.getActiveSessionId()).toBeNull();
+        });
+
+        it('getSessionForRequest recreates a pruned session under the same id', async () => {
+            const background = loadInstance();
+
+            const session = await background.getSessionForRequest('pruned-id');
+
+            expect(session.id).toBe('pruned-id');
+            expect((await background.getAllSessions()).map(s => s.id)).toEqual(['pruned-id']);
+            expect(await background.getActiveSessionId()).toBeNull();
+        });
+    });
 });
