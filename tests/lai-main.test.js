@@ -590,7 +590,8 @@ describe('reconcileActiveSessionWithStorage (#29)', () => {
         global.getLineNumber = () => 'test:1';
         global.showMessage = vi.fn();
         global.getShadowRoot = vi.fn(() => document);
-        document.body.innerHTML = '<div id="laiChatMessageList"><div class="lai-chat-history">restored turn</div></div>';
+        document.body.innerHTML = '<div id="laiChatMessageList"><div class="lai-chat-history">restored turn</div></div>' +
+            '<div id="attachContainer" class="attachment-container active"><span class="attachment">job-ad.txt</span></div>';
         activeId = 'restored-session';
         global.getActiveSessionId = vi.fn(async () => activeId);
         global.deleteActiveSessionId = vi.fn(async () => { activeId = null; });
@@ -605,6 +606,8 @@ describe('reconcileActiveSessionWithStorage (#29)', () => {
 
         expect(activeId).toBeNull();
         expect(document.getElementById('laiChatMessageList').children).toHaveLength(0);
+        expect(document.getElementById('attachContainer').children).toHaveLength(0);
+        expect(document.getElementById('attachContainer').classList.contains('active')).toBe(false);
         expect(global.showMessage).toHaveBeenCalledWith(expect.stringContaining('deleted'), 'info');
     });
 
@@ -613,6 +616,8 @@ describe('reconcileActiveSessionWithStorage (#29)', () => {
 
         expect(await reconcileActiveSessionWithStorage(changes, 'local')).toBe(true);
         expect(activeId).toBeNull();
+        expect(document.getElementById('attachContainer').children).toHaveLength(0);
+        expect(document.getElementById('attachContainer').classList.contains('active')).toBe(false);
     });
 
     it('keeps the panel when its session still exists or was never stored yet', async () => {
@@ -626,5 +631,7 @@ describe('reconcileActiveSessionWithStorage (#29)', () => {
 
         expect(activeId).toBe('restored-session');
         expect(document.getElementById('laiChatMessageList').children).toHaveLength(1);
+        expect(document.getElementById('attachContainer').children).toHaveLength(1);
+        expect(document.getElementById('attachContainer').classList.contains('active')).toBe(true);
     });
 });

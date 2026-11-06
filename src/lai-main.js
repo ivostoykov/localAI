@@ -2043,6 +2043,7 @@ async function reconcileActiveSessionWithStorage(changes, areaName) {
 
     await deleteActiveSessionId();
     clearChatHistoryUI();
+    clearAttachments();
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Active session ${sessionId} was deleted elsewhere; panel unbound.`);
     showMessage('This session was deleted. Your next prompt starts a new session.', 'info');
     return true;

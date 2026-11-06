@@ -11,7 +11,7 @@
 - Session saves no longer remove other tabs' new, empty sessions: each save writes only its own session into the latest session list, and the background serialises its session-list updates, so first prompts sent from two tabs at once keep both sessions and histories
 - A prompt is stopped with an error if its session cannot be saved, instead of continuing with an unsaved turn
 - Empty sessions are removed at start-up only after a day without use
-- A panel whose session is deleted from another tab or the Options page clears its history and starts a new session with the next prompt
+- A panel whose session is deleted from another tab or the Options page clears its history and pending attachments and starts a new session with the next prompt
 - `search_conversation_history` with the `current_tab` scope is limited to the current session
 - A request without a session, for example from a page loaded before an update, is refused with a message asking to reload the page
 - The legacy `activeSessionId` storage key is removed once when the extension starts instead of on every page load
