@@ -485,7 +485,7 @@ Third line of thinking`;
             return recipient;
         };
 
-        it('keeps Abort scoped to the active reply after an earlier reply completes', async () => {
+        it('marks only the streaming reply when streamAbort finalises it', async () => {
             document.body.innerHTML = '';
             const first = createRecipient();
             global.parseAndRender.mockImplementationOnce(async (markdown, element) => {
@@ -494,13 +494,21 @@ Third line of thinking`;
             await finaliseStreamRecipient(first, finalResponse({ content: 'First' }));
 
             const second = createRecipient();
-            await finaliseStreamRecipient(second, finalResponse({ content: 'Second' }));
+            second._laiStreamContent = 'Partial';
             document.getElementById('laiAbort').click();
-            second._laiStreamContent = 'Second';
             await finaliseStreamRecipient(second, { action: 'streamAbort' });
 
             expect(first.querySelector('.lai-aborted-text')).toBeNull();
             expect(second.querySelectorAll('.lai-aborted-text')).toHaveLength(1);
+        });
+
+        it('marks an aborted reply with no streamed content once', async () => {
+            document.body.innerHTML = '';
+            const recipient = createRecipient();
+
+            await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
+
+            expect(recipient.querySelectorAll('.lai-aborted-text')).toHaveLength(1);
         });
 
         it('removes the abort listener when rendering fails', async () => {

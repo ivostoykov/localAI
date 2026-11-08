@@ -1305,7 +1305,7 @@ function parseFinalStreamResponse(response = {}) {
 
 async function finaliseStreamRecipient(recipient, response = {}) {
     if (!recipient) { return; }
-    const abortText = recipient.querySelector('.lai-aborted-text')?.textContent || '';
+    const abortText = response.action === 'streamAbort' ? '... Aborted' : recipient.querySelector('.lai-aborted-text')?.textContent || '';
 
     if (typeof response?.rawResponse === 'string' && response.rawResponse) {
         recipient._laiRawResponse = response.rawResponse;
@@ -1338,6 +1338,9 @@ async function finaliseStreamRecipient(recipient, response = {}) {
     setMarkdownSource(recipient, finalContent ? markdownSource : '');
 
     if (!finalContent) {
+        if (abortText) {
+            laiHandleStreamActions("Stream Aborted", recipient, abortText);
+        }
         return;
     }
 
