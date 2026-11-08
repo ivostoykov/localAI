@@ -1,6 +1,17 @@
 # Local AI - Changelog
 
-## [1.29.83] - 2026-11-08 - latest
+## [1.29.84] - 2026-11-08 - latest
+
+### Models
+
+- A retired or unavailable model now reports the daemon's status and message, for example `deepseek-v4-flash:0731-cloud: 410 Gone – deepseek-v4-flash:0731 was retired on September 25, 2026. Try glm-5.3-flash:cloud.`, instead of the last variant's `400 Bad Request` (#43)
+- Model-info resolution probes another candidate only after `404 Not Found`; any other response stops it and is reported with the requested model, the HTTP status and Ollama's error text
+- When every candidate is missing, the error reports the exact-name failure rather than the last variant
+- A name that already has a tag gains only the `-cloud` routing suffix, and only when it does not already end in `-cloud`; `name:tag:latest` and `name:tag:cloud` are no longer requested, and `-cloud` is never stripped before a request
+- Terminal model-info failures are remembered for ten minutes per endpoint and model, so repeat callers and service-worker start-up no longer re-probe a retired model every 30 seconds; the memory clears on a forced refresh and when the model list is reloaded
+- A prompt sent with an unavailable model shows that message in the panel instead of a generic failure
+
+## [1.29.83] - 2026-11-08
 
 ### Streaming
 

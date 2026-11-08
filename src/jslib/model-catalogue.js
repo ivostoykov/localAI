@@ -1,5 +1,7 @@
 const modelCatalogueCacheStorageKey = 'modelCatalogueCache';
 const modelInfoCacheStorageKey = 'modelInfoCache';
+const modelInfoFailureStorageKey = 'modelInfoFailureCache';
+const modelInfoFailureTtlMs = 10 * 60 * 1000;
 const ollamaCloudTagsUrl = 'https://ollama.com/api/tags';
 
 function getModelEndpointCacheKey(apiUrl = '') {
@@ -144,6 +146,21 @@ function findMatchingModelSummary(catalogue = null, modelName = '') {
     return models.find(model => modelSummaryMatchesName(model, modelName)) || null;
 }
 
+function isTaggedModelName(modelName = '') {
+    const lastColon = modelName.lastIndexOf(':');
+    if (lastColon < 0) { return false; }
+
+    return lastColon > modelName.lastIndexOf('/');
+}
+
+function hasCloudRoutingSuffix(modelName = '') {
+    return /(?::cloud|-cloud)$/i.test(modelName);
+}
+
+function withoutCloudRoutingSuffix(modelName = '') {
+    return modelName.replace(/(?::cloud|-cloud)$/i, '');
+}
+
 function buildModelNameCandidates(modelName = '', catalogue = null) {
     const candidates = [];
     const push = value => {
@@ -166,15 +183,21 @@ function buildModelNameCandidates(modelName = '', catalogue = null) {
         push(model?.remoteModel || '');
     });
 
-    getModelNameVariants(modelName).forEach(baseName => {
-        push(baseName);
-        if (/:latest$/i.test(baseName) || /-cloud$/i.test(baseName) || /:cloud$/i.test(baseName)) { return; }
-        push(`${baseName}:cloud`);
-        push(`${baseName}-cloud`);
-        push(`${baseName}:latest`);
-    });
+    push(modelName);
 
-    return candidates;
+    if (!isTaggedModelName(modelName)) {
+        push(`${modelName}:cloud`);
+        push(`${modelName}-cloud`);
+        push(`${modelName}:latest`);
+    } else if (!hasCloudRoutingSuffix(modelName)) {
+        push(`${modelName}-cloud`);
+    }
+
+    const strippedCloudName = withoutCloudRoutingSuffix(modelName);
+
+    return strippedCloudName === modelName
+        ? candidates
+        : candidates.filter(candidate => candidate !== strippedCloudName);
 }
 
 async function readModelCatalogueCache() {
@@ -231,6 +254,62 @@ async function cacheModelInfo(apiUrl = '', modelName = '', modelInfo = null) {
 
     cache[endpointKey][modelName] = modelInfo;
     await writeModelInfoCache(cache);
+}
+
+async function readModelInfoFailureCache() {
+    const stored = await chrome.storage.local.get([modelInfoFailureStorageKey]);
+    return stored?.[modelInfoFailureStorageKey] || {};
+}
+
+async function writeModelInfoFailureCache(cache = {}) {
+    await chrome.storage.local.set({ [modelInfoFailureStorageKey]: cache });
+}
+
+async function getModelInfoFailure(apiUrl = '', modelName = '') {
+    const endpointKey = getModelEndpointCacheKey(apiUrl);
+    if (!endpointKey || !modelName) { return null; }
+
+    const cache = await readModelInfoFailureCache();
+    const failure = cache?.[endpointKey]?.[modelName];
+    if (!failure?.message) { return null; }
+    if (Number(failure.expiresAt) > 0 && Number(failure.expiresAt) <= Date.now()) { return null; }
+
+    return failure;
+}
+
+async function rememberModelInfoFailure(apiUrl = '', modelName = '', failure = {}) {
+    const endpointKey = getModelEndpointCacheKey(apiUrl);
+    if (!endpointKey || !modelName || !failure?.message) { return; }
+
+    const cache = await readModelInfoFailureCache();
+    cache[endpointKey] = cache[endpointKey] || {};
+    cache[endpointKey][modelName] = {
+        ...failure,
+        expiresAt: Date.now() + modelInfoFailureTtlMs
+    };
+    await writeModelInfoFailureCache(cache);
+}
+
+async function clearModelInfoFailure(apiUrl = '', modelName = '') {
+    const endpointKey = getModelEndpointCacheKey(apiUrl);
+    if (!endpointKey || !modelName) { return; }
+
+    const cache = await readModelInfoFailureCache();
+    if (!cache?.[endpointKey]?.[modelName]) { return; }
+
+    delete cache[endpointKey][modelName];
+    await writeModelInfoFailureCache(cache);
+}
+
+async function clearModelInfoFailures(apiUrl = '') {
+    const endpointKey = getModelEndpointCacheKey(apiUrl);
+    if (!endpointKey) { return; }
+
+    const cache = await readModelInfoFailureCache();
+    if (!cache?.[endpointKey]) { return; }
+
+    delete cache[endpointKey];
+    await writeModelInfoFailureCache(cache);
 }
 
 async function fetchModelCataloguePayload(apiUrl = '') {
@@ -385,6 +464,10 @@ async function fetchModelCatalogueFromApi(apiUrl = '', includeCloud = false, fal
 async function getModelCatalogue(apiUrl = '', forceRefresh = false, includeCloud = false, refreshCloud = false) {
     const cached = await getCachedModelCatalogue(apiUrl);
 
+    if (forceRefresh) {
+        await clearModelInfoFailures(apiUrl);
+    }
+
     if (!forceRefresh && !refreshCloud) {
         const hasCurrentCloudMetadata = cached?.cloudCatalogueLoaded === true || cached?.cloudCatalogueFallback === true;
         const cacheCoversRequest = !includeCloud || hasCurrentCloudMetadata;
@@ -405,6 +488,40 @@ async function getModelSummary(apiUrl = '', modelName = '', forceRefresh = false
     return models.find(model => model?.name === modelName) || null;
 }
 
+async function readModelInfoErrorDetail(response = null) {
+    if (typeof response?.text !== 'function') { return ''; }
+
+    let rawBody = '';
+    try {
+        rawBody = await response.text();
+    } catch (error) {
+        return '';
+    }
+
+    if (!rawBody) { return ''; }
+
+    let payload = null;
+    try {
+        payload = JSON.parse(rawBody);
+    } catch (error) {
+        payload = null;
+    }
+
+    if (typeof payload?.error === 'string' && payload.error.trim()) {
+        return payload.error.trim();
+    }
+
+    return rawBody.trim();
+}
+
+function formatModelInfoFailure(modelName = '', candidate = '', status = 0, statusText = '', detail = '') {
+    let message = `${modelName}: ${status} ${statusText}`.trim();
+    if (detail) { message += ` – ${detail}`; }
+    if (candidate && candidate !== modelName) { message += ` (via ${candidate})`; }
+
+    return message;
+}
+
 async function getModelInfoFromApi(apiUrl = '', modelName = '', forceRefresh = false) {
     if (!modelName) {
         throw new Error('Model name is missing');
@@ -415,6 +532,13 @@ async function getModelInfoFromApi(apiUrl = '', modelName = '', forceRefresh = f
         if (cached?.resolvedModelName) {
             return cached;
         }
+
+        const rememberedFailure = await getModelInfoFailure(apiUrl, modelName);
+        if (rememberedFailure?.message) {
+            throw new Error(rememberedFailure.message);
+        }
+    } else {
+        await clearModelInfoFailure(apiUrl, modelName);
     }
 
     const endpointKey = getModelEndpointCacheKey(apiUrl);
@@ -431,7 +555,7 @@ async function getModelInfoFromApi(apiUrl = '', modelName = '', forceRefresh = f
     }
 
     const candidates = buildModelNameCandidates(modelName, catalogue);
-    let lastFailure = null;
+    let firstFailure = null;
 
     for (let index = 0; index < candidates.length; index++) {
         const candidate = candidates[index];
@@ -440,8 +564,23 @@ async function getModelInfoFromApi(apiUrl = '', modelName = '', forceRefresh = f
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: candidate })
         });
+
         if (!response.ok) {
-            lastFailure = { candidate, status: response.status, statusText: response.statusText };
+            const detail = await readModelInfoErrorDetail(response);
+            const failure = {
+                candidate,
+                status: response.status,
+                statusText: response.statusText,
+                detail,
+                message: formatModelInfoFailure(modelName, candidate, response.status, response.statusText, detail)
+            };
+
+            if (response.status !== 404) {
+                await rememberModelInfoFailure(apiUrl, modelName, failure);
+                throw new Error(failure.message);
+            }
+
+            firstFailure = firstFailure || failure;
             continue;
         }
 
@@ -454,12 +593,13 @@ async function getModelInfoFromApi(apiUrl = '', modelName = '', forceRefresh = f
             cleanData.source = inferModelSourceFromName(candidate);
         }
 
+        await clearModelInfoFailure(apiUrl, modelName);
         await cacheModelInfo(apiUrl, modelName, cleanData);
         return cleanData;
     }
 
-    if (lastFailure) {
-        throw new Error(`Failed to load model info for ${modelName} via ${lastFailure.candidate} (${lastFailure.status}: ${lastFailure.statusText})`);
+    if (firstFailure) {
+        throw new Error(firstFailure.message);
     }
 
     throw new Error(`Failed to load model info for ${modelName}`);

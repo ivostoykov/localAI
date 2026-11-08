@@ -35,6 +35,7 @@ const normaliseGeneratedTitleCode = backgroundCode.match(/function normaliseGene
 const resolveModelNameForRequestCode = backgroundCode.match(/async function resolveModelNameForRequest\([\s\S]*?\n}\n/)[0];
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
 const modelCanUseToolsCode = backgroundCode.match(/async function modelCanUseTools\([\s\S]*?\n}\n/)[0];
+const validateModelInfoCacheCode = backgroundCode.match(/async function validateModelInfoCache\([\s\S]*?\n}\n/)[0];
 
 const testFunctionsCode = `
 ${processTextChunkCode}
@@ -56,13 +57,14 @@ ${normaliseGeneratedTitleCode}
 ${resolveModelNameForRequestCode}
 ${modelCanThinkCode}
 ${modelCanUseToolsCode}
+${validateModelInfoCacheCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -86,6 +88,7 @@ describe('background.js', () => {
         resolveModelNameForRequest = exports.resolveModelNameForRequest;
         modelCanThink = exports.modelCanThink;
         modelCanUseTools = exports.modelCanUseTools;
+        validateModelInfoCache = exports.validateModelInfoCache;
     });
 
     describe('processTextChunk', () => {
@@ -848,6 +851,62 @@ describe('background.js', () => {
         });
     });
 
+    describe('validateModelInfoCache', () => {
+        beforeEach(() => {
+            global.console = { debug: vi.fn(), error: vi.fn() };
+            global.manifest = { name: 'Test' };
+        });
+
+        it('defers to the remembered failure instead of forcing a re-probe on worker start', async () => {
+            global.getOptions = vi.fn().mockResolvedValue({
+                aiModel: 'deepseek-v4-flash:0731-cloud',
+                aiUrl: 'http://127.0.0.1:11434/api/chat'
+            });
+            global.getCachedModelInfo = vi.fn().mockResolvedValue(null);
+            global.getModelInfo = vi.fn().mockResolvedValue({ error: '410 Gone' });
+
+            await validateModelInfoCache();
+
+            expect(global.getModelInfo).toHaveBeenCalledTimes(1);
+            expect(global.getModelInfo).toHaveBeenCalledWith('deepseek-v4-flash:0731-cloud');
+        });
+
+        it('does not probe when the model info is already cached', async () => {
+            global.getOptions = vi.fn().mockResolvedValue({
+                aiModel: 'llama3.2:latest',
+                aiUrl: 'http://127.0.0.1:11434/api/chat'
+            });
+            global.getCachedModelInfo = vi.fn().mockResolvedValue({ modelName: 'llama3.2:latest' });
+            global.getModelInfo = vi.fn();
+
+            await validateModelInfoCache();
+
+            expect(global.getModelInfo).not.toHaveBeenCalled();
+        });
+
+        it('swallows a failed probe so start-up continues', async () => {
+            global.getOptions = vi.fn().mockResolvedValue({
+                aiModel: 'retired-model',
+                aiUrl: 'http://127.0.0.1:11434/api/chat'
+            });
+            global.getCachedModelInfo = vi.fn().mockResolvedValue(null);
+            global.getModelInfo = vi.fn().mockRejectedValue(new Error('410 Gone'));
+
+            await expect(validateModelInfoCache()).resolves.toBeUndefined();
+        });
+
+        it('skips validation when no model or endpoint is configured', async () => {
+            global.getOptions = vi.fn().mockResolvedValue({});
+            global.getCachedModelInfo = vi.fn();
+            global.getModelInfo = vi.fn();
+
+            await validateModelInfoCache();
+
+            expect(global.getCachedModelInfo).not.toHaveBeenCalled();
+            expect(global.getModelInfo).not.toHaveBeenCalled();
+        });
+    });
+
     describe('resolveModelNameForRequest', () => {
         beforeEach(() => {
             global.getModelInfo = vi.fn();
@@ -861,12 +920,12 @@ describe('background.js', () => {
 
         it('returns the resolved model name when an alias was mapped', async () => {
             global.getModelInfo.mockResolvedValue({
-                resolvedModelName: 'deepseek-v3.1:671b:cloud'
+                resolvedModelName: 'deepseek-v3.1:671b-cloud'
             });
 
             const result = await resolveModelNameForRequest('deepseek-v3.1:671b', false, { id: 123 });
 
-            expect(result).toBe('deepseek-v3.1:671b:cloud');
+            expect(result).toBe('deepseek-v3.1:671b-cloud');
             expect(global.dumpInFrontConsole).toHaveBeenCalled();
         });
 

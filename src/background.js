@@ -931,7 +931,11 @@ async function fetchDataAction(request, sender) {
 
         let model = await getAiModel();
         if (model) {
-            request.data['model'] = await resolveModelNameForRequest(model, false, sender?.tab);
+            try {
+                request.data['model'] = await resolveModelNameForRequest(model, false, sender?.tab);
+            } catch (modelError) {
+                return { "status": "error", "message": modelError.message || `Failed to resolve model ${model}` };
+            }
         }
         await applyAutomaticModelOptions(request.data, model);
 
@@ -1678,7 +1682,7 @@ async function validateModelInfoCache() {
 
         if (!cached?.modelName) {
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing cached model info for ${currentModel}. Refreshing cache...`);
-            await getModelInfo(currentModel, true);
+            await getModelInfo(currentModel);
         } else {
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Model info cache is valid for ${currentModel}`);
         }
