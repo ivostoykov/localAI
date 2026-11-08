@@ -159,9 +159,11 @@ describe('background.js navigation lifecycle', () => {
         });
         const fetchDataAction = loadFetchDataAction(deps);
 
-        await fetchDataAction(request(), sender);
+        const result = await fetchDataAction(request(), sender);
 
+        expect(result.status).toBe('aborted');
         expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'streamAbort' });
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
         expect(deps.disposeNavigationSession).toHaveBeenCalledWith(sessions[0]);
         expect(sessions[0].signal.aborted).toBe(true);
         expect(deps.controllers.has(1)).toBe(false);

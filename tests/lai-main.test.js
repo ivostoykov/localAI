@@ -59,6 +59,7 @@ describe('lai-main.js', () => {
 
         // Content-script globals defined in content.js and solomd2html.js
         global.getShadowRoot = vi.fn(() => document);
+        global.getSideBar = vi.fn(() => null);
         global.getOptions = vi.fn(async () => ({}));
         global.parseAndRender = vi.fn(async (markdown, element) => { element.textContent = markdown; });
 
@@ -470,6 +471,55 @@ Third line of thinking`;
 
             expect(global.parseAndRender.mock.calls[0][0]).toBe('- item');
             expect(recipient._laiMarkdownSource).toBe('- item');
+        });
+    });
+
+    describe('stream abort cleanup', () => {
+        const finalResponse = (message) => ({ response: JSON.stringify({ model: 'm', message: { role: 'assistant', ...message } }) });
+        const createRecipient = () => {
+            if (!document.getElementById('laiAbort')) {
+                document.body.innerHTML = '<button id="laiAbort"></button><textarea id="laiUserInput"></textarea><div id="laiChatMessageList"></div>';
+            }
+            const recipient = document.createElement('span');
+            document.getElementById('laiChatMessageList').appendChild(recipient);
+            return recipient;
+        };
+
+        it('marks only the streaming reply when streamAbort finalises it', async () => {
+            document.body.innerHTML = '';
+            const first = createRecipient();
+            global.parseAndRender.mockImplementationOnce(async (markdown, element) => {
+                element.dispatchEvent(new window.CustomEvent('renderComplete', { bubbles: true }));
+            });
+            await finaliseStreamRecipient(first, finalResponse({ content: 'First' }));
+
+            const second = createRecipient();
+            second._laiStreamContent = 'Partial';
+            document.getElementById('laiAbort').click();
+            await finaliseStreamRecipient(second, { action: 'streamAbort' });
+
+            expect(first.querySelector('.lai-aborted-text')).toBeNull();
+            expect(second.querySelectorAll('.lai-aborted-text')).toHaveLength(1);
+        });
+
+        it('marks an aborted reply with no streamed content once', async () => {
+            document.body.innerHTML = '';
+            const recipient = createRecipient();
+
+            await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
+
+            expect(recipient.querySelectorAll('.lai-aborted-text')).toHaveLength(1);
+        });
+
+        it('removes the abort listener when rendering fails', async () => {
+            document.body.innerHTML = '';
+            const recipient = createRecipient();
+            global.parseAndRender.mockRejectedValueOnce(new Error('render failed'));
+
+            await expect(finaliseStreamRecipient(recipient, finalResponse({ content: 'Answer' }))).rejects.toThrow('render failed');
+            document.getElementById('laiAbort').click();
+
+            expect(recipient.querySelector('.lai-aborted-text')).toBeNull();
         });
     });
 
