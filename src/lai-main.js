@@ -1305,6 +1305,7 @@ function parseFinalStreamResponse(response = {}) {
 
 async function finaliseStreamRecipient(recipient, response = {}) {
     if (!recipient) { return; }
+    const abortText = recipient.querySelector('.lai-aborted-text')?.textContent || '';
 
     if (typeof response?.rawResponse === 'string' && response.rawResponse) {
         recipient._laiRawResponse = response.rawResponse;
@@ -1345,17 +1346,21 @@ async function finaliseStreamRecipient(recipient, response = {}) {
             ...(getParseAndRenderOptions(recipient) || {}),
             streamReply: false
         });
+        if (abortText) {
+            laiHandleStreamActions("Stream Aborted", recipient, abortText);
+        }
     } catch (error) {
         recipient.textContent = finalContent;
-        laiHandleStreamActions("Streaming response render fallback", recipient);
+        laiHandleStreamActions("Streaming response render fallback", recipient, abortText);
         throw error;
     }
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {
-    return function abortHandler() {
+    return function abortHandler(event) {
+        if (!event.composedPath().includes(abortBtn)) { return; }
         controller.abort();
-        abortBtn?.removeEventListener('click', abortHandler);
+        rootEl._laiAbortCleanup?.();
         resetStatusbar();
         laiHandleStreamActions("Stream Aborted", rootEl, '... Aborted');
     };
@@ -1388,12 +1393,19 @@ function renderCompleteFired(e) {
 function getParseAndRenderOptions(rootEl) {
     if (!rootEl) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Target element not found!`); }
 
+    rootEl._laiAbortCleanup?.();
     const shadowRoot = getShadowRoot();
     const controller = new AbortController();
     const abortBtn = shadowRoot.getElementById('laiAbort');
-
     const abortHandler = createAbortHandler(controller, abortBtn, rootEl);
+    const cleanup = () => {
+        abortBtn?.removeEventListener('click', abortHandler);
+        rootEl.removeEventListener('renderComplete', renderCompleteFired);
+        rootEl.removeEventListener('rendering', scrollChatHistoryContainer);
+        delete rootEl._laiAbortCleanup;
+    };
 
+    rootEl._laiAbortCleanup = cleanup;
     rootEl.addEventListener('renderComplete', renderCompleteFired);
     rootEl.addEventListener('rendering', scrollChatHistoryContainer);
     abortBtn?.addEventListener('click', abortHandler);
@@ -1594,7 +1606,9 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - User input area not found!`);
     }
 
-    if (abortText && recipient) {
+    recipient?._laiAbortCleanup?.();
+
+    if (abortText && recipient && !recipient.querySelector('.lai-aborted-text')) {
         const span = document.createElement('span');
         if (span) {
             span.classList.add("lai-aborted-text");

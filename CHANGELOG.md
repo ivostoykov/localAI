@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.29.82] - 2026-11-06 - latest
+## [1.29.83] - 2026-11-08 - latest
+
+### Streaming
+
+- Fixed Abort marking completed reply cards as aborted: each reply now removes its own Abort and rendering listeners when it completes, fails or is cancelled (#33)
+- Cancelled requests now report an aborted status consistently, including when cancellation occurs in the model tool loop (#33)
+
+## [1.29.82] - 2026-11-06
 
 ### Sessions and Privacy
 

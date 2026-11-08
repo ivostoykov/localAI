@@ -1146,6 +1146,7 @@ async function fetchDataAction(request, sender) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
             if (e.name === 'AbortError') {
                 await sendStreamAbort(sender?.tab?.id);
+                return { "status": "aborted", "message": e.message };
             } else {
                 try {
                     await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamError", error: e.toString() });
