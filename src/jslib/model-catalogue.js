@@ -522,6 +522,10 @@ function formatModelInfoFailure(modelName = '', candidate = '', status = 0, stat
     return message;
 }
 
+function isMemorisableModelInfoStatus(status = 0) {
+    return status === 400 || status === 410;
+}
+
 async function getModelInfoFromApi(apiUrl = '', modelName = '', forceRefresh = false) {
     if (!modelName) {
         throw new Error('Model name is missing');
@@ -576,7 +580,9 @@ async function getModelInfoFromApi(apiUrl = '', modelName = '', forceRefresh = f
             };
 
             if (response.status !== 404) {
-                await rememberModelInfoFailure(apiUrl, modelName, failure);
+                if (isMemorisableModelInfoStatus(response.status)) {
+                    await rememberModelInfoFailure(apiUrl, modelName, failure);
+                }
                 throw new Error(failure.message);
             }
 

@@ -8,7 +8,7 @@
 - Model-info resolution probes another candidate only after `404 Not Found`; any other response stops it and is reported with the requested model, the HTTP status and Ollama's error text
 - When every candidate is missing, the error reports the exact-name failure rather than the last variant
 - A name that already has a tag gains only the `-cloud` routing suffix, and only when it does not already end in `-cloud`; `name:tag:latest` and `name:tag:cloud` are no longer requested, and `-cloud` is never stripped before a request
-- Terminal model-info failures are remembered for ten minutes per endpoint and model, so repeat callers and service-worker start-up no longer re-probe a retired model every 30 seconds; the memory clears on a forced refresh and when the model list is reloaded
+- Terminal model-info failures (a `410` retirement or a `400` invalid name) are remembered for ten minutes per endpoint and model, so repeat callers and service-worker start-up no longer re-probe a retired model every 30 seconds; transient responses such as `401`, `429` or `5xx` stop the probe, report the message and are retried on the next call, and the memory clears on a forced refresh and when the model list is reloaded
 - A prompt sent with an unavailable model shows that message in the panel instead of a generic failure
 
 ## [1.29.83] - 2026-11-08

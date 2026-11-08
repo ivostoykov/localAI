@@ -750,6 +750,44 @@ describe('model-catalogue.js', () => {
             ).toBe(410);
         });
 
+        it('does not memorise a transient 503', async () => {
+            seedCatalogue();
+            fetchMock.mockResolvedValue({
+                ok: false,
+                status: 503,
+                statusText: 'Service Unavailable',
+                text: async () => JSON.stringify({ error: 'service overloaded' })
+            });
+
+            await expect(exports.getModelInfoFromApi('http://127.0.0.1:11434/api/chat', 'deepseek-v4-flash:0731-cloud'))
+                .rejects.toThrow('deepseek-v4-flash:0731-cloud: 503 Service Unavailable – service overloaded');
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+
+            await expect(exports.getModelInfoFromApi('http://127.0.0.1:11434/api/chat', 'deepseek-v4-flash:0731-cloud'))
+                .rejects.toThrow('503 Service Unavailable');
+
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(storageState.modelInfoFailureCache).toBeUndefined();
+        });
+
+        it('does not memorise a 401 so signing in retries on the next prompt', async () => {
+            seedCatalogue();
+            fetchMock.mockResolvedValue({
+                ok: false,
+                status: 401,
+                statusText: 'Unauthorized',
+                text: async () => JSON.stringify({ error: 'sign in to ollama.com' })
+            });
+
+            await expect(exports.getModelInfoFromApi('http://127.0.0.1:11434/api/chat', 'deepseek-v4-flash:0731-cloud'))
+                .rejects.toThrow('401 Unauthorized – sign in to ollama.com');
+            await expect(exports.getModelInfoFromApi('http://127.0.0.1:11434/api/chat', 'deepseek-v4-flash:0731-cloud'))
+                .rejects.toThrow('401 Unauthorized');
+
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            expect(storageState.modelInfoFailureCache).toBeUndefined();
+        });
+
         it('clears the remembered failure for a forced refresh', async () => {
             seedCatalogue();
             fetchMock.mockResolvedValue(retiredFailure());
