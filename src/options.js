@@ -14,29 +14,12 @@ function getDecisionModelDefaults() {
     return { decisionModelEnabled: false, decisionModelUrl: '', decisionModel: 'clef:27b-cloud' };
 }
 
-function isOllamaVersionSupported(version, minimum = '0.40.6') {
-    const parse = value => String(value || '').match(/^\d+(?:\.\d+)*/)?.[0]?.split('.').map(Number) || [];
-    const actual = parse(version);
-    const required = parse(minimum);
-    if (!actual.length || !required.length) { return false; }
-    for (let index = 0; index < Math.max(actual.length, required.length); index++) {
-        const difference = (actual[index] || 0) - (required[index] || 0);
-        if (difference !== 0) { return difference > 0; }
-    }
-    return true;
-}
-
 function getDecisionModelUrl(aiUrl) {
     try { return new URL('/v1/systemone', aiUrl).href; }
     catch (error) {
         console.debug(`[${getLineNumber()}]: Cannot derive decision-model endpoint`, error);
         return '';
     }
-}
-
-function filterDecisionModels(models = []) {
-    return models.filter(model => Array.isArray(model?.capabilities)
-        && model.capabilities.some(capability => String(capability).toLowerCase() === 'decision'));
 }
 
 document.addEventListener('DOMContentLoaded', async (e) => {
@@ -394,29 +377,32 @@ async function attachDataListListeners(e) {
 
         for (let i = 0; i < buttons.length; i++) {
             const b = buttons[i];
-            if (b.classList.contains('disabled')) { continue; }
+            const runIfEnabled = handler => e => {
+                if (b.classList.contains('disabled')) { return; }
+                return handler(e);
+            };
             const action = b.getAttribute('data-action')?.toLowerCase();
             switch (action) {
                 case 'add':
                 case 'edit':
-                    b.addEventListener('click', e => extendList(e));
+                    b.addEventListener('click', runIfEnabled(extendList));
                     break;
                 case 'copy':
-                    b.addEventListener('click', e => copyValue(e));
+                    b.addEventListener('click', runIfEnabled(copyValue));
                     break;
                 case 'remove':
                 case 'removeall':
-                    b.addEventListener('click', e => shrinkList(e));
+                    b.addEventListener('click', runIfEnabled(shrinkList));
                     break;
                 case 'asc':
                 case 'desc':
-                    b.addEventListener('click', async e => await sortDatalist(e));
+                    b.addEventListener('click', runIfEnabled(sortDatalist));
                     break;
                 case 'reload':
-                    b.addEventListener('click', async e => await loadModels(e));
+                    b.addEventListener('click', runIfEnabled(loadModels));
                     break;
                 case 'test-connection':
-                    b.addEventListener('click', async e => await testConnection(e));
+                    b.addEventListener('click', runIfEnabled(testConnection));
                     break;
             }
         }

@@ -1428,10 +1428,23 @@ function isOllamaVersionSupported(version, minimum = '0.40.6') {
     return true;
 }
 
+function filterDecisionModels(models = []) {
+    const names = new Set();
+    return models.reduce((decisionModels, model) => {
+        const name = model?.resolvedModelName || model?.name;
+        const supportsDecision = Array.isArray(model?.capabilities)
+            && model.capabilities.some(capability => String(capability).toLowerCase() === 'decision');
+        if (!name || !supportsDecision || names.has(name)) { return decisionModels; }
+        names.add(name);
+        decisionModels.push({ ...model, name });
+        return decisionModels;
+    }, []);
+}
+
 async function getDecisionModels(forceRefresh = false) {
     const laiOptions = await getLaiOptions();
     let origin;
-    try { origin = new URL(laiOptions?.aiUrl).origin; }
+    try { origin = new URL(laiOptions?.decisionModelUrl || laiOptions?.aiUrl).origin; }
     catch (error) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid endpoint for decision models`, error);
         return { status: 'unreachable' };
@@ -1448,7 +1461,7 @@ async function getDecisionModels(forceRefresh = false) {
     const version = (await versionResponse.json())?.version;
     if (!isOllamaVersionSupported(version)) { return { status: 'unsupported', version }; }
 
-    const modelsResponse = await getModels(forceRefresh, true);
+    const modelsResponse = await getModels(forceRefresh, forceRefresh);
     if (modelsResponse?.status !== 'success') { return { status: 'unreachable' }; }
     const models = Array.isArray(modelsResponse.models) ? modelsResponse.models : [];
     const details = await Promise.all(models.map(async model => {
@@ -1460,8 +1473,11 @@ async function getDecisionModels(forceRefresh = false) {
     }));
     return {
         status: 'success',
-        models: models.filter((model, index) => details[index]?.capabilities
-            ?.some(capability => String(capability).toLowerCase() === 'decision'))
+        models: filterDecisionModels(models.map((model, index) => ({
+            ...model,
+            resolvedModelName: details[index]?.resolvedModelName,
+            capabilities: details[index]?.capabilities
+        })))
     };
 }
 
