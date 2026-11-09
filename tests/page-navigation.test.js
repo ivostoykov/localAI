@@ -820,7 +820,10 @@ describe('page-navigation.js', () => {
         const pageStateAnswer = (choice, confidence) => ({ pageState: { type: 'choice', choice, confidence } });
         const run = (nav, session, url) => runWithTimers(nav.browseUrl(session, url));
 
-        it('asks one choice question with non-empty instructions and truncated page text', async () => {
+        const utf8Bytes = (value) => new TextEncoder().encode(value).length;
+        const roundTripsUtf8 = (text) => new TextDecoder().decode(new TextEncoder().encode(text)) === text;
+
+        it('asks one choice question with non-empty instructions and page text within the byte budget', async () => {
             helpers.syncStore.laiOptions = { allowNavigation: true };
             const askDecision = vi.fn(async () => ({ pageState: { choice: 'content', confidence: 0.9 } }));
             nav = loadModule(chrome, extractor, askDecision);
@@ -835,7 +838,10 @@ describe('page-navigation.js', () => {
             const [state, questions] = askDecision.mock.calls[0];
             expect(state.url).toBe('https://a.example/');
             expect(state.title).toBe('Loaded page');
-            expect(state.text.length).toBe(48000);
+            expect(utf8Bytes(JSON.stringify({ state, questions }))).toBeLessThanOrEqual(60000);
+            expect(utf8Bytes(JSON.stringify({ model: 'clef:27b-cloud', state, questions }))).toBeLessThan(65536);
+            expect(state.text).not.toBe(longText);
+            expect(roundTripsUtf8(state.text)).toBe(true);
             const question = Object.values(questions)[0];
             expect(question.type).toBe('choice');
             expect(question.instructions).toMatch(/\S/);
@@ -845,6 +851,30 @@ describe('page-navigation.js', () => {
                 'consent page': expect.any(String),
                 'placeholder': expect.any(String)
             }));
+            expect(result.content).toBe(longText);
+        });
+
+        it.each([
+            ['Cyrillic', 'Ф', 60000],
+            ['emoji', '🙂', 30000]
+        ])('truncates long %s text within the byte budget without splitting characters', async (label, unit, repeats) => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            const askDecision = vi.fn(async () => ({ pageState: { choice: 'content', confidence: 0.9 } }));
+            nav = loadModule(chrome, extractor, askDecision);
+            helpers.nav = nav;
+            const session = nav.createNavigationSession(1, null);
+            const longText = unit.repeat(repeats);
+            extractor.mockResolvedValue(longText);
+
+            const result = JSON.parse(await run(nav, session, 'https://a.example/'));
+
+            const [state, questions] = askDecision.mock.calls[0];
+            expect(utf8Bytes(JSON.stringify({ model: 'clef:27b-cloud', state, questions }))).toBeLessThan(65536);
+            expect(utf8Bytes(JSON.stringify({ state, questions }))).toBeLessThanOrEqual(60000);
+            expect(state.text.length).toBeGreaterThan(0);
+            expect(state.text.length).toBeLessThan(longText.length);
+            expect(roundTripsUtf8(state.text)).toBe(true);
+            expect(state.text).toBe(unit.repeat(state.text.length / unit.length));
             expect(result.content).toBe(longText);
         });
 

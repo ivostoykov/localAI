@@ -24,7 +24,7 @@ const NAVIGATION_SUPPORTED_PROTOCOLS = ['http:', 'https:'];
 
 const NAVIGATION_PAGE_STATE_QUESTION = 'pageState';
 const NAVIGATION_PAGE_STATE_THRESHOLD = 0.75;
-const NAVIGATION_PAGE_STATE_MAX_TEXT = 48000;
+const NAVIGATION_PAGE_STATE_MAX_BYTES = 60000;
 const NAVIGATION_PAGE_STATE_INSTRUCTIONS = 'Decide what kind of page this is for a reader who opened the URL to read its content. Choose content only when the page itself shows the readable information the URL promises; choose placeholder when the visible text is a loading shell or an empty page; choose login wall when the content is hidden behind a sign-in requirement; choose consent page when the page mainly asks for cookie or tracking consent.';
 const NAVIGATION_PAGE_STATE_CRITERIA = {
     'content': 'the page itself shows the readable information the URL promises',
@@ -551,29 +551,49 @@ async function waitForNavigationContent(tabId, signal, timeoutMs = NAVIGATION_RE
     };
 }
 
+// Cuts the text at a UTF-8 character boundary so no multi-byte sequence or surrogate pair is split.
+function truncateToUtf8Bytes(text, maxBytes) {
+    const bytes = new TextEncoder().encode(text);
+    if (bytes.length <= maxBytes) { return text; }
+
+    let cut = maxBytes;
+    while (cut > 0 && (bytes[cut] & 0xc0) === 0x80) { cut--; }
+    return new TextDecoder().decode(bytes.subarray(0, cut));
+}
+
 // A settled extraction can still be a login wall, consent page or placeholder, so when the decision model is
 // enabled one choice question confirms the page state before the text is handed to the model. Any failure or
-// low-confidence answer keeps the current result; only the caller's cancellation propagates.
+// low-confidence answer keeps the current result; only the caller's cancellation propagates. The page text is
+// shortened to a byte budget, because the endpoint rejects requests over 64 KiB and non-Latin text costs up
+// to three bytes per character.
+function limitNavigationPageStateBytes(state, questions) {
+    const encoder = new TextEncoder();
+    const serialised = () => encoder.encode(JSON.stringify({ state, questions })).length;
+    if (serialised() <= NAVIGATION_PAGE_STATE_MAX_BYTES) { return; }
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const overflow = serialised() - NAVIGATION_PAGE_STATE_MAX_BYTES;
+        const textBytes = encoder.encode(state.text).length;
+        state.text = truncateToUtf8Bytes(state.text, Math.max(0, textBytes - overflow));
+        if (serialised() <= NAVIGATION_PAGE_STATE_MAX_BYTES) { return; }
+    }
+    state.text = '';
+}
+
 async function askNavigationPageState(session, url, title, text) {
+    const state = { url, title, text };
+    const questions = {
+        [NAVIGATION_PAGE_STATE_QUESTION]: {
+            type: 'choice',
+            instructions: NAVIGATION_PAGE_STATE_INSTRUCTIONS,
+            criteria: NAVIGATION_PAGE_STATE_CRITERIA
+        }
+    };
+    limitNavigationPageStateBytes(state, questions);
+
     let answers = null;
     try {
-        answers = await askDecision(
-            {
-                url,
-                title,
-                text: text.length > NAVIGATION_PAGE_STATE_MAX_TEXT
-                    ? text.slice(0, NAVIGATION_PAGE_STATE_MAX_TEXT)
-                    : text
-            },
-            {
-                [NAVIGATION_PAGE_STATE_QUESTION]: {
-                    type: 'choice',
-                    instructions: NAVIGATION_PAGE_STATE_INSTRUCTIONS,
-                    criteria: NAVIGATION_PAGE_STATE_CRITERIA
-                }
-            },
-            session?.signal
-        );
+        answers = await askDecision(state, questions, session?.signal);
     } catch (err) {
         if (err?.name === 'AbortError' || session?.disposed) { throw createNavigationAbortError(session?.signal?.reason); }
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page-state check failed: ${err?.message}`);
