@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.29.84] - 2026-11-08 - latest
+## [1.29.85] - 2026-11-09 - latest
+
+### Options
+
+- Added optional System One decision-model settings, with Ollama-version and model-capability checks (#45)
+
+## [1.29.84] - 2026-11-08
 
 ### Models
 
