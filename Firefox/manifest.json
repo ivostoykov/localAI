@@ -23,6 +23,7 @@
       "jslib/internal-tools.js",
       "jslib/search-engines.js",
       "jslib/web-search.js",
+      "jslib/decision-model.js",
       "jslib/page-navigation.js",
       "background.js"
     ]

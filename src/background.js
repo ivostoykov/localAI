@@ -26,6 +26,7 @@ importBackgroundScript('jslib/session-repository.js');
 importBackgroundScript('jslib/internal-tools.js');
 importBackgroundScript('jslib/search-engines.js');
 importBackgroundScript('jslib/web-search.js');
+importBackgroundScript('jslib/decision-model.js');
 importBackgroundScript('jslib/page-navigation.js');
 
 init();

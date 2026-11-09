@@ -137,15 +137,15 @@ function createChromeFake() {
     return { chrome, helpers };
 }
 
-function loadModule(chrome, callContentScriptExtractor) {
+function loadModule(chrome, callContentScriptExtractor, askDecision) {
     return new Function(
-        'chrome', 'callContentScriptExtractor', 'manifest', 'getLineNumber', 'storageOptionKey',
+        'chrome', 'callContentScriptExtractor', 'manifest', 'getLineNumber', 'storageOptionKey', 'askDecision',
         `${pageNavigationCode}
         return { validateNavigationUrl, createNavigationSession, disposeNavigationSession, handleNavigationTabRemoved,
             requestNavigationConsent, handleNavigationConsentMessage, handleNavigationConsentWindowRemoved, pendingNavigationConsents,
             watchOwnedTabLoad, loadUrlInOwnedTab, inspectNavigationContentState, waitForNavigationContent, browseUrl, navigationSessions,
             NAVIGATION_BUSY_SELECTORS };`
-    )(chrome, callContentScriptExtractor, { name: 'Local AI helper' }, () => 'test', 'laiOptions');
+    )(chrome, callContentScriptExtractor, { name: 'Local AI helper' }, () => 'test', 'laiOptions', askDecision || (async () => null));
 }
 
 async function runWithTimers(promise) {
@@ -813,6 +813,120 @@ describe('page-navigation.js', () => {
             await nav.disposeNavigationSession(session);
             await expect(nav.browseUrl(session, 'https://a.example/')).resolves.toMatch(/no active model request/);
             expect(chrome.tabs.create).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('browseUrl page-state check', () => {
+        const pageStateAnswer = (choice, confidence) => ({ pageState: { type: 'choice', choice, confidence } });
+        const run = (nav, session, url) => runWithTimers(nav.browseUrl(session, url));
+
+        it('asks one choice question with non-empty instructions and truncated page text', async () => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            const askDecision = vi.fn(async () => ({ pageState: { choice: 'content', confidence: 0.9 } }));
+            nav = loadModule(chrome, extractor, askDecision);
+            helpers.nav = nav;
+            const session = nav.createNavigationSession(1, null);
+            const longText = 'x'.repeat(60000);
+            extractor.mockResolvedValue(longText);
+
+            const result = JSON.parse(await run(nav, session, 'https://a.example/'));
+
+            expect(askDecision).toHaveBeenCalledTimes(1);
+            const [state, questions] = askDecision.mock.calls[0];
+            expect(state.url).toBe('https://a.example/');
+            expect(state.title).toBe('Loaded page');
+            expect(state.text.length).toBe(48000);
+            const question = Object.values(questions)[0];
+            expect(question.type).toBe('choice');
+            expect(question.instructions).toMatch(/\S/);
+            expect(question.criteria).toEqual(expect.objectContaining({
+                'content': expect.any(String),
+                'login wall': expect.any(String),
+                'consent page': expect.any(String),
+                'placeholder': expect.any(String)
+            }));
+            expect(result.content).toBe(longText);
+        });
+
+        it('blocks a high-confidence login wall and returns the URL without page text', async () => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            nav = loadModule(chrome, extractor, vi.fn(async () => pageStateAnswer('login wall', 0.98)));
+            helpers.nav = nav;
+            const session = nav.createNavigationSession(1, null);
+
+            const result = JSON.parse(await run(nav, session, 'https://jobs.example/view/1'));
+
+            expect(result).toEqual({
+                requestedUrl: 'https://jobs.example/view/1',
+                finalUrl: 'https://jobs.example/view/1',
+                title: 'Loaded page',
+                error: expect.stringMatching(/login wall/)
+            });
+            expect(result.content).toBeUndefined();
+            expect(result.warning).toBeUndefined();
+        });
+
+        it.each([
+            ['consent page', 0.97, /consent page/],
+            ['placeholder', 0.97, /placeholder/]
+        ])('blocks a high-confidence %s', async (kind, confidence, pattern) => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            nav = loadModule(chrome, extractor, vi.fn(async () => pageStateAnswer(kind, confidence)));
+            helpers.nav = nav;
+            const session = nav.createNavigationSession(1, null);
+
+            const result = JSON.parse(await run(nav, session, 'https://a.example/'));
+
+            expect(result.error).toMatch(pattern);
+            expect(result.content).toBeUndefined();
+        });
+
+        it.each([
+            ['low confidence', 'login wall', 0.5],
+            ['a content answer', 'content', 0.99],
+            ['an unknown kind', 'paywall', 0.99],
+            ['a missing answer', null, null]
+        ])('returns the normal result on %s', async (label, choice, confidence) => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            nav = loadModule(chrome, extractor, vi.fn(async () => (choice ? pageStateAnswer(choice, confidence) : {})));
+            helpers.nav = nav;
+            const session = nav.createNavigationSession(1, null);
+
+            const result = JSON.parse(await run(nav, session, 'https://a.example/'));
+
+            expect(result.content).toBe(LONG_CONTENT);
+            expect(result.error).toBeUndefined();
+        });
+
+        it('returns the normal result when the decision request fails', async () => {
+            const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            nav = loadModule(chrome, extractor, vi.fn(async () => { throw new Error('endpoint unreachable'); }));
+            helpers.nav = nav;
+            const session = nav.createNavigationSession(1, null);
+
+            const result = JSON.parse(await run(nav, session, 'https://a.example/'));
+
+            expect(result.content).toBe(LONG_CONTENT);
+            expect(result.error).toBeUndefined();
+            expect(debug).toHaveBeenCalled();
+        });
+
+        it('propagates an abort from the decision step', async () => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            const controller = new AbortController();
+            nav = loadModule(chrome, extractor, vi.fn((state, questions, signal) => new Promise((_resolve, reject) => {
+                signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')));
+            })));
+            helpers.nav = nav;
+            const session = nav.createNavigationSession(1, controller.signal);
+
+            const promise = run(nav, session, 'https://a.example/');
+            promise.catch(() => {});
+            await vi.advanceTimersByTimeAsync(10);
+            controller.abort('User aborted last request.');
+
+            await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
         });
     });
 
