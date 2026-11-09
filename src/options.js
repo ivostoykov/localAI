@@ -5,13 +5,44 @@ document.getElementById('pageTitle').textContent = `${manifest?.name ?? ''} - ${
 async function getOptions() {
     const stored = await chrome.storage.sync.get('laiOptions');
     return {
+        ...getDecisionModelDefaults(),
         ...(stored.laiOptions || {})
     };
+}
+
+function getDecisionModelDefaults() {
+    return { decisionModelEnabled: false, decisionModelUrl: '', decisionModel: 'clef:27b-cloud' };
+}
+
+function isOllamaVersionSupported(version, minimum = '0.40.6') {
+    const parse = value => String(value || '').match(/^\d+(?:\.\d+)*/)?.[0]?.split('.').map(Number) || [];
+    const actual = parse(version);
+    const required = parse(minimum);
+    if (!actual.length || !required.length) { return false; }
+    for (let index = 0; index < Math.max(actual.length, required.length); index++) {
+        const difference = (actual[index] || 0) - (required[index] || 0);
+        if (difference !== 0) { return difference > 0; }
+    }
+    return true;
+}
+
+function getDecisionModelUrl(aiUrl) {
+    try { return new URL('/v1/systemone', aiUrl).href; }
+    catch (error) {
+        console.debug(`[${getLineNumber()}]: Cannot derive decision-model endpoint`, error);
+        return '';
+    }
+}
+
+function filterDecisionModels(models = []) {
+    return models.filter(model => Array.isArray(model?.capabilities)
+        && model.capabilities.some(capability => String(capability).toLowerCase() === 'decision'));
 }
 
 document.addEventListener('DOMContentLoaded', async (e) => {
     document.querySelector('.menu-item')?.click();
     await loadSettings(e);
+    await loadDecisionModelSettings();
     await attachDataListListeners(e);
     await getAiUserCommands();
     attachListeners(e);
@@ -129,7 +160,7 @@ async function loadSettings(e) {
         }
 
         console.debug(`[${getLineNumber()}]: Stored form data`, formData);
-        const dataLists = ['modelList', 'urlList', 'toolFuncList', 'embeddingModelList', 'embedUrlList', 'titleGeneratorModelList'];
+        const dataLists = ['modelList', 'urlList', 'toolFuncList', 'embeddingModelList', 'embedUrlList', 'titleGeneratorModelList', 'decisionModelList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             console.debug(`[${getLineNumber()}]: Stored form data`, { i, list, dataLists: dataLists[i] });
@@ -199,7 +230,7 @@ async function saveSettings(e) {
             }
         }
 
-        const dataLists = ['modelList', 'urlList', 'embeddingModelList', 'embedUrlList', 'titleGeneratorModelList'];
+        const dataLists = ['modelList', 'urlList', 'embeddingModelList', 'embedUrlList', 'titleGeneratorModelList', 'decisionModelList'];
         for (let i = 0; i < dataLists.length; i++) {
             const list = dataLists[i];
             const el = document.querySelector(`select[data-list="${list}"]`);
@@ -355,7 +386,7 @@ async function getAiUserCommands() {
 
 async function attachDataListListeners(e) {
 
-    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons', 'embeddingModelButtons', 'embedUrlButtons', 'titleGeneratorModelButtons'];
+    const containers = ['modelButtons', 'urlButtons', 'hookButtons', 'tikaButtons', 'toolButtons', 'embeddingModelButtons', 'embedUrlButtons', 'titleGeneratorModelButtons', 'decisionModelButtons'];
     for (let x = 0; x < containers.length; x++) {
         const container = document.querySelector(`#${containers[x]}`);
         if (!container) { continue; }
@@ -363,6 +394,7 @@ async function attachDataListListeners(e) {
 
         for (let i = 0; i < buttons.length; i++) {
             const b = buttons[i];
+            if (b.classList.contains('disabled')) { continue; }
             const action = b.getAttribute('data-action')?.toLowerCase();
             switch (action) {
                 case 'add':
@@ -1088,6 +1120,7 @@ async function loadModels(e) {
             await fillModelList(response.models, '#aiModel');
             await fillModelList(response.models, '#embeddingModel');
             await fillModelList(response.models, '#titleGeneratorModel');
+            await loadDecisionModelSettings(true);
             success = true;
         } else {
             throw new Error(response?.message || 'Failed to load models');
@@ -1101,6 +1134,46 @@ async function loadModels(e) {
         if (success) {
             showMessage("Model list successfully updated.", "success");
         }
+    }
+}
+
+function setDecisionModelAvailability(available, message = '') {
+    const group = document.getElementById('decisionModelGroup');
+    const status = document.getElementById('decisionModelStatus');
+    group?.querySelectorAll('input, select, img').forEach(element => {
+        if ('disabled' in element) { element.disabled = !available; }
+        element.classList.toggle('disabled', !available);
+    });
+    group?.classList.toggle('disabled', !available);
+    if (status) { status.textContent = message; }
+}
+
+async function loadDecisionModelSettings(forceRefresh = false) {
+    const endpoint = document.getElementById('decisionModelUrl');
+    const selectedEndpoint = document.getElementById('aiUrl')?.value || (await getOptions()).aiUrl;
+    if (endpoint && !endpoint.value) { endpoint.placeholder = getDecisionModelUrl(selectedEndpoint); }
+    let response;
+    try { response = await chrome.runtime.sendMessage({ action: 'getDecisionModels', forceRefresh }); }
+    catch (error) {
+        console.debug(`[${getLineNumber()}]: Decision-model availability check failed`, error);
+        setDecisionModelAvailability(false, 'Ollama is unreachable.');
+        return;
+    }
+    if (response?.status === 'unsupported') {
+        setDecisionModelAvailability(false, 'Not supported. Requires Ollama >= 0.40.6');
+        return;
+    }
+    if (response?.status !== 'success') {
+        console.debug(`[${getLineNumber()}]: Decision-model availability check failed`, response);
+        setDecisionModelAvailability(false, 'Ollama is unreachable.');
+        return;
+    }
+    setDecisionModelAvailability(true);
+    await fillModelList(response.models, '#decisionModel');
+    const select = document.getElementById('decisionModel');
+    const selected = (await getOptions()).decisionModel;
+    if (select && selected && !Array.from(select.options).some(option => option.value === selected)) {
+        addSelectOptions(select, { val: selected, isSelected: true });
     }
 }
 
