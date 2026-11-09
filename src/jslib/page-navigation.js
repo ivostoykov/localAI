@@ -561,11 +561,8 @@ function truncateToUtf8Bytes(text, maxBytes) {
     return new TextDecoder().decode(bytes.subarray(0, cut));
 }
 
-// A settled extraction can still be a login wall, consent page or placeholder, so when the decision model is
-// enabled one choice question confirms the page state before the text is handed to the model. Any failure or
-// low-confidence answer keeps the current result; only the caller's cancellation propagates. The page text is
-// shortened to a byte budget, because the endpoint rejects requests over 64 KiB and non-Latin text costs up
-// to three bytes per character.
+// Shortens the page text so the serialised state and questions stay within a byte budget; the endpoint
+// rejects requests over 64 KiB and non-Latin text costs up to three bytes per character.
 function limitNavigationPageStateBytes(state, questions) {
     const encoder = new TextEncoder();
     const serialised = () => encoder.encode(JSON.stringify({ state, questions })).length;
@@ -580,6 +577,9 @@ function limitNavigationPageStateBytes(state, questions) {
     state.text = '';
 }
 
+// A settled extraction can still be a login wall, consent page or placeholder, so when the decision model is
+// enabled one choice question confirms the page state before the text is handed to the model. Any failure or
+// low-confidence answer keeps the current result; only the caller's cancellation propagates.
 async function askNavigationPageState(session, url, title, text) {
     const state = { url, title, text };
     const questions = {

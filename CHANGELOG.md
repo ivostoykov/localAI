@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.29.85] - 2026-11-09 - latest
+## [1.29.86] - 2026-11-09 - latest
+
+### URL Browsing
+
+- `browse_url` now confirms a settled page's state with the decision model when it is enabled in Options: one choice question classifies the page as `content`, `login wall`, `consent page` or `placeholder`, and a confident answer other than `content` (0.75 or higher) is reported to the model with the page URL instead of the page text (#46)
+- A `content` answer, a low-confidence answer and every failure (feature disabled, endpoint unreachable, missing settings, a reply that does not arrive within five seconds or is malformed) keep the current `browse_url` result; the check never delays a cancellation and never turns the feature on by itself
+- The page text sent for the check is shortened to a 60 000-byte UTF-8 budget, cut at a character boundary, so non-Latin pages stay under the endpoint's 64 KiB request limit
+
+## [1.29.85] - 2026-11-09
 
 ### Options
 
