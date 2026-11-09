@@ -104,6 +104,9 @@ async function handleRuntimeMessage(request, sender) {
         case 'getModels':
             return await getModels(request?.forceRefresh || false, request?.refreshCloud || false);
 
+        case 'getDecisionModels':
+            return await getDecisionModels(request?.forceRefresh || false);
+
         case 'fetchData':
             return await fetchDataAction(request, sender);
 
@@ -1315,7 +1318,10 @@ async function getLaiOptions() {
         "systemInstructions": 'You are a helpful assistant.',
         "personalInfo": '',
         "debug": false,
-        "allowNavigation": false
+        "allowNavigation": false,
+        "decisionModelEnabled": false,
+        "decisionModelUrl": '',
+        "decisionModel": 'clef:27b-cloud'
     };
 
     try {
@@ -1408,6 +1414,71 @@ async function getModels(forceRefresh = false, refreshCloud = false) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
         return { "status": "error", "message": e.message };
     }
+}
+
+function isOllamaVersionSupported(version, minimum = '0.40.6') {
+    const parse = value => String(value || '').match(/^\d+(?:\.\d+)*/)?.[0]?.split('.').map(Number) || [];
+    const actual = parse(version);
+    const required = parse(minimum);
+    if (!actual.length || !required.length) { return false; }
+    for (let index = 0; index < Math.max(actual.length, required.length); index++) {
+        const difference = (actual[index] || 0) - (required[index] || 0);
+        if (difference !== 0) { return difference > 0; }
+    }
+    return true;
+}
+
+function filterDecisionModels(models = []) {
+    const names = new Set();
+    return models.reduce((decisionModels, model) => {
+        const name = model?.resolvedModelName || model?.name;
+        const supportsDecision = Array.isArray(model?.capabilities)
+            && model.capabilities.some(capability => String(capability).toLowerCase() === 'decision');
+        if (!name || !supportsDecision || names.has(name)) { return decisionModels; }
+        names.add(name);
+        decisionModels.push({ ...model, name });
+        return decisionModels;
+    }, []);
+}
+
+async function getDecisionModels(forceRefresh = false) {
+    const laiOptions = await getLaiOptions();
+    let origin;
+    try { origin = new URL(laiOptions?.decisionModelUrl || laiOptions?.aiUrl).origin; }
+    catch (error) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid endpoint for decision models`, error);
+        return { status: 'unreachable' };
+    }
+
+    let versionResponse;
+    try { versionResponse = await fetch(new URL('/api/version', origin)); }
+    catch (error) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Decision-model version request failed`, error);
+        return { status: 'unreachable' };
+    }
+    if (!versionResponse.ok) { return { status: 'unreachable' }; }
+
+    const version = (await versionResponse.json())?.version;
+    if (!isOllamaVersionSupported(version)) { return { status: 'unsupported', version }; }
+
+    const modelsResponse = await getModels(forceRefresh, forceRefresh);
+    if (modelsResponse?.status !== 'success') { return { status: 'unreachable' }; }
+    const models = Array.isArray(modelsResponse.models) ? modelsResponse.models : [];
+    const details = await Promise.all(models.map(async model => {
+        try { return await getModelInfo(model?.name); }
+        catch (error) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to inspect ${model?.name}`, error);
+            return null;
+        }
+    }));
+    return {
+        status: 'success',
+        models: filterDecisionModels(models.map((model, index) => ({
+            ...model,
+            resolvedModelName: details[index]?.resolvedModelName,
+            capabilities: details[index]?.capabilities
+        })))
+    };
 }
 
 function tryReloadExtension() {

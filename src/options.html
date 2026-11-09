@@ -176,6 +176,23 @@
                   </div>
                 </div>
 
+                <div id="decisionModelGroup" class="el-holder">
+                  <label for="decisionModelEnabled">Decision model:</label>
+                  <input type="checkbox" id="decisionModelEnabled" />
+                  <label for="decisionModelEnabled">Enable</label>
+                  <input type="url" id="decisionModelUrl" placeholder="" aria-label="Decision model endpoint" />
+                  <select id="decisionModel" data-list="decisionModelList">
+                    <option value="clef:27b-cloud">clef:27b-cloud</option>
+                  </select>
+                  <div id="decisionModelButtons">
+                    <img src="img/edit2.svg" class="model-icon-button" data-action="edit" alt="Edit selected" title="Edit selected">
+                    <img src="img/add.svg" class="model-icon-button" data-action="add" alt="Add model" title="Add model">
+                    <img src="img/remove.svg" class="model-icon-button" data-action="remove" alt="Remove model" title="Remove model">
+                    <img src="img/reload.svg" class="model-icon-button" data-action="reload" alt="Reload models" title="Reload models">
+                  </div>
+                  <span id="decisionModelStatus" class="help-text"></span>
+                </div>
+
                 <div class="el-holder">
                   <label for="toolFunc">Tools:</label>
                   <input type="url" id="toolFunc" />

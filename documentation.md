@@ -327,6 +327,10 @@ If [Ollama](https://ollama.com/) is defined as [End Point](#end-points), Model l
 
 Optional (default: undefined). If set, it will be used internally, for example to generate a session title. As models vary, experiments may help measure its effectiveness.
 
+#### Decision Model
+
+Off by default. A decision model answers the extension's structured yes/no, choice and scoring requests through Ollama System One. This requires Ollama 0.40.6 or later. Only models with the `decision` capability are listed; Ollama rejects other models. A weaker decision model makes worse decisions. Cloud decision models use your Ollama cloud quota.
+
 ### Document Converter
 
 If a valid URL is provided, documents dropped into the panel will be converted based on the API used. One particularly capable option available for local use is [tika](https://hub.docker.com/r/apache/tika), which supports multiple languages and can be easily installed as a Docker or Podman image. Users can choose any other tool that returns plain text, based on their preference.
