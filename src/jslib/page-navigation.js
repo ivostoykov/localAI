@@ -22,6 +22,22 @@ const NAVIGATION_MIN_TEXT_LENGTH = 200;
 const NAVIGATION_CONSENT_TIMEOUT_MS = 120000;
 const NAVIGATION_SUPPORTED_PROTOCOLS = ['http:', 'https:'];
 
+const NAVIGATION_PAGE_STATE_QUESTION = 'pageState';
+const NAVIGATION_PAGE_STATE_THRESHOLD = 0.75;
+const NAVIGATION_PAGE_STATE_MAX_BYTES = 60000;
+const NAVIGATION_PAGE_STATE_INSTRUCTIONS = 'Decide what kind of page this is for a reader who opened the URL to read its content. Choose content only when the page itself shows the readable information the URL promises; choose placeholder when the visible text is a loading shell or an empty page; choose login wall when the content is hidden behind a sign-in requirement; choose consent page when the page mainly asks for cookie or tracking consent.';
+const NAVIGATION_PAGE_STATE_CRITERIA = {
+    'content': 'the page itself shows the readable information the URL promises',
+    'login wall': 'the content is hidden behind a sign-in requirement',
+    'consent page': 'the page mainly asks for cookie or tracking consent',
+    'placeholder': 'the visible text is a loading shell or an empty page'
+};
+const NAVIGATION_PAGE_STATE_ERRORS = {
+    'login wall': 'The page is a login wall: the content is hidden behind a sign-in requirement and was not retrieved.',
+    'consent page': 'The page is a consent page: it mainly asks for cookie or tracking consent and the requested content was not retrieved.',
+    'placeholder': 'The page is a placeholder: its visible text is a loading shell or an empty page and the requested content was not retrieved.'
+};
+
 const navigationSessions = new Set();
 
 function createNavigationAbortError(reason = 'The operation was aborted.') {
@@ -535,6 +551,66 @@ async function waitForNavigationContent(tabId, signal, timeoutMs = NAVIGATION_RE
     };
 }
 
+// Cuts the text at a UTF-8 character boundary so no multi-byte sequence or surrogate pair is split.
+function truncateToUtf8Bytes(text, maxBytes) {
+    const bytes = new TextEncoder().encode(text);
+    if (bytes.length <= maxBytes) { return text; }
+
+    let cut = maxBytes;
+    while (cut > 0 && (bytes[cut] & 0xc0) === 0x80) { cut--; }
+    return new TextDecoder().decode(bytes.subarray(0, cut));
+}
+
+// Shortens the page text so the serialised state and questions stay within a byte budget; the endpoint
+// rejects requests over 64 KiB and non-Latin text costs up to three bytes per character.
+function limitNavigationPageStateBytes(state, questions) {
+    const encoder = new TextEncoder();
+    const serialised = () => encoder.encode(JSON.stringify({ state, questions })).length;
+    if (serialised() <= NAVIGATION_PAGE_STATE_MAX_BYTES) { return; }
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const overflow = serialised() - NAVIGATION_PAGE_STATE_MAX_BYTES;
+        const textBytes = encoder.encode(state.text).length;
+        state.text = truncateToUtf8Bytes(state.text, Math.max(0, textBytes - overflow));
+        if (serialised() <= NAVIGATION_PAGE_STATE_MAX_BYTES) { return; }
+    }
+    state.text = '';
+}
+
+// A settled extraction can still be a login wall, consent page or placeholder, so when the decision model is
+// enabled one choice question confirms the page state before the text is handed to the model. Any failure or
+// low-confidence answer keeps the current result; only the caller's cancellation propagates.
+async function askNavigationPageState(session, url, title, text) {
+    const state = { url, title, text };
+    const questions = {
+        [NAVIGATION_PAGE_STATE_QUESTION]: {
+            type: 'choice',
+            instructions: NAVIGATION_PAGE_STATE_INSTRUCTIONS,
+            criteria: NAVIGATION_PAGE_STATE_CRITERIA
+        }
+    };
+    limitNavigationPageStateBytes(state, questions);
+
+    let answers = null;
+    try {
+        answers = await askDecision(state, questions, session?.signal);
+    } catch (err) {
+        if (err?.name === 'AbortError' || session?.disposed) { throw createNavigationAbortError(session?.signal?.reason); }
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page-state check failed: ${err?.message}`);
+        return null;
+    }
+
+    const answer = answers?.[NAVIGATION_PAGE_STATE_QUESTION];
+    const choice = typeof answer?.choice === 'string' ? answer.choice.trim().toLowerCase() : '';
+    if (!choice || choice === 'content'
+        || typeof answer?.confidence !== 'number'
+        || answer.confidence < NAVIGATION_PAGE_STATE_THRESHOLD) {
+        return null;
+    }
+
+    return NAVIGATION_PAGE_STATE_ERRORS[choice] || null;
+}
+
 async function browseUrl(session, rawUrl) {
     if (!session || session.disposed) {
         return 'Navigation failed: no active model request owns a browsing tab.';
@@ -591,6 +667,12 @@ async function browseUrl(session, rawUrl) {
 
     if (extraction.error) {
         result.error = `Content extraction failed: ${extraction.error}`;
+        return JSON.stringify(result, null, 2);
+    }
+
+    const pageStateError = await askNavigationPageState(session, result.finalUrl, result.title, extraction.content);
+    if (pageStateError) {
+        result.error = pageStateError;
         return JSON.stringify(result, null, 2);
     }
 
