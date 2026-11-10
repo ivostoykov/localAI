@@ -1101,7 +1101,7 @@ async function loadModels(e) {
     let response;
     let success = false;
     try {
-        response = await chrome.runtime.sendMessage({ action: 'getModels', forceRefresh: true });
+        response = await chrome.runtime.sendMessage({ action: 'getModels', forceRefresh: true, endpoint: document.getElementById('aiUrl')?.value || '' });
         if (response?.status === 'success') {
             await fillModelList(response.models, '#aiModel');
             await fillModelList(response.models, '#embeddingModel');
@@ -1139,7 +1139,7 @@ async function loadDecisionModelSettings(forceRefresh = false) {
     const selectedEndpoint = document.getElementById('aiUrl')?.value || (await getOptions()).aiUrl;
     if (endpoint && !endpoint.value) { endpoint.placeholder = getDecisionModelUrl(selectedEndpoint); }
     let response;
-    try { response = await chrome.runtime.sendMessage({ action: 'getDecisionModels', forceRefresh }); }
+    try { response = await chrome.runtime.sendMessage({ action: 'getDecisionModels', forceRefresh, endpoint: document.getElementById('aiUrl')?.value || '', decisionModelUrl: endpoint?.value || '' }); }
     catch (error) {
         console.debug(`[${getLineNumber()}]: Decision-model availability check failed`, error);
         setDecisionModelAvailability(false, 'Ollama is unreachable.');

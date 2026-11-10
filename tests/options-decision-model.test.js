@@ -13,10 +13,10 @@ const versionCode = backgroundSource.match(/function isOllamaVersionSupported\([
 const filterCode = backgroundSource.match(/function filterDecisionModels\([\s\S]*?\n}\n/)[0];
 const backgroundApi = new Function(`${versionCode}\n${filterCode}\nreturn { isOllamaVersionSupported, filterDecisionModels };`)();
 
-function loadOptions() {
+function loadOptions(backgroundResponder) {
     const dom = new JSDOM(read('src/options.html'), { runScripts: 'outside-only' });
     const { window } = dom;
-    const sendMessage = vi.fn(async () => ({ status: 'unreachable' }));
+    const sendMessage = vi.fn(backgroundResponder || (async () => ({ status: 'unreachable' })));
     window.chrome = {
         runtime: {
             getManifest: () => ({ name: 'Local AI helper', version: '1.29.85' }),
@@ -79,6 +79,71 @@ describe('decision-model options', () => {
         reload.classList.remove('disabled');
         reload.click();
         await Promise.resolve();
-        expect(sendMessage).toHaveBeenCalledWith({ action: 'getModels', forceRefresh: true });
+        expect(sendMessage).toHaveBeenCalledWith({ action: 'getModels', forceRefresh: true, endpoint: '' });
+    });
+
+    function selectEndpoint(document, value) {
+        const select = document.getElementById('aiUrl');
+        const option = document.createElement('option');
+        option.value = value;
+        select.appendChild(option);
+        select.value = value;
+    }
+
+    const waitForInitialised = sendMessage => vi.waitFor(() => {
+        expect(sendMessage.mock.calls.some(([msg]) => msg?.action === 'getDecisionModels')).toBe(true);
+    });
+
+    it('reloads models from the selected endpoint without saving it', async () => {
+        const unsaved = 'http://unsaved:11434/api/chat';
+        const { document, api, sendMessage } = loadOptions(async () => ({ status: 'error', code: 'missing-endpoint', message: 'No API endpoint found!' }));
+        await waitForInitialised(sendMessage);
+        selectEndpoint(document, unsaved);
+        const reload = document.querySelector('#decisionModelButtons [data-action="reload"]');
+        reload.classList.add('disabled');
+        await api.attachDataListListeners();
+        reload.classList.remove('disabled');
+        reload.click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(sendMessage).toHaveBeenCalledWith({ action: 'getModels', forceRefresh: true, endpoint: unsaved });
+        expect((await fakeBrowser.storage.sync.get('laiOptions')).laiOptions?.aiUrl).toBeUndefined();
+    });
+
+    it('shows the background error message when the selected endpoint is rejected', async () => {
+        const message = 'Invalid API endpoint - http://bad:11434/chat! It must include /api/.';
+        const { document, api, sendMessage } = loadOptions(async () => ({ status: 'error', code: 'invalid-endpoint', message }));
+        await waitForInitialised(sendMessage);
+        selectEndpoint(document, 'http://bad:11434/chat');
+        const reload = document.querySelector('#decisionModelButtons [data-action="reload"]');
+        reload.classList.add('disabled');
+        await api.attachDataListListeners();
+        reload.classList.remove('disabled');
+        reload.click();
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(document.getElementById('message').textContent).toBe(`Failed to load models - ${message}`);
+    });
+
+    it('checks decision-model availability against the unsaved form values', async () => {
+        const unsaved = 'http://unsaved:11434/api/chat';
+        const decisionUrl = 'http://unsaved:11434/v1/systemone';
+        const { document, api, sendMessage } = loadOptions(async msg => msg.action === 'getModels'
+            ? { status: 'success', models: [{ name: 'clef:27b' }], groups: { local: [{ name: 'clef:27b' }], cloud: [] } }
+            : { status: 'unreachable' });
+        await waitForInitialised(sendMessage);
+        selectEndpoint(document, unsaved);
+        document.getElementById('decisionModelUrl').value = decisionUrl;
+        const reload = document.querySelector('#decisionModelButtons [data-action="reload"]');
+        reload.classList.add('disabled');
+        await api.attachDataListListeners();
+        reload.classList.remove('disabled');
+        reload.click();
+        await vi.waitFor(() => {
+            expect(sendMessage.mock.calls.some(([msg]) => msg?.action === 'getDecisionModels' && msg?.forceRefresh === true)).toBe(true);
+        });
+
+        expect(sendMessage).toHaveBeenCalledWith({ action: 'getDecisionModels', forceRefresh: true, endpoint: unsaved, decisionModelUrl: decisionUrl });
+        expect(document.getElementById('decisionModelStatus').textContent).toBe('Ollama is unreachable.');
     });
 });
