@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.29.87] - 2026-11-10 - latest
+## [1.29.88] - 2026-11-10 - latest
+
+### Options
+
+- Reload models now reads the endpoint currently selected in Options without saving it first, so a newly chosen server lists its own models before Save (#31)
+- The background returns structured errors for missing, invalid and unreachable endpoints and the Options page shows the returned message instead of failing silently; the ribbon keeps its existing message behaviour
+- The decision-model availability check runs against the unsaved endpoint and decision-model URL form values, and endpoint overrides are accepted only from the Options page
+
+## [1.29.87] - 2026-11-10
 
 ### Accessibility
 

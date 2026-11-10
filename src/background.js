@@ -90,6 +90,11 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${activeInfo.tabId} activated`);
 });
 
+function isOptionsPageSender(sender) {
+    const optionsUrl = chrome.runtime.getURL('options.html');
+    return typeof sender?.url === 'string' && sender.url.startsWith(optionsUrl);
+}
+
 async function handleRuntimeMessage(request, sender) {
     let response;
     const tabId = sender?.tab?.id;
@@ -102,11 +107,19 @@ async function handleRuntimeMessage(request, sender) {
         case 'getTabId':
             return { tabId: sender?.tab?.id };
 
-        case 'getModels':
-            return await getModels(request?.forceRefresh || false, request?.refreshCloud || false);
+        case 'getModels': {
+            const endpoint = isOptionsPageSender(sender) ? (request?.endpoint || '') : '';
+            return await getModels(request?.forceRefresh || false, request?.refreshCloud || false, endpoint);
+        }
 
-        case 'getDecisionModels':
-            return await getDecisionModels(request?.forceRefresh || false);
+        case 'getDecisionModels': {
+            const optionsSender = isOptionsPageSender(sender);
+            return await getDecisionModels(
+                request?.forceRefresh || false,
+                optionsSender ? (request?.endpoint || '') : '',
+                optionsSender ? (request?.decisionModelUrl || '') : ''
+            );
+        }
 
         case 'fetchData':
             return await fetchDataAction(request, sender);
@@ -1387,20 +1400,31 @@ async function getCurrentTab() {
     return tab;
 }
 
-async function getModels(forceRefresh = false, refreshCloud = false) {
-    const laiOptions = await getLaiOptions();
-    let urlVal = laiOptions?.aiUrl;
+function validateModelEndpoint(urlVal = '') {
     if (!urlVal) {
-        await showUIMessage(`No API endpoint found - ${urlVal}!`, 'error');
-        return false;
+        return { code: 'missing-endpoint', notify: true, message: 'No API endpoint found!' };
     }
 
-    if (!urlVal.startsWith('http')) {
-        await showUIMessage(`Invalid API endpoint - ${urlVal}!`, 'error');
-        return false;
+    let parsed = null;
+    try { parsed = new URL(urlVal); } catch (error) { parsed = null; }
+    if (!parsed || !/^https?:$/.test(parsed.protocol)) {
+        return { code: 'invalid-endpoint', notify: true, message: `Invalid API endpoint - ${urlVal}!` };
     }
 
-    if (urlVal.indexOf('/api/') < 0) { return; }
+    if (urlVal.indexOf('/api/') < 0) {
+        return { code: 'invalid-endpoint', notify: false, message: `Invalid API endpoint - ${urlVal}! It must include /api/.` };
+    }
+
+    return null;
+}
+
+async function getModels(forceRefresh = false, refreshCloud = false, endpoint = '') {
+    const urlVal = endpoint || (await getLaiOptions())?.aiUrl;
+    const invalid = validateModelEndpoint(urlVal);
+    if (invalid) {
+        if (!endpoint && invalid.notify) { await showUIMessage(invalid.message, 'error'); }
+        return { status: 'error', code: invalid.code, message: invalid.message };
+    }
 
     try {
         const catalogue = await getModelCatalogue(urlVal, forceRefresh, true, refreshCloud);
@@ -1413,7 +1437,7 @@ async function getModels(forceRefresh = false, refreshCloud = false) {
         };
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
-        return { "status": "error", "message": e.message };
+        return { "status": "error", "code": "unreachable", "message": `Failed to load models from ${urlVal} - ${e.message}` };
     }
 }
 
@@ -1442,10 +1466,11 @@ function filterDecisionModels(models = []) {
     }, []);
 }
 
-async function getDecisionModels(forceRefresh = false) {
+async function getDecisionModels(forceRefresh = false, endpoint = '', decisionModelUrl = '') {
     const laiOptions = await getLaiOptions();
+    const originCandidate = decisionModelUrl || endpoint || laiOptions?.decisionModelUrl || laiOptions?.aiUrl;
     let origin;
-    try { origin = new URL(laiOptions?.decisionModelUrl || laiOptions?.aiUrl).origin; }
+    try { origin = new URL(originCandidate).origin; }
     catch (error) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid endpoint for decision models`, error);
         return { status: 'unreachable' };
@@ -1462,11 +1487,11 @@ async function getDecisionModels(forceRefresh = false) {
     const version = (await versionResponse.json())?.version;
     if (!isOllamaVersionSupported(version)) { return { status: 'unsupported', version }; }
 
-    const modelsResponse = await getModels(forceRefresh, forceRefresh);
+    const modelsResponse = await getModels(forceRefresh, forceRefresh, endpoint);
     if (modelsResponse?.status !== 'success') { return { status: 'unreachable' }; }
     const models = Array.isArray(modelsResponse.models) ? modelsResponse.models : [];
     const details = await Promise.all(models.map(async model => {
-        try { return await getModelInfo(model?.name); }
+        try { return await getModelInfo(model?.name, false, endpoint); }
         catch (error) {
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to inspect ${model?.name}`, error);
             return null;
@@ -1549,9 +1574,9 @@ async function prepareModels(modelName, remove = false, tab) {
 
 /////////// other helpers ///////////
 
-async function getModelInfo(modelName, forceRefresh = false) {
+async function getModelInfo(modelName, forceRefresh = false, endpoint = '') {
     if (!modelName) { modelName = await getAiModel(); }
-    const apiUrl = await getAiUrl();
+    const apiUrl = endpoint || await getAiUrl();
     if (!apiUrl) {
         return { model: modelName, error: 'Missing API endpoint' };
     }

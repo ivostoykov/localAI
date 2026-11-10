@@ -319,7 +319,7 @@ Add the end point used to query the LLM. Use the buttons to `add` ( <img src="Ch
 
 Check if the provided url is accessible using the `test connection` button ( <img src="Chrome/img/testnet.svg" height="25" alt="test connection" title="test connection"/> )
 
-The model list, determined by the endpoint, includes an additional reload button ( <img src="Chrome/img/reload.svg" height="25" alt="Reload" title="Reload"/> ). Deleting or adding models is not possible within this interface and depends on the associated tool.
+The model list, determined by the endpoint, includes an additional reload button ( <img src="Chrome/img/reload.svg" height="25" alt="Reload" title="Reload"/> ). Reloading reads the endpoint currently selected in the End Point list without saving it, so a newly added endpoint can be tried before `Save`. Deleting or adding models is not possible within this interface and depends on the associated tool.
 
 #### Models
 
