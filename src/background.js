@@ -1681,6 +1681,14 @@ function normaliseGeneratedTitle(rawTitle = '') {
     return words.join(' ');
 }
 
+function stripReasoningFromContent(content = '') {
+    const text = `${content || ''}`;
+    const lastClosingTag = text.lastIndexOf('</think>');
+    if (lastClosingTag >= 0) { return text.slice(lastClosingTag + '</think>'.length); }
+    if (text.includes('<think>')) { return ''; }
+    return text;
+}
+
 async function generateSessionTitle(text, tab) {
     if (!text || text === '') { return null; }
     let url = await getAiUrl();
@@ -1700,7 +1708,7 @@ async function generateSessionTitle(text, tab) {
             "top_p": 0.2,
             "repeat_penalty": 1.15,
             "presence_penalty": 0.0,
-            "max_tokens": 6
+            "num_predict": 512
         },
         "messages": [
             {
@@ -1738,7 +1746,11 @@ ${`${text}`.replace(/\s+/g, ' ').trim()}
         data = await res.json();
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, data);
         await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response`, data, 'debug', tab?.id);
-        title = normaliseGeneratedTitle(data?.message?.content || '');
+        if (data?.done_reason === 'length') {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Session title generation reached the output limit for ${model}`);
+            return null;
+        }
+        title = normaliseGeneratedTitle(stripReasoningFromContent(data?.message?.content || ''));
         if(!title)  {  return null;  }
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - title: ${title}`);
         return title;

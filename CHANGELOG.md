@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.29.88] - 2026-11-10 - latest
+## [1.29.89] - 2026-11-10 - latest
+
+### Session Titles
+
+- Generated session titles now discard reasoning leaked into a model's response content and skip truncated title responses (#30)
+- Title requests use Ollama's `num_predict` safety limit instead of the ignored `max_tokens` option
+
+## [1.29.88] - 2026-11-10
 
 ### Options
 
