@@ -32,6 +32,8 @@ const handleResponseCode = backgroundCode.match(/async function handleResponse\(
 const getVisibleSessionMessagesCode = backgroundCode.match(/function getVisibleSessionMessages\([\s\S]*?\n}\n/)[0];
 const generateAndUpdateSessionTitleCode = backgroundCode.match(/async function generateAndUpdateSessionTitle\([\s\S]*?\n}\n/)[0];
 const normaliseGeneratedTitleCode = backgroundCode.match(/function normaliseGeneratedTitle\([\s\S]*?\n}\n/)[0];
+const stripReasoningFromContentCode = backgroundCode.match(/function stripReasoningFromContent\([\s\S]*?\n}\n/)[0];
+const generateSessionTitleCode = backgroundCode.match(/async function generateSessionTitle\([\s\S]*?\n}\n/)[0];
 const resolveModelNameForRequestCode = backgroundCode.match(/async function resolveModelNameForRequest\([\s\S]*?\n}\n/)[0];
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
 const modelCanUseToolsCode = backgroundCode.match(/async function modelCanUseTools\([\s\S]*?\n}\n/)[0];
@@ -54,17 +56,24 @@ ${handleResponseCode}
 ${getVisibleSessionMessagesCode}
 ${generateAndUpdateSessionTitleCode}
 ${normaliseGeneratedTitleCode}
+${stripReasoningFromContentCode}
 ${resolveModelNameForRequestCode}
 ${modelCanThinkCode}
 ${modelCanUseToolsCode}
 ${validateModelInfoCacheCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
+const loadTitleGeneration = new Function('deps', `with (deps) {
+${normaliseGeneratedTitleCode}
+${stripReasoningFromContentCode}
+${generateSessionTitleCode}
+return { generateSessionTitle };
+}`);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -85,6 +94,7 @@ describe('background.js', () => {
         getVisibleSessionMessages = exports.getVisibleSessionMessages;
         generateAndUpdateSessionTitle = exports.generateAndUpdateSessionTitle;
         normaliseGeneratedTitle = exports.normaliseGeneratedTitle;
+        stripReasoningFromContent = exports.stripReasoningFromContent;
         resolveModelNameForRequest = exports.resolveModelNameForRequest;
         modelCanThink = exports.modelCanThink;
         modelCanUseTools = exports.modelCanUseTools;
@@ -603,6 +613,75 @@ describe('background.js', () => {
 
         it('uses the first non-empty line only', () => {
             expect(normaliseGeneratedTitle('\nModel list refresh\nExtra explanation')).toBe('Model list refresh');
+        });
+    });
+
+    describe('stripReasoningFromContent', () => {
+        it('keeps the text after an unpaired closing think tag', () => {
+            expect(stripReasoningFromContent('The user wants a session title\n</think>\nNginx reverse proxy Node websockets')).toBe('\nNginx reverse proxy Node websockets');
+        });
+
+        it('keeps the title after paired think tags', () => {
+            expect(stripReasoningFromContent('<think>Reasoning</think>Database migrations')).toBe('Database migrations');
+        });
+
+        it('discards unclosed reasoning', () => {
+            expect(stripReasoningFromContent('<think>Reasoning without an answer')).toBe('');
+        });
+
+        it('keeps plain title content unchanged', () => {
+            expect(stripReasoningFromContent('Browser session summary')).toBe('Browser session summary');
+        });
+
+        it('uses the last closing think tag', () => {
+            expect(stripReasoningFromContent('First</think>Ignored</think>Final title')).toBe('Final title');
+        });
+    });
+
+    describe('generateSessionTitle', () => {
+        const createTitleGenerator = (response) => {
+            const fetch = vi.fn(async () => ({ json: async () => response }));
+            const console = { debug: vi.fn(), error: vi.fn() };
+            const { generateSessionTitle } = loadTitleGeneration({
+                getAiUrl: async () => 'http://localhost:11434/api/chat',
+                getTitleGenerator: async () => null,
+                getAiModel: async () => 'glm-5.3-flash:cloud',
+                resolveModelNameForRequest: async model => model,
+                modelCanThink: async () => true,
+                dumpInFrontConsole: async () => undefined,
+                getLineNumber: () => 'test:1',
+                manifest: { name: 'Test' },
+                fetch,
+                console
+            });
+            return { generateSessionTitle, fetch, console };
+        };
+
+        it('strips leaked reasoning and sends the supported title options', async () => {
+            const { generateSessionTitle, fetch } = createTitleGenerator({
+                message: {
+                    content: 'The user wants a session title for the prompt about nginx.\n</think>\nNginx reverse proxy Node websockets'
+                },
+                done_reason: 'stop'
+            });
+
+            const title = await generateSessionTitle('Configure nginx reverse proxy for Node websockets');
+            const body = JSON.parse(fetch.mock.calls[0][1].body);
+
+            expect(title).toBe('Nginx reverse proxy Node websockets');
+            expect(body.options.num_predict).toBe(512);
+            expect(body.options.max_tokens).toBeUndefined();
+            expect(body.think).toBe(false);
+        });
+
+        it('rejects a title response truncated at the output limit', async () => {
+            const { generateSessionTitle, console } = createTitleGenerator({
+                message: { content: 'A partial title' },
+                done_reason: 'length'
+            });
+
+            await expect(generateSessionTitle('A prompt')).resolves.toBeNull();
+            expect(console.debug).toHaveBeenCalledWith(expect.stringContaining('glm-5.3-flash:cloud'));
         });
     });
 
