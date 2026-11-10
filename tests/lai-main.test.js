@@ -38,13 +38,13 @@ global.chrome = {
 const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 
 // Extract the functions we want to test
-const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown };';
+const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint };';
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
-    isMessagePersistableCode + '\n' + laiMainCode + laiMainExports
+    isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + laiMainCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable;
-let setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown;
+let setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint;
 
 describe('lai-main.js', () => {
     beforeEach(() => {
@@ -75,6 +75,8 @@ describe('lai-main.js', () => {
         getMarkdownSource = exports.getMarkdownSource;
         copyChatElementContent = exports.copyChatElementContent;
         copyChatElementContentAsMarkdown = exports.copyChatElementContentAsMarkdown;
+        addInputCardToUIChatHistory = exports.addInputCardToUIChatHistory;
+        laiShowCopyHint = exports.laiShowCopyHint;
     });
 
     describe('stream preview helpers', () => {
@@ -583,6 +585,80 @@ Third line of thinking`;
             await copyChatElementContent(event, 'ai');
 
             expect(writeText).toHaveBeenCalledWith('Title\nbold text');
+        });
+    });
+
+    describe('reply action accessibility', () => {
+        beforeEach(() => {
+            global.chrome.runtime.id = 'test-extension';
+            global.chrome.runtime.getURL = path => `chrome-extension://test/${path}`;
+            document.body.innerHTML = '<div id="laiChatMessageList"></div><div id="laiCopyHint"></div>';
+        });
+
+        it('renders named button controls with decorative icons for user and AI cards', async () => {
+            await addInputCardToUIChatHistory('User request', 'user');
+            await addInputCardToUIChatHistory('AI reply', 'ai');
+
+            const userButtons = document.querySelectorAll('.lai-user-input button[type="button"]');
+            const aiButtons = document.querySelectorAll('.lai-ai-input button[type="button"]');
+
+            expect(userButtons).toHaveLength(6);
+            expect(aiButtons).toHaveLength(5);
+            expect([...userButtons, ...aiButtons].every(button => button.getAttribute('aria-label'))).toBe(true);
+            expect([...userButtons, ...aiButtons].every(button => button.querySelector('img[alt=""]'))).toBe(true);
+            expect(document.querySelector('.lai-ai-input [data-type="copy-md"]')).not.toBeNull();
+        });
+
+        it('reveals the toolbar when an action receives focus and hides it after focus leaves the card', async () => {
+            await addInputCardToUIChatHistory('AI reply', 'ai');
+            const card = document.querySelector('.lai-ai-input');
+            const toolbar = card.querySelector('.lai-action-icons');
+            const button = toolbar.querySelector('button');
+            const outside = document.createElement('button');
+            document.body.appendChild(outside);
+
+            expect(toolbar.classList.contains('invisible')).toBe(false);
+            expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(true);
+
+            button.dispatchEvent(new window.FocusEvent('focusin', { bubbles: true }));
+            expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(false);
+
+            button.focus();
+            card.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
+            expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(false);
+
+            button.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true, relatedTarget: outside }));
+            expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(true);
+        });
+
+        it('dispatches Copy from both the icon and its button', async () => {
+            const writeText = vi.fn(async () => undefined);
+            Object.defineProperty(global.navigator, 'clipboard', { value: { writeText }, configurable: true });
+            await addInputCardToUIChatHistory('AI reply', 'ai');
+            const text = document.querySelector('.lai-ai-input .lai-input-text');
+            Object.defineProperty(text, 'innerText', { value: 'AI reply', configurable: true });
+            const button = document.querySelector('.lai-ai-input [data-type="copy"]');
+
+            button.querySelector('img').click();
+            button.click();
+            await Promise.resolve();
+
+            expect(writeText).toHaveBeenCalledTimes(2);
+            expect(writeText).toHaveBeenNthCalledWith(1, 'AI reply');
+            expect(writeText).toHaveBeenNthCalledWith(2, 'AI reply');
+        });
+
+        it('positions the copy hint from the button for keyboard activation', () => {
+            const hint = document.getElementById('laiCopyHint');
+            const button = document.createElement('button');
+            button.className = 'lai-chat-item-button';
+            button.getBoundingClientRect = () => ({ left: 40, width: 20, bottom: 80 });
+            document.body.appendChild(button);
+
+            laiShowCopyHint({ target: button, detail: 0, clientX: 0, clientY: 0 });
+
+            expect(hint.style.left).toBe('50px');
+            expect(hint.style.top).toBe('80px');
         });
     });
 });

@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.29.87] - 2026-11-10 - latest
+
+### Accessibility
+
+- Reply action icons are now named buttons that work with keyboard focus and activation; hidden action bars appear when a reply action receives focus (#34)
+
 ## [1.29.86] - 2026-11-09 - latest
 
 ### URL Browsing

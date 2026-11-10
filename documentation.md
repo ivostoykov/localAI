@@ -51,7 +51,7 @@ Click the icon to open the main UI.
 
 # AI response actions
 
-Hover over an AI reply to show its actions. `Copy` copies the rendered text. `Copy as Markdown` copies the reply's original Markdown, including headings, lists, tables and code fences, without the model's thinking block. It works for new replies and for replies restored from session history, with debug logging on or off. For an aborted reply it copies the part received so far. If no Markdown source is available, for example a reply that contained only thinking, a warning is shown and the clipboard is left unchanged.
+Hover over an AI reply or focus it with Tab to show its actions. `Copy` copies the rendered text. `Copy as Markdown` copies the reply's original Markdown, including headings, lists, tables and code fences, without the model's thinking block. It works for new replies and for replies restored from session history, with debug logging on or off. For an aborted reply it copies the part received so far. If no Markdown source is available, for example a reply that contained only thinking, a warning is shown and the clipboard is left unchanged.
 
 # AI response parser
 

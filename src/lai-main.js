@@ -101,7 +101,7 @@ async function initSidebar(deadline) {
         const fromBottom = laiChatMessageList.scrollHeight - laiChatMessageList.scrollTop - laiChatMessageList.clientHeight;
         userScrolled = fromBottom > 10 ? true : false;
         const chatList = e.target;
-        const itemRibbon = chatList.querySelector('.lai-action-icons:not(.invisible)');
+        const itemRibbon = chatList.querySelector('.lai-action-icons:not(.lai-action-icons-hidden)');
         if (!itemRibbon) { return; }
 
         const elChatHist = itemRibbon.parentElement;
@@ -697,52 +697,52 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
 
     const arrButtons = [
         {
-            "span": {
-                "class": "lai-chat-item-button", "data-type": "copy", "title": "Copy",
-                "children": [{ "img": { "src": chrome.runtime.getURL('img/paste.svg') } }]
+            "button": {
+                "type": "button", "class": "lai-chat-item-button", "data-type": "copy", "aria-label": "Copy", "title": "Copy",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/paste.svg'), "alt": "" } }]
             }
         },
         {
-            "span": {
-                "class": "lai-chat-item-button", "data-type": "insert", "title": "Insert in page",
-                "children": [{ "img": { "src": chrome.runtime.getURL('img/insert.svg') } }]
+            "button": {
+                "type": "button", "class": "lai-chat-item-button", "data-type": "insert", "aria-label": "Insert in page", "title": "Insert in page",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/insert.svg'), "alt": "" } }]
             }
         },
         {
-            "span": {
-                "class": "lai-chat-item-button", "data-type": "increase", "title": "Increase font",
-                "children": [{ "img": { "src": chrome.runtime.getURL('img/fontup.svg') } }]
+            "button": {
+                "type": "button", "class": "lai-chat-item-button", "data-type": "increase", "aria-label": "Increase font", "title": "Increase font",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/fontup.svg'), "alt": "" } }]
             }
         },
         {
-            "span": {
-                "class": "lai-chat-item-button", "data-type": "decrease", "title": "Decrease font",
-                "children": [{ "img": { "src": chrome.runtime.getURL('img/fontdown.svg') } }]
+            "button": {
+                "type": "button", "class": "lai-chat-item-button", "data-type": "decrease", "aria-label": "Decrease font", "title": "Decrease font",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/fontdown.svg'), "alt": "" } }]
             }
         }
     ];
     const arrAiButtons = [
         {
-            "span": {
-                "class": "lai-chat-item-button", "data-type": "copy-md", "title": "Copy as Markdown",
-                "children": [{ "img": { "src": chrome.runtime.getURL('img/copy-md.svg') } }]
+            "button": {
+                "type": "button", "class": "lai-chat-item-button", "data-type": "copy-md", "aria-label": "Copy as Markdown", "title": "Copy as Markdown",
+                "children": [{ "img": { "src": chrome.runtime.getURL('img/copy-md.svg'), "alt": "" } }]
             }
         }
     ];
     const arrEditButton = [{
-        "span": {
-            "class": "lai-chat-item-button", "data-type": "edit", "data-index": index, "title": "Edit",
-            "children": [{ "img": { "src": chrome.runtime.getURL('img/edit.svg') } }]
+        "button": {
+            "type": "button", "class": "lai-chat-item-button", "data-type": "edit", "data-index": index, "aria-label": "Edit", "title": "Edit",
+            "children": [{ "img": { "src": chrome.runtime.getURL('img/edit.svg'), "alt": "" } }]
         }
     }, {
-        "span": {
-            "class": "lai-chat-item-button", "data-type": "add", "title": "Add this prompt as User Command",
-            "children": [{ "img": { "src": chrome.runtime.getURL('img/new.svg') } }]
+        "button": {
+            "type": "button", "class": "lai-chat-item-button", "data-type": "add", "aria-label": "Add this prompt as User Command", "title": "Add this prompt as User Command",
+            "children": [{ "img": { "src": chrome.runtime.getURL('img/new.svg'), "alt": "" } }]
         }
     }];
 
     const actionIconsDiv = document.createElement('div');
-    actionIconsDiv.classList.add('lai-action-icons', 'invisible');
+    actionIconsDiv.classList.add('lai-action-icons', 'lai-action-icons-hidden');
     actionIconsDiv.appendChild(buildElements(type !== 'ai' ? [...arrButtons, ...arrEditButton] : [arrButtons[0], ...arrAiButtons, ...arrButtons.slice(1)]));
     lastChatElement.appendChild(lastChatlabel)
     lastChatElement.appendChild(lastChatText)
@@ -757,18 +757,16 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
         });
     }
 
-    lastChatElement.addEventListener('mouseenter', function (e) {
-        let elChatHist = e.target;
-        if (!elChatHist.classList.contains('lai-chat-history')) { elChatHist = el.closest('.lai-chat-history'); }
-        const el = e.target.querySelector('.lai-action-icons');
+    const showActionIcons = () => {
+        const el = lastChatElement.querySelector('.lai-action-icons');
         if (!el) return;
-        const elChatHistRect = elChatHist.getBoundingClientRect();
-        const chatList = elChatHist.closest('#laiChatMessageList');
+        const elChatHistRect = lastChatElement.getBoundingClientRect();
+        const chatList = lastChatElement.closest('#laiChatMessageList');
         const chatListRect = chatList.getBoundingClientRect();
 
         const offset = elChatHistRect.top - chatListRect.top;
 
-        el.classList.remove('invisible');
+        el.classList.remove('lai-action-icons-hidden');
 
         if (offset < 0) {
             el.style.position = 'fixed';
@@ -776,28 +774,34 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
             el.style.bottom = '';
         } else {
             el.style.position = 'absolute';
-            if (elChatHist === chatList.firstElementChild) {
-                el.style.top = `${elChatHist.offsetHeight - 4}px`;
+            if (lastChatElement === chatList.firstElementChild) {
+                el.style.top = `${lastChatElement.offsetHeight - 4}px`;
                 el.style.bottom = '';
             } else {
                 el.style.top = `-${el.getBoundingClientRect().height}px`;
                 el.style.bottom = '';
             }
         }
+    };
+
+    const hideActionIcons = () => actionIconsDiv.classList.add('lai-action-icons-hidden');
+
+    lastChatElement.addEventListener('mouseenter', showActionIcons);
+
+    lastChatElement.addEventListener('mouseleave', () => {
+        const activeElement = shadowRoot.activeElement || document.activeElement;
+        if (!lastChatElement.contains(activeElement)) { hideActionIcons(); }
     });
 
-    lastChatElement.addEventListener('mouseleave', function (e) {
-        const el = e.target.querySelector('.lai-action-icons');
-        if (!el) { return; }
-        el.className = 'lai-action-icons invisible';
+    lastChatElement.addEventListener('focusin', showActionIcons);
+
+    lastChatElement.addEventListener('focusout', (e) => {
+        if (!lastChatElement.contains(e.relatedTarget)) { hideActionIcons(); }
     });
 
     lastChatElement.querySelectorAll('.lai-chat-item-button').forEach(el => {
         el.addEventListener('click', async (e) => {
-            let action = e.target.getAttribute('data-type');
-            if (!action) {
-                action = e.target.parentElement.getAttribute('data-type');
-            }
+            const action = e.target.closest('.lai-chat-item-button')?.dataset.type;
             if (!action) { return; }
             switch (action) {
                 case "add":
@@ -895,19 +899,24 @@ function laiShowCopyHint(e) {
     var hintWidth = hint.offsetWidth;
     var viewportWidth = window.innerWidth;
 
+    const hasKeyboardCoordinates = e.detail === 0 || (e.clientX === 0 && e.clientY === 0);
+    const buttonRect = hasKeyboardCoordinates ? e.target?.closest('.lai-chat-item-button')?.getBoundingClientRect() : null;
+    const clientX = buttonRect ? buttonRect.left + (buttonRect.width / 2) : e.clientX;
+    const clientY = buttonRect ? buttonRect.bottom : e.clientY;
+
     // Calculate available space on the left and right
-    var spaceOnLeft = e.clientX;
-    var spaceOnRight = viewportWidth - e.clientX;
+    var spaceOnLeft = clientX;
+    var spaceOnRight = viewportWidth - clientX;
 
     if (spaceOnRight < hintWidth + 20 && spaceOnLeft >= hintWidth + 20) {
-        hint.style.right = (viewportWidth - e.clientX - 20) + 'px';
+        hint.style.right = (viewportWidth - clientX - 20) + 'px';
         hint.style.left = 'auto';
     } else {
-        hint.style.left = Math.min(e.clientX, viewportWidth - hintWidth - 20) + 'px';
+        hint.style.left = Math.min(clientX, viewportWidth - hintWidth - 20) + 'px';
         hint.style.right = 'auto';
     }
 
-    hint.style.top = e.clientY + 'px';
+    hint.style.top = clientY + 'px';
 
     setTimeout(() => hint.style.opacity = 1, 10);  // Show the hint with a slight delay for opacity transition
 

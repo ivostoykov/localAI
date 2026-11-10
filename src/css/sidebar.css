@@ -298,8 +298,23 @@ local-ai *,
     background-color: #eee;
 }
 
+.lai-action-icons-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .lai-chat-item-button {
+    border: 0;
+    background: none;
+    padding: 0;
+    font: inherit;
     cursor: pointer;
+    line-height: 0;
+}
+
+.lai-chat-item-button:focus-visible {
+    outline: 2px solid #005fcc;
+    outline-offset: 2px;
 }
 
 .lai-chat-item-button img {
@@ -308,7 +323,8 @@ local-ai *,
     opacity: .25;
 }
 
-.lai-chat-item-button img:hover {
+.lai-chat-item-button img:hover,
+.lai-chat-item-button:focus-visible img {
     opacity: 1;
 }
 
