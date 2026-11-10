@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.29.89] - 2026-11-10 - latest
+## [1.29.90] - 2026-11-10 - latest
+
+### Dependencies
+
+- Removed the unused `@ankimcp/anki-mcp-server` runtime dependency; nothing in the extension imported it, and its Express/NestJS/MCP SDK tree (including `proxy-addr` 2.0.7, GHSA-jqcg-44mw-7w3h) accounted for most `npm audit` findings. The packaged extension is unchanged
+
+## [1.29.89] - 2026-11-10
 
 ### Session Titles
 
