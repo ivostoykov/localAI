@@ -1,6 +1,6 @@
 {
   "name": "local-ai-helper",
-  "version": "1.29.89",
+  "version": "1.29.90",
   "type": "module",
   "description": "Local AI helper Chrome extension",
   "scripts": {
@@ -16,9 +16,6 @@
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^25.0.1",
     "vitest": "^4.0.18"
-  },
-  "dependencies": {
-    "@ankimcp/anki-mcp-server": "^0.13.1"
   },
   "overrides": {
     "flatted": "^3.4.2"
