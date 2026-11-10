@@ -790,7 +790,15 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
 
     lastChatElement.addEventListener('mouseleave', () => {
         const activeElement = shadowRoot.activeElement || document.activeElement;
-        if (!lastChatElement.contains(activeElement)) { hideActionIcons(); }
+        let hasKeyboardFocus = false;
+        if (lastChatElement.contains(activeElement)) {
+            try {
+                hasKeyboardFocus = activeElement.matches(':focus-visible');
+            } catch {
+                hasKeyboardFocus = true;
+            }
+        }
+        if (!hasKeyboardFocus) { hideActionIcons(); }
     });
 
     lastChatElement.addEventListener('focusin', showActionIcons);

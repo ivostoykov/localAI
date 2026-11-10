@@ -623,12 +623,25 @@ Third line of thinking`;
             button.dispatchEvent(new window.FocusEvent('focusin', { bubbles: true }));
             expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(false);
 
-            button.focus();
-            card.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
-            expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(false);
-
             button.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true, relatedTarget: outside }));
             expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(true);
+        });
+
+        it('hides pointer-focused controls on mouse leave but keeps keyboard-focused controls visible', async () => {
+            await addInputCardToUIChatHistory('AI reply', 'ai');
+            const card = document.querySelector('.lai-ai-input');
+            const toolbar = card.querySelector('.lai-action-icons');
+            const button = toolbar.querySelector('button');
+
+            button.matches = vi.fn(() => false);
+            button.focus();
+            card.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
+            expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(true);
+
+            button.matches = vi.fn(selector => selector === ':focus-visible');
+            button.dispatchEvent(new window.FocusEvent('focusin', { bubbles: true }));
+            card.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
+            expect(toolbar.classList.contains('lai-action-icons-hidden')).toBe(false);
         });
 
         it('dispatches Copy from both the icon and its button', async () => {
