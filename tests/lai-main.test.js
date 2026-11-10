@@ -673,6 +673,36 @@ Third line of thinking`;
             expect(hint.style.left).toBe('50px');
             expect(hint.style.top).toBe('80px');
         });
+
+        it('keeps the keyboard copy hint anchored when the event target is retargeted after copying', async () => {
+            const button = document.createElement('button');
+            button.className = 'lai-chat-item-button';
+            button.getBoundingClientRect = () => ({ left: 40, width: 20, bottom: 80 });
+            const card = document.createElement('div');
+            card.className = 'lai-ai-input';
+            const text = document.createElement('span');
+            text.className = 'lai-input-text';
+            Object.defineProperty(text, 'innerText', { value: 'AI reply', configurable: true });
+            card.append(text, button);
+            document.getElementById('laiChatMessageList').appendChild(card);
+
+            let target = button;
+            Object.defineProperty(global.navigator, 'clipboard', {
+                value: { writeText: vi.fn(async () => { target = document.createElement('local-ai'); }) },
+                configurable: true
+            });
+            const event = {
+                get target() { return target; },
+                detail: 0,
+                clientX: 0,
+                clientY: 0
+            };
+
+            await copyChatElementContent(event, 'ai');
+
+            expect(document.getElementById('laiCopyHint').style.left).toBe('50px');
+            expect(document.getElementById('laiCopyHint').style.top).toBe('80px');
+        });
     });
 });
 

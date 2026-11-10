@@ -896,7 +896,7 @@ function click2insert(e, textEl, callback) {
     }
 }
 
-function laiShowCopyHint(e) {
+function laiShowCopyHint(e, anchor = e.target?.closest('.lai-chat-item-button')) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     const hint = shadowRoot.getElementById('laiCopyHint');
@@ -908,7 +908,7 @@ function laiShowCopyHint(e) {
     var viewportWidth = window.innerWidth;
 
     const hasKeyboardCoordinates = e.detail === 0 || (e.clientX === 0 && e.clientY === 0);
-    const buttonRect = hasKeyboardCoordinates ? e.target?.closest('.lai-chat-item-button')?.getBoundingClientRect() : null;
+    const buttonRect = hasKeyboardCoordinates ? anchor?.getBoundingClientRect() : null;
     const clientX = buttonRect ? buttonRect.left + (buttonRect.width / 2) : e.clientX;
     const clientY = buttonRect ? buttonRect.bottom : e.clientY;
 
@@ -950,12 +950,13 @@ async function findElementHistoryIndex(el) {
 
 async function copyChatElementContent(e, type) {
     const evt = e;
+    const button = e.target?.closest('.lai-chat-item-button');
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
     const textContent = element.innerText || '';
 
     try {
         await navigator.clipboard.writeText(textContent);
-        laiShowCopyHint(evt)
+        laiShowCopyHint(evt, button)
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err);
     }
@@ -988,6 +989,7 @@ function getMarkdownSource(element) {
 }
 
 async function copyChatElementContentAsMarkdown(e, type) {
+    const button = e.target?.closest('.lai-chat-item-button');
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
     const markdown = getMarkdownSource(element);
     if (!markdown.trim()) {
@@ -997,7 +999,7 @@ async function copyChatElementContentAsMarkdown(e, type) {
 
     try {
         await navigator.clipboard.writeText(markdown);
-        laiShowCopyHint(e);
+        laiShowCopyHint(e, button);
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy markdown: ${err.message}`, err);
     }
