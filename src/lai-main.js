@@ -1415,16 +1415,11 @@ async function finaliseActiveStreamFromSnapshot(snapshot) {
     activeStreamRequestId = null;
 
     if (!snapshot || snapshot.status === 'complete') {
-        const finalMessage = snapshot
-            ? { role: 'assistant', content: snapshot.content || '', thinking: snapshot.thinking || '' }
-            : null;
-        await finaliseStreamRecipient(recipient, {
-            action: 'streamEnd',
-            response: finalMessage ? JSON.stringify({ message: finalMessage }) : ''
-        });
+        const finalMessage = snapshot ? { role: 'assistant', content: snapshot.content || '', thinking: snapshot.thinking || '' } : null;
+        await finaliseStreamRecipient(recipient, { action: 'streamEnd', response: finalMessage ? JSON.stringify({ message: finalMessage }) : '' });
     } else if (snapshot.status === 'aborted') {
         await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
-    } else {
+    } else if (snapshot.status === 'error') {
         renderStreamSnapshot(recipient, snapshot);
         laiHandleStreamActions('Stream Error', recipient);
         if (snapshot.error) { showMessage(snapshot.error, 'error'); }
@@ -1437,9 +1432,11 @@ async function finaliseActiveStreamFromSnapshot(snapshot) {
 async function resyncActiveStreamFromSnapshot() {
     // While the snapshot request is in flight its reply supersedes any chunks that
     // arrive meanwhile, so they are dropped instead of appended past the gap.
+    const requestId = activeStreamRequestId;
     streamResyncInFlight = true;
     try {
         const startup = await fetchTabStartupState();
+        if (activeStreamRequestId !== requestId) { return; }
         const snapshot = startup?.request ?? null;
         if (snapshot && snapshot.status === 'streaming' && snapshot.requestId === activeStreamRequestId) {
             activeStreamSeq = Number(snapshot.seq) || 0;
@@ -1490,6 +1487,9 @@ function showAdoptedStreamControls() {
 async function openSidebarPanelIfClosed() {
     if (!getSideBar()?.classList.contains('active')) {
         await laiSwapSidebarWithButton();
+        if (!getSideBar()?.classList.contains('active')) {
+            await laiSwapSidebarWithButton();
+        }
     }
 }
 
@@ -1530,11 +1530,19 @@ async function restoreTabSessionFromBackground() {
     const startup = await fetchTabStartupState();
     const binding = startup?.tab;
     const initialSnapshot = startup?.request ?? null;
-    if (!binding?.sessionId) { return; }
+    if (!binding?.sessionId) {
+        await deleteActiveSessionId();
+        clearChatHistoryUI();
+        laiHandleStreamActions('Session reset');
+        return;
+    }
 
     const session = await getActiveSessionById(binding.sessionId);
     if (!session) {
         await reportTabBinding({ sessionId: null });
+        await deleteActiveSessionId();
+        clearChatHistoryUI();
+        laiHandleStreamActions('Session reset');
         return;
     }
 

@@ -1041,7 +1041,7 @@ async function removeStreamRequestStateForSender(request, sender) {
     if (tabId == null || !requestId) { return { status: 'ignored' }; }
 
     const stored = await streamRequestState?.get(requestId);
-    if (stored?.tabId === tabId) {
+    if (stored?.tabId === tabId && !liveStreamStates.has(requestId)) {
         await streamRequestState?.remove(requestId);
     }
     return { status: 'done' };
