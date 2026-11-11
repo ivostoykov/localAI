@@ -19,7 +19,6 @@ const refreshCloudModelListBtnClickCode = ribbonCode.match(/async function refre
 const fillAndShowModelListCode = ribbonCode.match(/async function fillAndShowModelList\([\s\S]*?\n}\n/)[0];
 const deleteHistoryMenuItemClickedCode = ribbonCode.match(/async function deleteHistoryMenuItemClicked\([\s\S]*?\n}\n/)[0];
 const deleteAllHistorySessionsClickedCode = ribbonCode.match(/async function deleteAllHistorySessionsClicked\([\s\S]*?\n}\n/)[0];
-
 const executeRibbonCode = new Function(
     'document',
     'getShadowRoot',
@@ -34,6 +33,8 @@ const executeRibbonCode = new Function(
     'updateStatusBar',
     'resetStatusbar',
     'recycleAllSessions',
+    'getActiveSessionId',
+    'reportTabBinding',
     `
 ${closeAllDropDownRibbonMenusCode}
 ${closeRibbonMenuElementCode}
@@ -62,6 +63,8 @@ describe('ribbon.js model list', () => {
     let updateStatusBar;
     let resetStatusbar;
     let recycleAllSessions;
+    let getActiveSessionId;
+    let reportTabBinding;
     let exports;
 
     beforeEach(() => {
@@ -105,6 +108,8 @@ describe('ribbon.js model list', () => {
         updateStatusBar = vi.fn();
         resetStatusbar = vi.fn();
         recycleAllSessions = vi.fn(async () => undefined);
+        getActiveSessionId = vi.fn(async () => null);
+        reportTabBinding = vi.fn(async () => undefined);
 
         exports = executeRibbonCode(
             document,
@@ -119,7 +124,9 @@ describe('ribbon.js model list', () => {
             deleteSessionById,
             updateStatusBar,
             resetStatusbar,
-            recycleAllSessions
+            recycleAllSessions,
+            getActiveSessionId,
+            reportTabBinding
         );
     });
 
@@ -363,6 +370,40 @@ describe('ribbon.js model list', () => {
         expect(historyButton.dataset.menuId).toBeUndefined();
     });
 
+    it('reports the binding cleared when the deleted session was the active one', async () => {
+        getActiveSessionId.mockResolvedValue('session-1');
+        const btn = document.createElement('span');
+        btn.setAttribute('data-sessionId', 'session-1');
+        const menuItem = document.createElement('div');
+        menuItem.className = 'menu-item';
+        menuItem.appendChild(btn);
+
+        await exports.deleteHistoryMenuItemClicked({
+            stopPropagation: vi.fn(),
+            stopImmediatePropagation: vi.fn(),
+            currentTarget: btn
+        });
+
+        expect(reportTabBinding).toHaveBeenCalledWith({ sessionId: null });
+    });
+
+    it('keeps the binding when a session other than the active one is deleted', async () => {
+        getActiveSessionId.mockResolvedValue('session-other');
+        const btn = document.createElement('span');
+        btn.setAttribute('data-sessionId', 'session-1');
+        const menuItem = document.createElement('div');
+        menuItem.className = 'menu-item';
+        menuItem.appendChild(btn);
+
+        await exports.deleteHistoryMenuItemClicked({
+            stopPropagation: vi.fn(),
+            stopImmediatePropagation: vi.fn(),
+            currentTarget: btn
+        });
+
+        expect(reportTabBinding).not.toHaveBeenCalled();
+    });
+
     it('clears session history menu state after deleting all sessions', async () => {
         const shadowRoot = getShadowRoot();
         const header = document.createElement('header');
@@ -394,8 +435,8 @@ describe('ribbon.js model list', () => {
         expect(historyButton.dataset.menuId).toBeUndefined();
     });
 });
-
 describe('ribbon.js session restore', () => {
+    const renderSessionHistoryMessagesCode = ribbonCode.match(/async function renderSessionHistoryMessages\([\s\S]*?\n}\n/)[0];
     const restoreCode = ribbonCode.match(/async function restoreHistorySessionClicked\([\s\S]*?\n}\n/)[0];
     const laiMainCode = fs.readFileSync(path.join(__dirname, '../src/lai-main.js'), 'utf-8');
     const markdownSourceCode = laiMainCode.match(/function setMarkdownSource\([\s\S]*?\n}\n/)[0]
@@ -418,6 +459,7 @@ describe('ribbon.js session restore', () => {
                 ]
             })),
             setActiveSessionId: vi.fn(async () => undefined),
+            reportTabBinding: vi.fn(async () => undefined),
             clearChatHistoryUI: vi.fn(),
             addInputCardToUIChatHistory: vi.fn(async () => {
                 const el = doc.createElement('span');
@@ -432,13 +474,42 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked, getMarkdownSource } = new Function('deps',
-            `with (deps) { ${markdownSourceCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
+            `with (deps) { ${markdownSourceCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1');
 
+        expect(deps.reportTabBinding).toHaveBeenCalledWith({ sessionId: 's1' });
+
         expect(cards).toHaveLength(2);
         expect(getMarkdownSource(cards[0])).toBe('question');
         expect(getMarkdownSource(cards[1])).toBe(markdown);
+    });
+
+    it('restores silently for the automatic tab-session path', async () => {
+        const dom = new JSDOM('<!DOCTYPE html><div id="laiChatMessageList"></div>');
+        const doc = dom.window.document;
+        const deps = {
+            getActiveSessionId: vi.fn(async () => 's1'),
+            getActiveSessionById: vi.fn(async () => ({ title: 'Restored', messages: [{ role: 'user', content: 'question' }] })),
+            setActiveSessionId: vi.fn(async () => undefined),
+            reportTabBinding: vi.fn(async () => undefined),
+            setMarkdownSource: vi.fn(),
+            clearChatHistoryUI: vi.fn(),
+            addInputCardToUIChatHistory: vi.fn(async () => doc.createElement('span')),
+            parseAndRender: vi.fn(async () => undefined),
+            getShadowRoot: () => doc,
+            showMessage: vi.fn(),
+            manifest: { name: 'Local AI helper' },
+            getLineNumber: () => 'test'
+        };
+
+        const { restoreHistorySessionClicked } = new Function('deps',
+            `with (deps) { ${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
+        )(deps);
+
+        await restoreHistorySessionClicked(null, 's1', { silent: true });
+
+        expect(deps.showMessage).not.toHaveBeenCalled();
     });
 });

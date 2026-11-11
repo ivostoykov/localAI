@@ -16,9 +16,12 @@ importBackgroundScript('jslib/constants.js');
 importBackgroundScript('jslib/utils.js');
 importBackgroundScript('jslib/model-catalogue.js');
 importBackgroundScript('jslib/stream-request-state.js');
-
+importBackgroundScript('jslib/tab-state.js');
+ 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
+const tabState = new TabStateStore(); // per-tab session binding, background-owned (#40)
+const liveStreamStates = new Map(); // authoritative in-memory streamState per live requestId (#40)
 
 importBackgroundScript('jslib/log.js');
 importBackgroundScript('background-memory.js');
@@ -64,6 +67,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     controllers.get(tabId)?.abort('Originating tab closed.');
     controllers.delete(tabId);
     await streamRequestState?.removeForTab(tabId);
+    await tabState?.remove(tabId);
     await handleNavigationTabRemoved(tabId);
     await removeActiveSessionPageData(tabId);
 
@@ -108,6 +112,15 @@ async function handleRuntimeMessage(request, sender) {
     switch (request.action) {
         case 'getTabId':
             return { tabId: sender?.tab?.id };
+
+        case 'updateTabState':
+            return await updateTabBindingForSender(request, sender);
+
+        case 'getTabState':
+            return await readTabStartupStateForSender(sender);
+
+        case 'removeStreamRequestState':
+            return await removeStreamRequestStateForSender(request, sender);
 
         case 'getModels': {
             const endpoint = isOptionsPageSender(sender) ? (request?.endpoint || '') : '';
@@ -442,7 +455,7 @@ function isUiReceiverUnavailableError(error) {
     ].some(text => message.includes(text));
 }
 
-async function sendStreamChunkToUi(senderTabId, payload = {}, debugEnabled = false, requestId = '', deliveryState = {}) {
+async function sendStreamChunkToUi(senderTabId, payload = {}, debugEnabled = false, requestId = '', deliveryState = {}, seq = null) {
     if (!senderTabId) { return; }
 
     const hasVisibleDelta = !!((payload?.contentDelta || '') || (payload?.thinkingDelta || ''));
@@ -452,6 +465,7 @@ async function sendStreamChunkToUi(senderTabId, payload = {}, debugEnabled = fal
         await chrome.tabs.sendMessage(senderTabId, {
             action: "streamData",
             requestId,
+            seq,
             model: payload?.model || '',
             contentDelta: payload?.contentDelta || '',
             thinkingDelta: payload?.thinkingDelta || '',
@@ -503,8 +517,8 @@ async function consumeStreamResponse(response, senderTabId, debugEnabled = false
                 const chunk = JSON.parse(line);
                 body = mergeStreamChunkBody(body, chunk);
                 const payload = getStreamChunkUiPayload(chunk, line);
-                await onChunk(payload);
-                await sendStreamChunkToUi(senderTabId, payload, debugEnabled, requestId, deliveryState);
+                const chunkSeq = await onChunk(payload);
+                await sendStreamChunkToUi(senderTabId, payload, debugEnabled, requestId, deliveryState, chunkSeq);
 
                 if (chunk?.done === true) {
                     streamFinished = true;
@@ -520,8 +534,8 @@ async function consumeStreamResponse(response, senderTabId, debugEnabled = false
             const chunk = JSON.parse(trailingLine);
             body = mergeStreamChunkBody(body, chunk);
             const payload = getStreamChunkUiPayload(chunk, trailingLine);
-            await onChunk(payload);
-            await sendStreamChunkToUi(senderTabId, payload, debugEnabled, requestId, deliveryState);
+            const chunkSeq = await onChunk(payload);
+            await sendStreamChunkToUi(senderTabId, payload, debugEnabled, requestId, deliveryState, chunkSeq);
         }
     } finally {
         if (!streamFinished) {
@@ -968,6 +982,71 @@ function wasTerminalMessageDelivered(delivery, requestId) {
     return delivery?.requestId === requestId;
 }
 
+async function updateTabBindingForSender(request, sender) {
+    const tabId = sender?.tab?.id;
+    if (tabId == null) { return null; }
+    return await tabState.update(tabId, {
+        sessionId: request?.sessionId,
+        panelOpen: request?.panelOpen
+    });
+}
+
+async function getTabRequestSnapshotForSender(tabId, sessionId) {
+    const stored = await streamRequestState?.latestForTab(tabId, sessionId);
+    if (!stored?.requestId) { return null; }
+
+    if (stored.status === 'streaming') {
+        const live = liveStreamStates.get(stored.requestId);
+        if (live) {
+            return { requestId: live.requestId, status: 'streaming', content: live.content, thinking: live.thinking, seq: live.seq, model: live.model };
+        }
+        // A stored streaming entry with no live request in this worker means the worker
+        // restarted mid-stream; the model stream is gone, so report it as interrupted.
+        await streamRequestState?.remove(stored.requestId);
+        return {
+            requestId: stored.requestId,
+            status: 'error',
+            error: laiStreamInterruptedMessage,
+            content: stored.content,
+            thinking: stored.thinking,
+            seq: stored.seq,
+            model: stored.model
+        };
+    }
+
+    const snapshot = {
+        requestId: stored.requestId,
+        status: stored.status,
+        content: stored.content,
+        thinking: stored.thinking,
+        seq: stored.seq,
+        model: stored.model
+    };
+    if (stored.error) { snapshot.error = stored.error; }
+    return snapshot;
+}
+
+async function readTabStartupStateForSender(sender) {
+    const tabId = sender?.tab?.id;
+    const binding = await tabState.get(tabId);
+    return {
+        tab: binding,
+        request: binding?.sessionId ? await getTabRequestSnapshotForSender(tabId, binding.sessionId) : null
+    };
+}
+
+async function removeStreamRequestStateForSender(request, sender) {
+    const tabId = sender?.tab?.id;
+    const requestId = request?.requestId;
+    if (tabId == null || !requestId) { return { status: 'ignored' }; }
+
+    const stored = await streamRequestState?.get(requestId);
+    if (stored?.tabId === tabId) {
+        await streamRequestState?.remove(requestId);
+    }
+    return { status: 'done' };
+}
+
 async function fetchDataAction(request, sender) {
     const controller = new AbortController();
     const requestId = createStreamRequestId(request?.requestId);
@@ -1040,6 +1119,7 @@ async function fetchDataAction(request, sender) {
             debug: !!laiOptions?.debug
         };
         await streamRequestState?.checkpoint(streamState, true);
+        liveStreamStates.set(requestId, streamState);
         const userAssistantMessages = (activeSession?.messages || []).filter(m => m.role === 'user' || m.role === 'assistant');
         const turnNumber = Math.floor(userAssistantMessages.length / 2) + 1;
         let attachments = [...(activeSession?.attachments || [])];
@@ -1134,8 +1214,13 @@ async function fetchDataAction(request, sender) {
                             streamState.content += payload.contentDelta || '';
                             streamState.thinking += payload.thinkingDelta || '';
                             streamState.model = payload.model || streamState.model;
-                            streamState.seq += 1;
+                            // seq advances once per message that changes the visible
+                            // accumulated text; debug-only raw chunks must not create gaps.
+                            if (payload.contentDelta || payload.thinkingDelta) {
+                                streamState.seq += 1;
+                            }
                             await streamRequestState?.checkpoint(streamState);
+                            return streamState.seq;
                         }
                     );
                     responseText = streamedResponse.responseText;
@@ -1296,6 +1381,7 @@ async function fetchDataAction(request, sender) {
     }
     finally {
         if (navigationSession) { await disposeNavigationSession(navigationSession); }
+        liveStreamStates.delete(requestId);
         unregisterRequestController(tabId, controller);
     }
 }

@@ -50,6 +50,34 @@ class StreamRequestStateStore {
         }
     }
 
+    async get(requestId) {
+        if (!this.storage?.get || !requestId) { return null; }
+        try {
+            const entries = await this.storage.get(this.key(requestId));
+            return entries?.[this.key(requestId)] ?? null;
+        } catch (error) {
+            console.warn('>>> Failed to read stream request state', error);
+            return null;
+        }
+    }
+
+    async latestForTab(tabId, sessionId = null) {
+        if (!this.storage?.get || tabId == null) { return null; }
+        try {
+            const entries = await this.storage.get(null);
+            let latest = null;
+            for (const [key, state] of Object.entries(entries)) {
+                if (!key.startsWith(laiStreamRequestPrefix) || state?.tabId !== tabId) { continue; }
+                if (sessionId != null && state?.sessionId !== sessionId) { continue; }
+                if (!latest || (state?.updatedAt ?? 0) > (latest.updatedAt ?? 0)) { latest = state; }
+            }
+            return latest;
+        } catch (error) {
+            console.warn('>>> Failed to find the latest stream request state for the tab', error);
+            return null;
+        }
+    }
+
     async removeForTab(tabId) {
         if (!this.storage?.get || !this.storage?.remove) { return; }
         try {

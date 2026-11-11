@@ -28,6 +28,8 @@ function createDeps(bodies) {
     deps = {
         controllers: new Map(),
         originRequestControllers: new Map(),
+        liveStreamStates: new Map(),
+        tabState: { remove: vi.fn(async () => undefined) },
         streamRequestState: {
             sweepExpired: vi.fn(async () => undefined),
             checkpoint: vi.fn(async () => true),
