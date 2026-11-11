@@ -437,7 +437,8 @@ function isUiReceiverUnavailableError(error) {
     return [
         'The message port closed before a response was received.',
         'Receiving end does not exist',
-        'Message manager disconnected'
+        'Message manager disconnected',
+        'moved into back/forward cache'
     ].some(text => message.includes(text));
 }
 

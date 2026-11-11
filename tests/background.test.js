@@ -115,7 +115,8 @@ describe('background.js', () => {
             'Could not establish connection. Receiving end does not exist.',
             'The message port closed before a response was received.',
             'Receiving end does not exist',
-            'Message manager disconnected'
+            'Message manager disconnected',
+            'The page keeping the extension port is moved into back/forward cache, so the message channel is closed.'
         ])('recognises %s', (message) => {
             expect(isUiReceiverUnavailableError(new Error(message))).toBe(true);
         });
@@ -186,6 +187,16 @@ describe('background.js', () => {
             const consume = loadConsumeStreamResponse({ chrome: { tabs: { sendMessage: vi.fn(async () => { throw new Error('Receiving end does not exist'); }) }, runtime: {} }, manifest: {}, getLineNumber: () => '', console: { debug } });
             await consume(response, 1, false, null, 'request-5');
             expect(debug).toHaveBeenCalledTimes(1);
+        });
+
+        it('continues when Chrome closes a bfcache message channel', async () => {
+            const encoder = new TextEncoder();
+            const response = { body: new ReadableStream({ start(c) { c.enqueue(encoder.encode('{"message":{"content":"a"}}\n{"message":{"content":"b"},"done":true}\n')); c.close(); } }) };
+            const consume = loadConsumeStreamResponse({
+                chrome: { tabs: { sendMessage: vi.fn(async () => { throw new Error('The page keeping the extension port is moved into back/forward cache, so the message channel is closed.'); }) }, runtime: {} },
+                manifest: {}, getLineNumber: () => '', console: { debug: vi.fn() }
+            });
+            await expect(consume(response, 1, false, null, 'bfcache-request')).resolves.toMatchObject({ body: { message: { content: 'ab' } } });
         });
     });
 
