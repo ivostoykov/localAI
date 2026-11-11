@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.29.92] - 2026-11-11 - latest
+## [1.29.93] - 2026-11-11 - latest
+
+### Sidebar
+
+- The tools and thinking switches, and the model label, now follow a model or endpoint change made in the sidebar, the Options page or another tab without a page reload (#32)
+- A capability check that finishes after the model has changed again no longer overwrites the switch state
+
+## [1.29.92] - 2026-11-11
 
 ### Sessions
 

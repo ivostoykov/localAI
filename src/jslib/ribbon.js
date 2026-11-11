@@ -193,6 +193,18 @@ function scheduleModelCapabilityRefresh(attempt = 0) {
     });
 }
 
+function onModelOptionsChanged(changes, areaName) {
+    if (areaName !== 'sync' || !changes?.[storageOptionKey]) { return false; }
+
+    const { oldValue, newValue } = changes[storageOptionKey];
+    if ((oldValue?.aiModel ?? '') === (newValue?.aiModel ?? '') && (oldValue?.aiUrl ?? '') === (newValue?.aiUrl ?? '')) { return false; }
+
+    setModelNameLabel({ "model": newValue?.aiModel });
+    scheduleModelCapabilityRefresh();
+    return true;
+}
+chrome?.storage?.onChanged?.addListener(onModelOptionsChanged);
+
 async function closeAllDropDownRibbonMenus(e) {
     const shadowRoot = getShadowRoot();
     const openMenus = Array.from(shadowRoot?.querySelectorAll('.js-menu-is-open') ?? []);
@@ -998,11 +1010,10 @@ async function adjustThinkingStatus(thinkingIconEl, options = {}) {
         if (!thinkingIconEl) { return; }
     }
     const model = await getAiModel();
-    if (await modelCanThinkHelper(model, { throwOnError })) {
-        thinkingIconEl.classList.remove('disabled');
-    } else {
-        thinkingIconEl.classList.add('disabled');
-    }
+    const canThink = await modelCanThinkHelper(model, { throwOnError });
+    if (model !== await getAiModel()) { return; }
+
+    thinkingIconEl.classList.toggle('disabled', !canThink);
     if (!suppressStatusBar) {
         updateStatusBar(`Thinking ${thinkingIconEl.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
         setTimeout(() => { resetStatusbar(); }, 1000);
@@ -1019,11 +1030,11 @@ async function adjustToolsStatus(el, options = {}) {
     }
 
     const model = await getAiModel();
-    if (await modelCanUseToolsHelper(model, { throwOnError })) {
-        el.classList.remove('disabled');
-    } else {
-        el.classList.add('disabled');
-    }
+    const canUseTools = await modelCanUseToolsHelper(model, { throwOnError });
+    if (model !== await getAiModel()) { return; }
+
+    el.classList.toggle('disabled', !canUseTools);
+    el.title = el.alt = canUseTools ? 'Disable System Tool Functions' : 'Enable System Tool Functions';
     if (!suppressStatusBar) {
         updateStatusBar(`Tools ${el.classList.contains('disabled') ? 'disabled' : 'enabled'}.`);
         setTimeout(() => { resetStatusbar(); }, 1000);
