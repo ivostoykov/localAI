@@ -216,7 +216,8 @@ function extractEnhancedTextStructure(domClone) {
     lists: [],
     tables: [],
     codeBlocks: [],
-    images: []
+    images: [],
+    blocks: []
   };
 
   const walker = document.createTreeWalker(
@@ -237,7 +238,9 @@ function extractEnhancedTextStructure(domClone) {
       // Handle lists
       if (tag === 'UL' || tag === 'OL') {
         const currentList = extractList(node);
-        currentSection.lists.push({ type: tag, items: currentList });
+        const list = { type: tag, items: currentList };
+        currentSection.lists.push(list);
+        currentSection.blocks.push({ type: 'list', list });
         processedElements.add(node);
         continue;
       }
@@ -246,6 +249,7 @@ function extractEnhancedTextStructure(domClone) {
       if (tag === 'TABLE' && isDataTable(node)) {
         const currentTable = extractTable(node);
         currentSection.tables.push(currentTable);
+        currentSection.blocks.push({ type: 'table', table: currentTable });
         processedElements.add(node);
         continue;
       }
@@ -254,10 +258,12 @@ function extractEnhancedTextStructure(domClone) {
       if (tag === 'PRE' || tag === 'CODE') {
         const code = node.textContent?.trim();
         if (code) {
-          currentSection.codeBlocks.push({
+          const block = {
             language: node.className?.replace('language-', '') || 'plaintext',
             code: code
-          });
+          };
+          currentSection.codeBlocks.push(block);
+          currentSection.blocks.push({ type: 'code', block });
           processedElements.add(node);
         }
         continue;
@@ -268,7 +274,9 @@ function extractEnhancedTextStructure(domClone) {
         const alt = node.getAttribute('alt');
         const src = node.getAttribute('src');
         if (alt || src) {
-          currentSection.images.push({ alt: alt || '', src: src || '' });
+          const image = { alt: alt || '', src: src || '' };
+          currentSection.images.push(image);
+          currentSection.blocks.push({ type: 'image', image });
         }
         continue;
       }
@@ -277,7 +285,9 @@ function extractEnhancedTextStructure(domClone) {
       if (tag === 'FIGCAPTION') {
         const caption = node.textContent?.trim();
         if (caption) {
-          currentSection.content.push(`[Figure: ${caption}]`);
+          const text = `[Figure: ${caption}]`;
+          currentSection.content.push(text);
+          currentSection.blocks.push({ type: 'text', text });
           processedElements.add(node);
         }
         continue;
@@ -329,10 +339,12 @@ function extractEnhancedTextStructure(domClone) {
           lists: [],
           tables: [],
           codeBlocks: [],
-          images: []
+          images: [],
+          blocks: []
         };
       } else {
         currentSection.content.push(text);
+        currentSection.blocks.push({ type: 'text', text });
       }
     }
   }
@@ -460,6 +472,18 @@ function formatTable(table) {
   return lines.join('\n');
 }
 
+function getSectionBlocks(section) {
+  if (Array.isArray(section.blocks)) return section.blocks;
+
+  return [
+    ...(section.images ?? []).map(image => ({ type: 'image', image })),
+    ...(section.content ?? []).map(text => ({ type: 'text', text })),
+    ...(section.lists ?? []).map(list => ({ type: 'list', list })),
+    ...(section.tables ?? []).map(table => ({ type: 'table', table })),
+    ...(section.codeBlocks ?? []).map(block => ({ type: 'code', block }))
+  ];
+}
+
 /**
  * Format the complete page content with metadata and structure
  */
@@ -503,48 +527,36 @@ function formatEnhancedPageContent(structure, metadata) {
       parts.push('');
     }
 
-    // Add images
-    if (section.images.length > 0) {
-      section.images.forEach(img => {
-        if (img.alt) {
-          parts.push(`[Image: ${img.alt}]`);
-        }
-      });
+    const lineBuffer = [];
+    const flush = () => {
+      if (lineBuffer.length === 0) return;
+      parts.push(lineBuffer.join('\n'));
       parts.push('');
-    }
+      lineBuffer.length = 0;
+    };
 
-    // Add regular content
-    if (section.content.length > 0) {
-      parts.push(section.content.join('\n'));
-      parts.push('');
-    }
-
-    // Add lists
-    if (section.lists.length > 0) {
-      section.lists.forEach(list => {
-        const formatted = formatList(list.items, 0, list.type === 'OL');
-        parts.push(formatted.join('\n'));
+    getSectionBlocks(section).forEach(block => {
+      if (block.type === 'text') {
+        lineBuffer.push(block.text);
+      } else if (block.type === 'image') {
+        if (block.image.alt) lineBuffer.push(`[Image: ${block.image.alt}]`);
+      } else if (block.type === 'list') {
+        flush();
+        parts.push(formatList(block.list.items, 0, block.list.type === 'OL').join('\n'));
         parts.push('');
-      });
-    }
-
-    // Add tables
-    if (section.tables.length > 0) {
-      section.tables.forEach(table => {
-        parts.push(formatTable(table));
+      } else if (block.type === 'table') {
+        flush();
+        parts.push(formatTable(block.table));
         parts.push('');
-      });
-    }
-
-    // Add code blocks
-    if (section.codeBlocks.length > 0) {
-      section.codeBlocks.forEach(block => {
-        parts.push('```' + block.language);
-        parts.push(block.code);
+      } else if (block.type === 'code') {
+        flush();
+        parts.push('```' + block.block.language);
+        parts.push(block.block.code);
         parts.push('```');
         parts.push('');
-      });
-    }
+      }
+    });
+    flush();
   });
 
   parts.push('=== END OF PAGE CONTENT ===');
