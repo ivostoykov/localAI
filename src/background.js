@@ -17,7 +17,7 @@ importBackgroundScript('jslib/utils.js');
 importBackgroundScript('jslib/model-catalogue.js');
 importBackgroundScript('jslib/stream-request-state.js');
 importBackgroundScript('jslib/tab-state.js');
- 
+
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
 const tabState = new TabStateStore(); // per-tab session binding, background-owned (#40)

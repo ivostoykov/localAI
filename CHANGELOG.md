@@ -1,5 +1,12 @@
 # Local AI - Changelog
 
+## [1.29.92] - 2026-11-11 - latest
+
+### Sessions
+
+- Navigating within a tab now restores its panel state, conversation and an in-progress reply without sharing them with another tab (#40)
+- Captured page context is refreshed for a different document in the same tab; fragment-only URL changes retain it
+
 ## [1.29.91] - 2026-11-11 - latest
 
 ### Streaming
