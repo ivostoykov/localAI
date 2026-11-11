@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.29.93] - 2026-11-11 - latest
+## [1.29.94] - 2026-11-11 - latest
+
+### Page extraction
+
+- Lists, tables, code blocks and image descriptions are now sent to the model in the order they appear on the page instead of grouped by type at the end of each section (#37)
+
+## [1.29.93] - 2026-11-11
 
 ### Sidebar
 
