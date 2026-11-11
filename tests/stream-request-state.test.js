@@ -54,4 +54,17 @@ describe('StreamRequestStateStore', () => {
         const store = new StreamRequestStateStore({ storage });
         await expect(store.checkpoint({ requestId: 'one', status: 'streaming' }, true)).resolves.toBe(false);
     });
+
+    it('keeps live streams and fresh terminal entries during a sweep', async () => {
+        const storage = createStorage({
+            'laiStreamRequest:live': { requestId: 'live', status: 'streaming', updatedAt: 0 },
+            'laiStreamRequest:fresh': { requestId: 'fresh', status: 'complete', updatedAt: 950 }
+        });
+        const { StreamRequestStateStore } = loadStore({ storage: { session: storage } });
+        const store = new StreamRequestStateStore({ storage, now: () => 1000, retention: 100 });
+        store.liveRequestIds.add('live');
+        await store.sweepExpired();
+        expect(storage.entries['laiStreamRequest:live']).toBeDefined();
+        expect(storage.entries['laiStreamRequest:fresh']).toBeDefined();
+    });
 });

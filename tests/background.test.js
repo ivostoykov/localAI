@@ -32,6 +32,7 @@ const parsePositiveIntegerCode = backgroundCode.match(/function parsePositiveInt
 const getAutomaticContextWindowCode = backgroundCode.match(/async function getAutomaticContextWindow\([\s\S]*?\n}\n/)[0];
 const applyAutomaticModelOptionsCode = backgroundCode.match(/async function applyAutomaticModelOptions\([\s\S]*?\n}\n/)[0];
 const handleResponseCode = backgroundCode.match(/async function handleResponse\([\s\S]*?\n}\n/)[0];
+const handleStreamEndCode = backgroundCode.match(/async function handleStreamEnd\([\s\S]*?\n}\n/)[0];
 const getVisibleSessionMessagesCode = backgroundCode.match(/function getVisibleSessionMessages\([\s\S]*?\n}\n/)[0];
 const generateAndUpdateSessionTitleCode = backgroundCode.match(/async function generateAndUpdateSessionTitle\([\s\S]*?\n}\n/)[0];
 const normaliseGeneratedTitleCode = backgroundCode.match(/function normaliseGeneratedTitle\([\s\S]*?\n}\n/)[0];
@@ -57,6 +58,7 @@ ${parsePositiveIntegerCode}
 ${getAutomaticContextWindowCode}
 ${applyAutomaticModelOptionsCode}
 ${handleResponseCode}
+${handleStreamEndCode}
 ${getVisibleSessionMessagesCode}
 ${generateAndUpdateSessionTitleCode}
 ${normaliseGeneratedTitleCode}
@@ -66,7 +68,7 @@ ${modelCanThinkCode}
 ${modelCanUseToolsCode}
 ${validateModelInfoCacheCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, isUiReceiverUnavailableError, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, isUiReceiverUnavailableError, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, handleStreamEnd, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
@@ -78,7 +80,7 @@ ${generateSessionTitleCode}
 return { generateSessionTitle };
 }`);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, isUiReceiverUnavailableError, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, isUiReceiverUnavailableError, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, handleStreamEnd, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -97,6 +99,7 @@ describe('background.js', () => {
         getAutomaticContextWindow = exports.getAutomaticContextWindow;
         applyAutomaticModelOptions = exports.applyAutomaticModelOptions;
         handleResponse = exports.handleResponse;
+        handleStreamEnd = exports.handleStreamEnd;
         getVisibleSessionMessages = exports.getVisibleSessionMessages;
         generateAndUpdateSessionTitle = exports.generateAndUpdateSessionTitle;
         normaliseGeneratedTitle = exports.normaliseGeneratedTitle;
@@ -150,6 +153,48 @@ describe('background.js', () => {
             expect(onChunk).toHaveBeenCalledTimes(3);
             expect(sendMessage).toHaveBeenCalledTimes(3);
             expect(cancelled).toBe(0);
+        });
+
+        it('delivers chunks again when a receiver returns with the same request id', async () => {
+            const encoder = new TextEncoder();
+            const response = { body: new ReadableStream({ start(c) { c.enqueue(encoder.encode('{"message":{"content":"a"}}\n{"message":{"content":"b"}}\n{"message":{"content":"c"},"done":true}\n')); c.close(); } }) };
+            let call = 0;
+            const sendMessage = vi.fn(async () => { if (++call < 3) throw new Error('Receiving end does not exist'); });
+            const consume = loadConsumeStreamResponse({ chrome: { tabs: { sendMessage }, runtime: {} }, manifest: {}, getLineNumber: () => '', console: { debug: vi.fn() } });
+            await expect(consume(response, 1, false, null, 'request-2')).resolves.toMatchObject({ body: { message: { content: 'abc' } } });
+            expect(sendMessage.mock.calls[2][1].requestId).toBe('request-2');
+        });
+
+        it('cancels the reader for a genuine send error', async () => {
+            const encoder = new TextEncoder(); let cancelled = 0;
+            const response = { body: new ReadableStream({ start(c) { c.enqueue(encoder.encode('{"message":{"content":"a"}}\n')); }, cancel() { cancelled++; } }) };
+            const consume = loadConsumeStreamResponse({ chrome: { tabs: { sendMessage: vi.fn(async () => { throw new Error('Permission denied'); }) }, runtime: {} }, manifest: {}, getLineNumber: () => '', console: { debug: vi.fn() } });
+            await expect(consume(response, 1, false, null, 'request-3')).rejects.toThrow('Permission denied');
+            expect(cancelled).toBe(1);
+        });
+
+        it('rejects malformed NDJSON', async () => {
+            const encoder = new TextEncoder();
+            const response = { body: new ReadableStream({ start(c) { c.enqueue(encoder.encode('not-json\n')); c.close(); } }) };
+            const consume = loadConsumeStreamResponse({ chrome: { tabs: { sendMessage: vi.fn() }, runtime: {} }, manifest: {}, getLineNumber: () => '', console: { debug: vi.fn() } });
+            await expect(consume(response, 1, false, null, 'request-4')).rejects.toThrow();
+        });
+
+        it('logs a missing receiver once per request', async () => {
+            const encoder = new TextEncoder(); const debug = vi.fn();
+            const response = { body: new ReadableStream({ start(c) { c.enqueue(encoder.encode('{"message":{"content":"a"}}\n{"message":{"content":"b"},"done":true}\n')); c.close(); } }) };
+            const consume = loadConsumeStreamResponse({ chrome: { tabs: { sendMessage: vi.fn(async () => { throw new Error('Receiving end does not exist'); }) }, runtime: {} }, manifest: {}, getLineNumber: () => '', console: { debug } });
+            await consume(response, 1, false, null, 'request-5');
+            expect(debug).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('terminal stream delivery', () => {
+        it('does not show a receiver-unavailable terminal delivery error', async () => {
+            global.showUIMessage = vi.fn();
+            global.chrome = { tabs: { sendMessage: vi.fn(async () => { throw new Error('Receiving end does not exist'); }) }, runtime: {} };
+            await handleStreamEnd({}, 1, '', false, 'id', { id: 1 });
+            expect(global.showUIMessage).not.toHaveBeenCalled();
         });
     });
 
