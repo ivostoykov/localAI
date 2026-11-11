@@ -4,6 +4,7 @@ let activeStreamRequestId = null;
 let activeStreamSeq = 0;
 let streamResyncInFlight = false;
 const ignoredForeignRequestIds = new Set();
+let restoredTabSessionId = null;
 
 function initRibbonWithRetry(deadline) {
     if (deadline < Date.now()) {
@@ -1415,8 +1416,8 @@ async function finaliseActiveStreamFromSnapshot(snapshot) {
     activeStreamRequestId = null;
 
     if (!snapshot || snapshot.status === 'complete') {
-        const finalMessage = snapshot ? { role: 'assistant', content: snapshot.content || '', thinking: snapshot.thinking || '' } : null;
-        await finaliseStreamRecipient(recipient, { action: 'streamEnd', response: finalMessage ? JSON.stringify({ message: finalMessage }) : '' });
+        const session = restoredTabSessionId ? await getActiveSessionById(restoredTabSessionId) : null;
+        if (session) { await renderSessionHistoryMessages(session); }
     } else if (snapshot.status === 'aborted') {
         await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
     } else if (snapshot.status === 'error') {
@@ -1531,6 +1532,7 @@ async function restoreTabSessionFromBackground() {
     const binding = startup?.tab;
     const initialSnapshot = startup?.request ?? null;
     if (!binding?.sessionId) {
+        restoredTabSessionId = null;
         await deleteActiveSessionId();
         clearChatHistoryUI();
         laiHandleStreamActions('Session reset');
@@ -1539,6 +1541,7 @@ async function restoreTabSessionFromBackground() {
 
     const session = await getActiveSessionById(binding.sessionId);
     if (!session) {
+        restoredTabSessionId = null;
         await reportTabBinding({ sessionId: null });
         await deleteActiveSessionId();
         clearChatHistoryUI();
@@ -1547,6 +1550,7 @@ async function restoreTabSessionFromBackground() {
     }
 
     await setActiveSessionId(binding.sessionId);
+    restoredTabSessionId = binding.sessionId;
     await reportTabBinding({ sessionId: binding.sessionId });
     await renderSessionHistoryMessages(session);
 

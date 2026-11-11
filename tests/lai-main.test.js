@@ -1036,7 +1036,7 @@ describe('tab session restoration (#40)', () => {
         await gapHandled;
 
         expect(getStreamResyncInFlight()).toBe(false);
-        expect(assistantRecipient().textContent).toContain('Final answer');
+        expect(renderedSessions).toHaveLength(2);
         expect(getActiveStreamRequestId()).toBeNull();
         expect(sentMessages('removeStreamRequestState')).toEqual([expect.objectContaining({ requestId: 'r1' })]);
     });
@@ -1049,8 +1049,8 @@ describe('tab session restoration (#40)', () => {
 
         await restore();
 
-        expect(document.querySelectorAll('.lai-ai-input')).toHaveLength(1);
-        expect(assistantRecipient().textContent).toContain('Full answer');
+        expect(document.querySelectorAll('.lai-ai-input')).toHaveLength(0);
+        expect(renderedSessions).toHaveLength(2);
         expect(getActiveStreamRequestId()).toBeNull();
         expect(document.getElementById('laiAbort').classList.contains('invisible')).toBe(true);
         expect(document.getElementById('laiUserInput').classList.contains('invisible')).toBe(false);
