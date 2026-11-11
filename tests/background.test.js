@@ -26,6 +26,8 @@ const normaliseStreamLineCode = backgroundCode.match(/function normaliseStreamLi
 const mergeStreamChunkBodyCode = backgroundCode.match(/function mergeStreamChunkBody\([\s\S]*?\n}\n/)[0];
 const getStreamChunkUiPayloadCode = backgroundCode.match(/function getStreamChunkUiPayload\([\s\S]*?\n}\n/)[0];
 const isUiReceiverUnavailableErrorCode = backgroundCode.match(/function isUiReceiverUnavailableError\([\s\S]*?\n}\n/)[0];
+const sendStreamChunkToUiCode = backgroundCode.match(/async function sendStreamChunkToUi\([\s\S]*?\n}\n/)[0];
+const consumeStreamResponseCode = backgroundCode.match(/async function consumeStreamResponse\([\s\S]*?\n}\n/)[0];
 const parsePositiveIntegerCode = backgroundCode.match(/function parsePositiveInteger\([\s\S]*?\n}\n/)[0];
 const getAutomaticContextWindowCode = backgroundCode.match(/async function getAutomaticContextWindow\([\s\S]*?\n}\n/)[0];
 const applyAutomaticModelOptionsCode = backgroundCode.match(/async function applyAutomaticModelOptions\([\s\S]*?\n}\n/)[0];
@@ -68,6 +70,7 @@ return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlacehol
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
+const loadConsumeStreamResponse = new Function('deps', `with (deps) { ${normaliseStreamLineCode}\n${mergeStreamChunkBodyCode}\n${getStreamChunkUiPayloadCode}\n${isUiReceiverUnavailableErrorCode}\n${sendStreamChunkToUiCode}\n${consumeStreamResponseCode}; return consumeStreamResponse; }`);
 const loadTitleGeneration = new Function('deps', `with (deps) {
 ${normaliseGeneratedTitleCode}
 ${stripReasoningFromContentCode}
@@ -116,6 +119,37 @@ describe('background.js', () => {
 
         it('does not hide other delivery errors', () => {
             expect(isUiReceiverUnavailableError(new Error('Permission denied'))).toBe(false);
+        });
+    });
+
+    describe('consumeStreamResponse', () => {
+        it('continues and merges every chunk when the receiver disappears', async () => {
+            const encoder = new TextEncoder();
+            let cancelled = 0;
+            const response = {
+                body: new ReadableStream({
+                    start(controller) {
+                        controller.enqueue(encoder.encode('{"model":"m","message":{"content":"one"}}\n{"model":"m","message":{"content":" two"}}\n{"model":"m","message":{"content":" three"},"done":true}\n'));
+                        controller.close();
+                    },
+                    cancel() { cancelled++; }
+                })
+            };
+            const onChunk = vi.fn(async () => undefined);
+            const sendMessage = vi.fn(async () => { throw new Error('Could not establish connection. Receiving end does not exist.'); });
+            const consumeStreamResponse = loadConsumeStreamResponse({
+                chrome: { tabs: { sendMessage }, runtime: {} },
+                manifest: { name: 'Test' },
+                getLineNumber: () => 'test',
+                console: { debug: vi.fn(), warn: vi.fn() }
+            });
+
+            const result = await consumeStreamResponse(response, 1, false, null, 'request-1', onChunk);
+
+            expect(result.body.message.content).toBe('one two three');
+            expect(onChunk).toHaveBeenCalledTimes(3);
+            expect(sendMessage).toHaveBeenCalledTimes(3);
+            expect(cancelled).toBe(0);
         });
     });
 

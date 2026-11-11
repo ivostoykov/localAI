@@ -1662,7 +1662,6 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
     if (recipient) {
         resetStreamTracking(recipient);
     }
-
 }
 
 function laiGetRecipient() {

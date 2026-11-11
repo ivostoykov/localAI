@@ -9,6 +9,7 @@ class StreamRequestStateStore {
         this.checkpointInterval = checkpointInterval;
         this.retention = retention;
         this.lastCheckpointAt = new Map();
+        this.liveRequestIds = new Set();
     }
 
     key(requestId) {
@@ -25,6 +26,12 @@ class StreamRequestStateStore {
         try {
             await this.storage.set({ [this.key(state.requestId)]: value });
             this.lastCheckpointAt.set(state.requestId, now);
+            if (state.status === 'streaming') {
+                this.liveRequestIds.add(state.requestId);
+            } else {
+                this.liveRequestIds.delete(state.requestId);
+                this.lastCheckpointAt.delete(state.requestId);
+            }
             Object.assign(state, value);
             return true;
         } catch (error) {
@@ -35,6 +42,7 @@ class StreamRequestStateStore {
 
     async remove(requestId) {
         this.lastCheckpointAt.delete(requestId);
+        this.liveRequestIds.delete(requestId);
         try {
             await this.storage?.remove?.(this.key(requestId));
         } catch (error) {
@@ -62,10 +70,17 @@ class StreamRequestStateStore {
             const entries = await this.storage.get(null);
             const keys = Object.entries(entries)
                 .filter(([key, state]) => key.startsWith(laiStreamRequestPrefix)
-                    && state?.status !== 'streaming'
-                    && now - (state?.updatedAt ?? now) >= this.retention)
+                    && now - (state?.updatedAt ?? now) >= this.retention
+                    && (state?.status !== 'streaming' || !this.liveRequestIds.has(state?.requestId)))
                 .map(([key]) => key);
-            if (keys.length > 0) { await this.storage.remove(keys); }
+            if (keys.length > 0) {
+                keys.forEach(key => {
+                    const requestId = key.slice(laiStreamRequestPrefix.length);
+                    this.lastCheckpointAt.delete(requestId);
+                    this.liveRequestIds.delete(requestId);
+                });
+                await this.storage.remove(keys);
+            }
         } catch (error) {
             console.warn('>>> Failed to sweep stream request state', error);
         }

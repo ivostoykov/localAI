@@ -435,7 +435,6 @@ function getStreamChunkUiPayload(chunk = {}, rawChunk = '') {
 function isUiReceiverUnavailableError(error) {
     const message = `${error?.message || error || ''}`;
     return [
-        'Could not establish connection. Receiving end does not exist.',
         'The message port closed before a response was received.',
         'Receiving end does not exist',
         'Message manager disconnected'
@@ -591,7 +590,7 @@ async function applyAutomaticModelOptions(requestData = {}, modelName = '') {
     return requestData;
 }
 
-async function handleResponse(responseData = '', senderTabId, requestId = '') {
+async function handleResponse(responseData = '', senderTabId, requestId = '', senderTab = null) {
     try {
         if (!responseData) {
             const delivery = await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd", requestId });
@@ -609,13 +608,14 @@ async function handleResponse(responseData = '', senderTabId, requestId = '') {
         return delivery;
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
-        await showUIMessage(error.message, 'error');
+        if (isUiReceiverUnavailableError(error)) { return; }
+        await showUIMessage(error.message, 'error', senderTab);
     }
 
     return;
 }
 
-async function handleStreamEnd(responseData = '', senderTabId, rawResponse = '', debugEnabled = false, requestId = '') {
+async function handleStreamEnd(responseData = '', senderTabId, rawResponse = '', debugEnabled = false, requestId = '', senderTab = null) {
     try {
         const delivery = await chrome.tabs.sendMessage(senderTabId, {
             action: "streamEnd",
@@ -627,7 +627,8 @@ async function handleStreamEnd(responseData = '', senderTabId, rawResponse = '',
         return delivery;
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
-        await showUIMessage(error.message, 'error');
+        if (isUiReceiverUnavailableError(error)) { return; }
+        await showUIMessage(error.message, 'error', senderTab);
     }
 }
 
@@ -1234,12 +1235,12 @@ async function fetchDataAction(request, sender) {
                 if (request.data.stream) {
                     streamState.status = 'complete';
                     await streamRequestState?.checkpoint(streamState, true);
-                    const delivery = await handleStreamEnd(body, sender?.tab?.id, responseText, laiOptions?.debug ?? false, requestId);
+                    const delivery = await handleStreamEnd(body, sender?.tab?.id, responseText, laiOptions?.debug ?? false, requestId, sender?.tab);
                     if (wasTerminalMessageDelivered(delivery, requestId)) {
                         await streamRequestState?.remove(requestId);
                     }
                 } else {
-                    await handleResponse(body, sender?.tab?.id, requestId);
+                    await handleResponse(body, sender?.tab?.id, requestId, sender?.tab);
                 }
             // }
 
@@ -1286,7 +1287,10 @@ async function fetchDataAction(request, sender) {
             streamState.status = 'aborted';
             await streamRequestState?.checkpoint(streamState, true);
         }
-        await sendStreamAbort(sender?.tab?.id, requestId);
+        const delivery = await sendStreamAbort(sender?.tab?.id, requestId);
+        if (wasTerminalMessageDelivered(delivery, requestId)) {
+            await streamRequestState?.remove(requestId);
+        }
         return { "status": "aborted", "message": e.message };
     }
     finally {
