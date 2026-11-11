@@ -25,6 +25,7 @@ const sanitizeAssistantMessageForHistoryCode = backgroundCode.match(/function sa
 const normaliseStreamLineCode = backgroundCode.match(/function normaliseStreamLine\([\s\S]*?\n}\n/)[0];
 const mergeStreamChunkBodyCode = backgroundCode.match(/function mergeStreamChunkBody\([\s\S]*?\n}\n/)[0];
 const getStreamChunkUiPayloadCode = backgroundCode.match(/function getStreamChunkUiPayload\([\s\S]*?\n}\n/)[0];
+const isUiReceiverUnavailableErrorCode = backgroundCode.match(/function isUiReceiverUnavailableError\([\s\S]*?\n}\n/)[0];
 const parsePositiveIntegerCode = backgroundCode.match(/function parsePositiveInteger\([\s\S]*?\n}\n/)[0];
 const getAutomaticContextWindowCode = backgroundCode.match(/async function getAutomaticContextWindow\([\s\S]*?\n}\n/)[0];
 const applyAutomaticModelOptionsCode = backgroundCode.match(/async function applyAutomaticModelOptions\([\s\S]*?\n}\n/)[0];
@@ -49,6 +50,7 @@ ${sanitizeAssistantMessageForHistoryCode}
 ${normaliseStreamLineCode}
 ${mergeStreamChunkBodyCode}
 ${getStreamChunkUiPayloadCode}
+${isUiReceiverUnavailableErrorCode}
 ${parsePositiveIntegerCode}
 ${getAutomaticContextWindowCode}
 ${applyAutomaticModelOptionsCode}
@@ -62,7 +64,7 @@ ${modelCanThinkCode}
 ${modelCanUseToolsCode}
 ${validateModelInfoCacheCode}
 
-return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache };
+return { processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, isUiReceiverUnavailableError, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache };
 `;
 
 const executeTestFunctions = new Function(testFunctionsCode);
@@ -73,7 +75,7 @@ ${generateSessionTitleCode}
 return { generateSessionTitle };
 }`);
 
-let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache;
+let processTextChunk, getLastConsecutiveUserRecords, replaceCommandPlaceholders, getLineNumber, isMessagePersistable, sanitizeAssistantMessageForHistory, normaliseStreamLine, mergeStreamChunkBody, getStreamChunkUiPayload, isUiReceiverUnavailableError, parsePositiveInteger, getAutomaticContextWindow, applyAutomaticModelOptions, handleResponse, getVisibleSessionMessages, generateAndUpdateSessionTitle, normaliseGeneratedTitle, stripReasoningFromContent, resolveModelNameForRequest, modelCanThink, modelCanUseTools, validateModelInfoCache;
 
 describe('background.js', () => {
     beforeEach(() => {
@@ -87,6 +89,7 @@ describe('background.js', () => {
         normaliseStreamLine = exports.normaliseStreamLine;
         mergeStreamChunkBody = exports.mergeStreamChunkBody;
         getStreamChunkUiPayload = exports.getStreamChunkUiPayload;
+        isUiReceiverUnavailableError = exports.isUiReceiverUnavailableError;
         parsePositiveInteger = exports.parsePositiveInteger;
         getAutomaticContextWindow = exports.getAutomaticContextWindow;
         applyAutomaticModelOptions = exports.applyAutomaticModelOptions;
@@ -99,6 +102,21 @@ describe('background.js', () => {
         modelCanThink = exports.modelCanThink;
         modelCanUseTools = exports.modelCanUseTools;
         validateModelInfoCache = exports.validateModelInfoCache;
+    });
+
+    describe('isUiReceiverUnavailableError', () => {
+        it.each([
+            'Could not establish connection. Receiving end does not exist.',
+            'The message port closed before a response was received.',
+            'Receiving end does not exist',
+            'Message manager disconnected'
+        ])('recognises %s', (message) => {
+            expect(isUiReceiverUnavailableError(new Error(message))).toBe(true);
+        });
+
+        it('does not hide other delivery errors', () => {
+            expect(isUiReceiverUnavailableError(new Error('Permission denied'))).toBe(false);
+        });
     });
 
     describe('processTextChunk', () => {
@@ -588,6 +606,7 @@ describe('background.js', () => {
             expect(global.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
             expect(global.chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
                 action: 'streamEnd',
+                requestId: '',
                 response: JSON.stringify({ message: { content: 'Hello' } })
             });
         });
@@ -597,7 +616,8 @@ describe('background.js', () => {
 
             expect(global.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
             expect(global.chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
-                action: 'streamEnd'
+                action: 'streamEnd',
+                requestId: ''
             });
         });
     });

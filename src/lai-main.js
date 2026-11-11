@@ -1,5 +1,6 @@
 let restartCounter = 0;
 const RESTART_LIMIT = 5; //TODO add the limit as in param and remove these 2 vars
+let activeStreamRequestId = null;
 
 function initRibbonWithRetry(deadline) {
     if (deadline < Date.now()) {
@@ -1148,6 +1149,7 @@ async function queryAI(userInput) {
     }
     const requestData = {
         action: "fetchData",
+        requestId: crypto.randomUUID(),
         sessionId: sessionId,
         systemInstructions: sysInstruct || '',
         url: laiOptions.aiUrl,
@@ -1156,16 +1158,19 @@ async function queryAI(userInput) {
     };
 
     try {
+        activeStreamRequestId = requestData.requestId;
         updateStatusBar('Prompt sent to the model, awaiting response...');
         const response = await chrome.runtime.sendMessage(requestData);
         if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
 
         if (response?.status === 'error' && response?.message) {
+            activeStreamRequestId = null;
             showMessage(response.message, 'error');
             throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - Response error: ${response.message}`, response);
         }
 
     } catch (e) {
+        activeStreamRequestId = null;
         if (e.message.indexOf('Extension context invalidated.') > -1) {
             showMessage(`${e.message}. Please reload the page.`, 'warning');
         }
@@ -1465,6 +1470,15 @@ async function messageProcessor(response, sender) {
         return { result: await handleContentExtractorCall(response) };
     }
 
+    if (response?.action?.startsWith('stream') && response.requestId !== activeStreamRequestId) {
+        console.debug(`>>> ${manifest?.name ?? ''} - Ignoring stream message for an inactive request`, {
+            action: response.action,
+            requestId: response.requestId,
+            activeStreamRequestId
+        });
+        return { requestId: null };
+    }
+
     // All other actions require shadowRoot
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) {
@@ -1535,9 +1549,11 @@ async function messageProcessor(response, sender) {
                 console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to finalise streamed response`, error, response);
                 showMessage(`Failed to render the response as markdown - ${error.message}`, 'warning');
             }
+            activeStreamRequestId = null;
             break;
         case "streamError":
             laiHandleStreamActions("Stream Error", recipient);
+            activeStreamRequestId = null;
             break;
         case "toggleSidebar":
             await laiSwapSidebarWithButton(true);
@@ -1611,6 +1627,10 @@ async function messageProcessor(response, sender) {
         resetStatusbar();
     }
 
+    if (response?.action?.startsWith('stream')) {
+        return { requestId: response.requestId };
+    }
+
     return { result: true };
 }
 
@@ -1642,6 +1662,7 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
     if (recipient) {
         resetStreamTracking(recipient);
     }
+
 }
 
 function laiGetRecipient() {

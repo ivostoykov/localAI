@@ -12,7 +12,7 @@ const backgroundCode = fs.readFileSync(
 const fetchDataActionCode = backgroundCode.match(/async function fetchDataAction\([\s\S]*?\n}\n/)[0];
 const onRemovedListenerCode = backgroundCode.match(/chrome\.tabs\.onRemoved\.addListener\(async \(tabId\) => \{[\s\S]*?\n\}\);\n/)[0];
 
-const requestHelpersCode = ['registerRequestController', 'unregisterRequestController', 'throwIfRequestCancelled', 'sendStreamAbort']
+const requestHelpersCode = ['registerRequestController', 'unregisterRequestController', 'throwIfRequestCancelled', 'sendStreamAbort', 'createStreamRequestId', 'sendStreamError', 'wasTerminalMessageDelivered']
     .map(name => backgroundCode.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0])
     .join('\n');
 
@@ -28,6 +28,12 @@ function createDeps(bodies) {
     deps = {
         controllers: new Map(),
         originRequestControllers: new Map(),
+        streamRequestState: {
+            sweepExpired: vi.fn(async () => undefined),
+            checkpoint: vi.fn(async () => true),
+            remove: vi.fn(async () => undefined),
+            removeForTab: vi.fn(async () => undefined)
+        },
         manifest: { name: 'Local AI helper' },
         getLineNumber: () => 'test',
         openTabs: new Set([1, 2]),
@@ -162,7 +168,7 @@ describe('background.js navigation lifecycle', () => {
         const result = await fetchDataAction(request(), sender);
 
         expect(result.status).toBe('aborted');
-        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'streamAbort' });
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamAbort' }));
         expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
         expect(deps.disposeNavigationSession).toHaveBeenCalledWith(sessions[0]);
         expect(sessions[0].signal.aborted).toBe(true);
@@ -492,7 +498,7 @@ describe('background.js navigation lifecycle', () => {
             expect(result.status).toBe('success');
             expect(deps.backgroundMemory.storeTurnWithEmbeddings).toHaveBeenCalledTimes(1);
             expect(deps.generateAndUpdateSessionTitle).not.toHaveBeenCalled();
-            expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, { action: 'streamAbort' });
+            expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamAbort' }));
         });
 
         it('does not persist tool results when the origin closes during a tool call', async () => {
