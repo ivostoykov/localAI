@@ -111,8 +111,17 @@ async function renameSession(sessionId, newTitle) {
     }
 }
 
+// Every change of the sidebar's session identity reaches the background tab binding from
+// here, so no caller can change it silently. reportTabBinding is inert in the background.
+function notifyTabBindingChanged(sessionId) {
+    if (typeof reportTabBinding !== 'function') { return; }
+    reportTabBinding({ sessionId });
+}
+
 async function deleteActiveSessionId() {
+    const hadSession = !!laiActiveSessionId;
     laiActiveSessionId = null;
+    if (hadSession) { notifyTabBindingChanged(null); }
 }
 
 async function clearLegacyActiveSessionId() {
@@ -221,7 +230,9 @@ async function setActiveSessionId(sessionId) {
         if (!sessionId || typeof sessionId !== 'string') {
             throw new Error(`Invalid session ID provided: ${sessionId}`);
         }
+        const changed = laiActiveSessionId !== sessionId;
         laiActiveSessionId = sessionId;
+        if (changed) { notifyTabBindingChanged(sessionId); }
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - setActiveSessionId error: ${error.message}`, error);
     }

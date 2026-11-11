@@ -165,6 +165,63 @@ describe('background-memory.js', () => {
     });
 
     describe('buildOptimisedContext', () => {
+        describe('stored page context follows the tab document (#40)', () => {
+            const pageA = 'DOCUMENT A: quarterly figures for Alpha Ltd. ' + 'Row '.repeat(20);
+            const pageMessages = (context) => context.filter(msg => /\[PAGE (CONTENT|SUMMARY)\]/.test(msg.content));
+            const showTabAt = url => { global.chrome.tabs = { ...(global.chrome.tabs || {}), get: vi.fn(async () => ({ id: 11, url })) }; };
+
+            it('records the capturing document URL with the stored context', async () => {
+                showTabAt('https://example.com/a?x=1#top');
+                await backgroundMemory.buildOptimisedContext('url-session', 'Summarise @{{page}}', 1, null, pageA, [], 'hash-a', false, 11);
+
+                expect((await backgroundMemory.getContext('url-session')).pageUrl).toBe('https://example.com/a?x=1#top');
+            });
+
+            it('does not reuse stored page content after the tab loaded a different document', async () => {
+                showTabAt('https://example.com/a');
+                await backgroundMemory.buildOptimisedContext('nav-session', 'Summarise @{{page}}', 1, null, pageA, [], 'hash-a', false, 11);
+
+                showTabAt('https://example.com/b');
+                const retry = await backgroundMemory.buildOptimisedContext('nav-session', 'Hello', 1, null, null, [], null, false, 11);
+                const later = await backgroundMemory.buildOptimisedContext('nav-session', 'And now?', 2, null, null, [], null, false, 11);
+
+                for (const context of [retry, later]) {
+                    expect(pageMessages(context)).toHaveLength(0);
+                    expect(context.some(msg => msg.content.includes('Alpha Ltd'))).toBe(false);
+                }
+            });
+
+            it('treats a different query string as a different document', async () => {
+                showTabAt('https://example.com/a?id=1');
+                await backgroundMemory.buildOptimisedContext('query-session', 'Summarise @{{page}}', 1, null, pageA, [], 'hash-a', false, 11);
+
+                showTabAt('https://example.com/a?id=2');
+                const retry = await backgroundMemory.buildOptimisedContext('query-session', 'Hello', 1, null, null, [], null, false, 11);
+
+                expect(pageMessages(retry)).toHaveLength(0);
+            });
+
+            it('keeps reusing stored page content after a fragment-only change', async () => {
+                showTabAt('https://example.com/a#intro');
+                await backgroundMemory.buildOptimisedContext('hash-session', 'Summarise @{{page}}', 1, null, pageA, [], 'hash-a', false, 11);
+
+                showTabAt('https://example.com/a#details');
+                const retry = await backgroundMemory.buildOptimisedContext('hash-session', 'Hello', 1, null, null, [], null, false, 11);
+
+                expect(pageMessages(retry)).toHaveLength(1);
+                expect(pageMessages(retry)[0].content).toContain('Alpha Ltd');
+            });
+
+            it('keeps reusing a legacy context stored without a URL', async () => {
+                await backgroundMemory.storeContext('legacy-session', pageA, [], 'hash-a', 11);
+
+                showTabAt('https://example.com/anything');
+                const retry = await backgroundMemory.buildOptimisedContext('legacy-session', 'Hello', 1, null, null, [], null, false, 11);
+
+                expect(pageMessages(retry)).toHaveLength(1);
+            });
+        });
+
         describe('tab isolation of stored page context (#29)', () => {
             const linkedInPage = 'LINKEDIN JOB: Senior Engineer at SecretCo. Salary 120k. ' + 'Details '.repeat(20);
             const pageMessages = (context) => context.filter(msg => /\[PAGE (CONTENT|SUMMARY)\]/.test(msg.content));

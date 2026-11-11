@@ -28,6 +28,8 @@ function createDeps(bodies) {
     deps = {
         controllers: new Map(),
         originRequestControllers: new Map(),
+        liveStreamStates: new Map(),
+        tabState: { remove: vi.fn(async () => undefined) },
         streamRequestState: {
             sweepExpired: vi.fn(async () => undefined),
             checkpoint: vi.fn(async () => true),
@@ -143,6 +145,38 @@ describe('background.js navigation lifecycle', () => {
         await onRemoved(1);
         await expect(pending).resolves.toMatchObject({ status: 'aborted' });
         expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'aborted' }), true);
+    });
+
+    it('removes the closed tab binding and request state and leaves other tabs alone', async () => {
+        const { deps } = createDeps([]);
+        let onRemoved;
+        deps.chrome.tabs.onRemoved = { addListener: fn => { onRemoved = fn; } };
+        deps.chrome.tabs.query = vi.fn(async () => []);
+        deps.chrome.storage = { local: { get: vi.fn(async () => ({})), remove: vi.fn() } };
+        registerOnRemoved(deps);
+
+        deps.openTabs.delete(1);
+        await onRemoved(1);
+
+        expect(deps.tabState.remove.mock.calls).toEqual([[1]]);
+        expect(deps.streamRequestState.removeForTab.mock.calls).toEqual([[1]]);
+    });
+
+    it('treats a string abort reason from a pending stream read as an abort, not an error', async () => {
+        const { deps } = createDeps([]);
+        deps.consumeStreamResponse.mockImplementation((response, tabId, debug, signal) => new Promise((resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        }));
+        const requestId = '88888888-8888-4888-8888-888888888888';
+        const pending = loadFetchDataAction(deps)({ ...request(), requestId }, sender);
+        await vi.waitFor(() => expect(deps.consumeStreamResponse).toHaveBeenCalled());
+
+        deps.controllers.get(1).abort('User aborted last request.');
+
+        await expect(pending).resolves.toEqual({ status: 'aborted', message: 'User aborted last request.' });
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'aborted' }), true);
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'streamAbort', requestId });
+        expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError' }));
     });
 
     it('records genuine errors and sends a request-scoped stream error', async () => {

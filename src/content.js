@@ -131,7 +131,7 @@ async function allDOMContentLoaded(e) {
     return;
   }
 
-  init();
+  restoreTabSessionOnStartup();
   try {
     const cssList = manifest?.web_accessible_resources?.map(el => el?.resources)?.flat()?.filter(el => el?.endsWith('css'))
       ?? ['css/button.css', 'css/sidebar.css', 'css/aioutput.css', 'css/ribbon.css'];
@@ -140,6 +140,24 @@ async function allDOMContentLoaded(e) {
     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }
 }
+
+async function restoreTabSessionOnStartup() {
+  await init();
+  try {
+    await restoreTabSessionFromBackground();
+  } catch (err) {
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to restore the tab session:`, err);
+  }
+}
+
+function handleTabSessionPageShow(event) {
+  if (!event?.persisted) { return; }
+  restoreTabSessionFromBackground().catch(err => {
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to re-synchronise the tab session:`, err);
+  });
+}
+
+window.addEventListener('pageshow', handleTabSessionPageShow);
 
 if ('navigation' in window) {
     window.addEventListener("popstate", triggerUpdate);

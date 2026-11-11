@@ -8,6 +8,32 @@ const STORES = {
   EMBEDDINGS: 'embeddings'
 };
 
+function pageContextUrlIdentity(url) {
+  if (typeof url !== 'string' || !url.trim()) { return null; }
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url.split('#')[0];
+  }
+}
+
+function isSamePageContextUrl(storedUrl, currentUrl) {
+  const stored = pageContextUrlIdentity(storedUrl);
+  const current = pageContextUrlIdentity(currentUrl);
+  return !!stored && !!current && stored === current;
+}
+
+async function getCurrentTabUrl(tabId) {
+  if (tabId == null || typeof chrome?.tabs?.get !== 'function') { return null; }
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return tab?.url || null;
+  } catch {
+    return null;
+  }
+}
+
 class BackgroundMemory {
   constructor() {
     this.db = null;
@@ -92,7 +118,7 @@ class BackgroundMemory {
     return this.put(STORES.CONVERSATIONS, turn);
   }
 
-  async storeContext(sessionId, pageContent, attachments, pageHash, tabId = null) {
+  async storeContext(sessionId, pageContent, attachments, pageHash, tabId = null, pageUrl = null) {
     await this.init();
 
     if(!sessionId){
@@ -104,6 +130,7 @@ class BackgroundMemory {
     const context = {
       sessionId,
       tabId,
+      pageUrl: pageUrl || null,
       pageContent: pageContent || null,
       pageHash: pageHash || null,
       pageSummary: pageContent ? this.extractPageSummary(pageContent) : null,
@@ -158,8 +185,10 @@ class BackgroundMemory {
 
     let sessionContext = await this.getContext(sessionId);
 
+    const currentTabUrl = pageContent ? await getCurrentTabUrl(tabId) : null;
+
     if (pageContent || deduplicatedAttachments.length > 0) {
-      await this.storeContext(sessionId, pageContent, deduplicatedAttachments, pageHash, tabId);
+      await this.storeContext(sessionId, pageContent, deduplicatedAttachments, pageHash, tabId, currentTabUrl);
       sessionContext = await this.getContext(sessionId);
     }
 
@@ -168,25 +197,40 @@ class BackgroundMemory {
         context.push({ role: 'user', content: `[PAGE CONTENT]:\n${pageContent}` });
         used += this.estimateTokens(pageContent);
       } else if (sessionContext?.pageContent && sessionContext.tabId === tabId) {
-        const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
-        const currentPageData = await chrome.storage.local.get([key]);
-        const currentHash = currentPageData[key]?.pageHash;
+        // Captured page content is only reusable while the tab still shows the document
+        // it was captured from; a fragment-only change keeps it, a different document
+        // does not (#40).
+        const tabUrl = await getCurrentTabUrl(tabId);
+        const storedPageContextIsCurrent = !tabUrl
+          || !sessionContext.pageUrl
+          || isSamePageContextUrl(sessionContext.pageUrl, tabUrl);
 
-        if (currentHash && currentHash !== sessionContext.pageHash) {
-          const freshPageContent = currentPageData[key]?.pageContent;
-          if (freshPageContent) {
-            await this.storeContext(sessionId, freshPageContent, attachments, currentHash, tabId);
-            sessionContext = await this.getContext(sessionId);
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page hash mismatch, updated context with fresh content`);
+        if (storedPageContextIsCurrent) {
+          const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
+          const currentPageData = await chrome.storage.local.get([key]);
+          const currentHash = currentPageData[key]?.pageHash;
+
+          if (currentHash && currentHash !== sessionContext.pageHash) {
+            const freshPageContent = currentPageData[key]?.pageContent;
+            if (freshPageContent) {
+              await this.storeContext(sessionId, freshPageContent, attachments, currentHash, tabId, tabUrl);
+              sessionContext = await this.getContext(sessionId);
+              console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page hash mismatch, updated context with fresh content`);
+            }
           }
-        }
 
-        if (turnNumber === 1 || newMessage.includes('@{{page}}')) {
-          context.push({ role: 'user', content: `[PAGE CONTENT]:\n${sessionContext.pageContent}` });
-          used += this.estimateTokens(sessionContext.pageContent);
-        } else if (sessionContext.pageSummary) {
-          context.push({ role: 'system', content: `[PAGE SUMMARY]: ${sessionContext.pageSummary}` });
-          used += this.estimateTokens(sessionContext.pageSummary);
+          if (turnNumber === 1 || newMessage.includes('@{{page}}')) {
+            context.push({ role: 'user', content: `[PAGE CONTENT]:\n${sessionContext.pageContent}` });
+            used += this.estimateTokens(sessionContext.pageContent);
+          } else if (sessionContext.pageSummary) {
+            context.push({ role: 'system', content: `[PAGE SUMMARY]: ${sessionContext.pageSummary}` });
+            used += this.estimateTokens(sessionContext.pageSummary);
+          }
+        } else {
+          console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Stored page context captured on a different document; not reused`, {
+            storedPageUrl: sessionContext.pageUrl,
+            currentTabUrl: tabUrl
+          });
         }
       }
     // }

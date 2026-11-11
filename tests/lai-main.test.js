@@ -10,11 +10,15 @@ const laiMainCode = fs.readFileSync(
     'utf-8'
 );
 
+const tabStateCode = fs.readFileSync(
+    path.join(__dirname, '../src/jslib/tab-state.js'),
+    'utf-8'
+);
+
 const utilsCode = fs.readFileSync(
     path.join(__dirname, '../src/jslib/utils.js'),
     'utf-8'
 );
-
 // Setup DOM environment
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.document = dom.window.document;
@@ -38,9 +42,9 @@ global.chrome = {
 const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 
 // Extract the functions we want to test
-const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint };';
-const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
-    isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + laiMainCode + laiMainExports
+const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight };';
+const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
+    tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + laiMainCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId, getActiveStreamRequestId, isMessagePersistable;
@@ -63,7 +67,7 @@ describe('lai-main.js', () => {
         global.getOptions = vi.fn(async () => ({}));
         global.parseAndRender = vi.fn(async (markdown, element) => { element.textContent = markdown; });
 
-        const exports = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome, global.isMessagePersistable);
+        const exports = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, global.isMessagePersistable);
         laiExtractDataFromResponse = exports.laiExtractDataFromResponse;
         composeStreamingPreviewText = exports.composeStreamingPreviewText;
         appendStreamChunkToRecipient = exports.appendStreamChunkToRecipient;
@@ -727,8 +731,8 @@ Third line of thinking`;
 });
 
 describe('queryAI session identity (#29)', () => {
-    const executeQueryAI = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
-        isMessagePersistableCode + '\n' + laiMainCode + '; return { queryAI };'
+    const executeQueryAI = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
+        tabStateCode + '\n' + isMessagePersistableCode + '\n' + laiMainCode + '; return { queryAI };'
     );
     let queryAI;
     let sendMessage;
@@ -746,7 +750,7 @@ describe('queryAI session identity (#29)', () => {
         global.getSideBar = vi.fn(() => document.body);
         sendMessage = vi.fn(async () => ({ status: 'success' }));
         const chrome = { runtime: { sendMessage, onMessage: { addListener: vi.fn() } } };
-        ({ queryAI } = executeQueryAI(global.document, global.window, global.manifest, chrome, global.isMessagePersistable));
+        ({ queryAI } = executeQueryAI(global.document, global.window, global.manifest, chrome, global.getLineNumber, global.isMessagePersistable));
     });
 
     it('sends the session id owned by this sidebar with the prompt', async () => {
@@ -768,8 +772,8 @@ describe('queryAI session identity (#29)', () => {
 });
 
 describe('reconcileActiveSessionWithStorage (#29)', () => {
-    const executeReconcile = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
-        isMessagePersistableCode + '\n' + laiMainCode + '; return { reconcileActiveSessionWithStorage };'
+    const executeReconcile = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
+        tabStateCode + '\n' + isMessagePersistableCode + '\n' + laiMainCode + '; return { reconcileActiveSessionWithStorage };'
     );
     let reconcileActiveSessionWithStorage;
     let activeId;
@@ -785,7 +789,7 @@ describe('reconcileActiveSessionWithStorage (#29)', () => {
         global.getActiveSessionId = vi.fn(async () => activeId);
         global.deleteActiveSessionId = vi.fn(async () => { activeId = null; });
         const chrome = { runtime: { sendMessage: vi.fn(), onMessage: { addListener: vi.fn() } } };
-        ({ reconcileActiveSessionWithStorage } = executeReconcile(global.document, global.window, global.manifest, chrome, global.isMessagePersistable));
+        ({ reconcileActiveSessionWithStorage } = executeReconcile(global.document, global.window, global.manifest, chrome, global.getLineNumber, global.isMessagePersistable));
     });
 
     it('unbinds and clears the panel when its restored session is deleted elsewhere', async () => {
@@ -822,5 +826,471 @@ describe('reconcileActiveSessionWithStorage (#29)', () => {
         expect(document.getElementById('laiChatMessageList').children).toHaveLength(1);
         expect(document.getElementById('attachContainer').children).toHaveLength(1);
         expect(document.getElementById('attachContainer').classList.contains('active')).toBe(true);
+    });
+});
+
+describe('tab session restoration (#40)', () => {
+    let restoreTabSessionFromBackground, messageProcessor, addInputCardToUIChatHistory, laiAbortRequest;
+    let setActiveStreamRequestId, getActiveStreamRequestId, setActiveStreamSeq, getActiveStreamSeq, getStreamResyncInFlight;
+    let sendMessage;
+    let setActiveSessionId, getActiveSessionById, renderSessionHistoryMessages;
+    let renderedSessions;
+    let laiSwapSidebarWithButton, openSidebarPanelIfClosed;
+
+    const seedSidebar = () => {
+        document.body.innerHTML = `
+            <div id="laiSidebar"><div class="statusbar"><span class="notification">Receiving and processing data...</span></div></div>
+            <button id="laiMainButton"></button>
+            <div id="laiChatMessageList"></div>
+            <textarea id="laiUserInput"></textarea>
+            <button id="laiAbort" class="invisible"></button>`;
+    };
+
+    const restore = () => restoreTabSessionFromBackground();
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.setModelNameLabel = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getSideBar = vi.fn(() => document.getElementById('laiSidebar'));
+        global.getOptions = vi.fn(async () => ({}));
+        global.parseAndRender = vi.fn(async (markdown, element) => { element.textContent = markdown; });
+        global.updateStatusBar = vi.fn();
+        global.resetStatusbar = vi.fn();
+        global.scrollChatHistoryContainer = undefined;
+        global.chrome.runtime.getURL = path => `chrome-extension://test/${path}`;
+
+        seedSidebar();
+        renderedSessions = [];
+        let boundSessionId = null;
+        setActiveSessionId = vi.fn(async sessionId => { boundSessionId = sessionId; });
+        global.getActiveSessionId = vi.fn(async () => boundSessionId);
+        global.deleteActiveSessionId = vi.fn(async () => { boundSessionId = null; });
+        getActiveSessionById = vi.fn(async sessionId => ({ id: sessionId, title: 'Bound', messages: [
+            { role: 'user', content: 'question' },
+            { role: 'assistant', content: 'answer' }
+        ] }));
+        renderSessionHistoryMessages = vi.fn(async session => {
+            renderedSessions.push(session);
+            const list = document.getElementById('laiChatMessageList');
+            list.innerHTML = '<div class="lai-chat-history restored-user"></div><div class="lai-chat-history restored-ai"></div>';
+        });
+        global.setActiveSessionId = setActiveSessionId;
+        global.getActiveSessionById = getActiveSessionById;
+        global.renderSessionHistoryMessages = renderSessionHistoryMessages;
+
+        sendMessage = vi.fn(async () => null);
+        global.chrome.runtime.sendMessage = sendMessage;
+
+        const exports = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, global.isMessagePersistable);
+        restoreTabSessionFromBackground = exports.restoreTabSessionFromBackground;
+        messageProcessor = exports.messageProcessor;
+        addInputCardToUIChatHistory = exports.addInputCardToUIChatHistory;
+        laiAbortRequest = exports.laiAbortRequest;
+        setActiveStreamRequestId = exports.setActiveStreamRequestId;
+        getActiveStreamRequestId = exports.getActiveStreamRequestId;
+        setActiveStreamSeq = exports.setActiveStreamSeq;
+        getActiveStreamSeq = exports.getActiveStreamSeq;
+        getStreamResyncInFlight = exports.getStreamResyncInFlight;
+        laiSwapSidebarWithButton = exports.laiSwapSidebarWithButton;
+        openSidebarPanelIfClosed = exports.openSidebarPanelIfClosed;
+    });
+
+    const replyToTabState = replies => sendMessage.mockImplementation(async message => {
+        if (message?.action === 'getTabState') { return replies.shift() ?? null; }
+        if (message?.action === 'updateTabState') { return { ok: true }; }
+        return { result: true };
+    });
+
+    const sentMessages = action => sendMessage.mock.calls.filter(call => call[0]?.action === action).map(call => call[0]);
+
+    const assistantRecipient = () => document.querySelector('.lai-ai-input .lai-input-text');
+
+    const streamingSnapshot = (overrides = {}) => ({
+        requestId: 'r1', status: 'streaming', content: 'Hello ', thinking: '', seq: 3, model: 'm', ...overrides
+    });
+
+    const binding = (overrides = {}) => ({ tabId: 1, sessionId: 's1', panelOpen: true, updatedAt: 1, ...overrides });
+
+    it('restores the bound session, renders its history and reopens an open panel', async () => {
+        replyToTabState([{ tab: binding(), request: null }]);
+
+        await restore();
+
+        expect(setActiveSessionId).toHaveBeenCalledWith('s1');
+        expect(renderedSessions).toHaveLength(1);
+        expect(document.getElementById('laiSidebar').classList.contains('active')).toBe(true);
+        expect(sentMessages('updateTabState').filter(message => 'sessionId' in message)).toEqual([expect.objectContaining({ sessionId: 's1' })]);
+    });
+
+    it('keeps a closed panel closed while still restoring the session history', async () => {
+        replyToTabState([{ tab: binding({ panelOpen: false }), request: null }]);
+
+        await restore();
+
+        expect(renderedSessions).toHaveLength(1);
+        expect(document.getElementById('laiSidebar').classList.contains('active')).toBe(false);
+    });
+
+    it('starts empty without a binding and clears a binding whose session is gone', async () => {
+        replyToTabState([{ tab: null, request: null }]);
+        await restore();
+        expect(setActiveSessionId).not.toHaveBeenCalled();
+        expect(renderedSessions).toHaveLength(0);
+
+        getActiveSessionById.mockResolvedValue(null);
+        replyToTabState([{ tab: binding(), request: null }]);
+        await restore();
+
+        expect(sentMessages('updateTabState')).toEqual([expect.objectContaining({ sessionId: null })]);
+        expect(renderedSessions).toHaveLength(0);
+        expect(document.getElementById('laiSidebar').classList.contains('active')).toBe(false);
+    });
+
+    it('adopts a live stream once and appends later chunks in order', async () => {
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() }
+        ]);
+
+        await restore();
+
+        expect(document.querySelectorAll('.lai-ai-input')).toHaveLength(1);
+        expect(assistantRecipient().textContent).toContain('Hello ');
+        expect(getActiveStreamRequestId()).toBe('r1');
+        expect(getActiveStreamSeq()).toBe(3);
+        expect(document.getElementById('laiAbort').classList.contains('invisible')).toBe(false);
+        expect(document.getElementById('laiUserInput').classList.contains('invisible')).toBe(true);
+
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 4, contentDelta: 'world', thinkingDelta: '', model: 'm' });
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 5, contentDelta: '!', thinkingDelta: '', model: 'm' });
+
+        expect(assistantRecipient().textContent).toContain('Hello world!');
+        expect(getActiveStreamSeq()).toBe(5);
+    });
+
+    it('ignores duplicate sequence numbers without dropping raw debug chunks', async () => {
+        setActiveStreamRequestId('r1');
+        setActiveStreamSeq(3);
+        await addInputCardToUIChatHistory('', 'ai');
+
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 3, contentDelta: 'Hello ', thinkingDelta: '', rawChunk: 'raw 1' });
+
+        expect(assistantRecipient().textContent).not.toContain('Hello');
+        expect(assistantRecipient()._laiRawResponse).toContain('raw 1');
+    });
+
+    it('treats debug-only chunks as duplicates that do not create sequence gaps', async () => {
+        setActiveStreamRequestId('r1');
+        setActiveStreamSeq(0);
+        await addInputCardToUIChatHistory('', 'ai');
+
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 0, contentDelta: '', thinkingDelta: '', rawChunk: 'raw 1' });
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 0, contentDelta: '', thinkingDelta: '', rawChunk: 'raw 2' });
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 1, contentDelta: 'Hi', thinkingDelta: '' });
+
+        expect(getStreamResyncInFlight()).toBe(false);
+        expect(assistantRecipient()._laiRawResponse).toContain('raw 2');
+        expect(assistantRecipient().textContent).toContain('Hi');
+        expect(getActiveStreamSeq()).toBe(1);
+    });
+
+    it('re-requests the snapshot on a sequence gap and re-renders from it', async () => {
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot({ content: 'Hello world and more', seq: 6 }) }
+        ]);
+
+        await restore();
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 6, contentDelta: 'skipped', thinkingDelta: '' });
+
+        expect(sentMessages('getTabState')).toHaveLength(3);
+        expect(assistantRecipient().textContent).toContain('Hello world and more');
+        expect(assistantRecipient().textContent).not.toContain('skipped');
+        expect(getActiveStreamSeq()).toBe(6);
+
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 7, contentDelta: '!', thinkingDelta: '' });
+        expect(assistantRecipient().textContent).toContain('Hello world and more!');
+    });
+
+    it('drops chunks that arrive while a gap resync is in flight', async () => {
+        let resolveResync;
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() }
+        ]);
+        await restore();
+
+        sendMessage.mockImplementation(async message => {
+            if (message?.action === 'getTabState') {
+                return new Promise(resolve => { resolveResync = () => resolve({ tab: binding(), request: streamingSnapshot({ status: 'complete', content: 'Final answer', seq: 8 }) }); });
+            }
+            return { result: true };
+        });
+
+        const gapHandled = messageProcessor({ action: 'streamData', requestId: 'r1', seq: 6, contentDelta: 'gap', thinkingDelta: '' });
+        await Promise.resolve();
+        expect(getStreamResyncInFlight()).toBe(true);
+
+        const duringFlightText = assistantRecipient().textContent;
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 6, contentDelta: 'dropped', thinkingDelta: '' });
+        expect(assistantRecipient().textContent).toBe(duringFlightText);
+
+        resolveResync();
+        await gapHandled;
+
+        expect(getStreamResyncInFlight()).toBe(false);
+        expect(renderedSessions).toHaveLength(2);
+        expect(getActiveStreamRequestId()).toBeNull();
+        expect(sentMessages('removeStreamRequestState')).toEqual([expect.objectContaining({ requestId: 'r1' })]);
+    });
+
+    it('finalises a request that completes between the initial and the fresh snapshot', async () => {
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot({ status: 'complete', content: 'Full answer', seq: 8 }) }
+        ]);
+
+        await restore();
+
+        expect(document.querySelectorAll('.lai-ai-input')).toHaveLength(0);
+        expect(renderedSessions).toHaveLength(2);
+        expect(getActiveStreamRequestId()).toBeNull();
+        expect(document.getElementById('laiAbort').classList.contains('invisible')).toBe(true);
+        expect(document.getElementById('laiUserInput').classList.contains('invisible')).toBe(false);
+        expect(sentMessages('removeStreamRequestState')).toEqual([expect.objectContaining({ requestId: 'r1' })]);
+    });
+
+    it('renders history without a duplicate card when the request completed while loading', async () => {
+        replyToTabState([{ tab: binding(), request: streamingSnapshot({ status: 'complete', requestId: 'r9', content: 'saved answer' }) }]);
+
+        await restore();
+
+        expect(document.querySelectorAll('.lai-chat-history')).toHaveLength(2);
+        expect(document.querySelectorAll('.lai-ai-input')).toHaveLength(0);
+        expect(sentMessages('removeStreamRequestState')).toEqual([expect.objectContaining({ requestId: 'r9' })]);
+        expect(getActiveStreamRequestId()).toBeNull();
+    });
+
+    it('shows the partial text with the abort marker for a request aborted while loading', async () => {
+        replyToTabState([{ tab: binding(), request: streamingSnapshot({ status: 'aborted', requestId: 'r8', content: 'partial text' }) }]);
+
+        await restore();
+
+        expect(document.querySelectorAll('.lai-ai-input')).toHaveLength(1);
+        expect(assistantRecipient().textContent).toContain('partial text');
+        expect(document.querySelector('.lai-aborted-text')?.textContent).toBe('... Aborted');
+        expect(sentMessages('removeStreamRequestState')).toEqual([expect.objectContaining({ requestId: 'r8' })]);
+    });
+
+    it('shows the stored error for a request that failed while loading', async () => {
+        replyToTabState([{ tab: binding(), request: streamingSnapshot({ status: 'error', requestId: 'r7', error: 'model offline', content: 'partial' }) }]);
+
+        await restore();
+
+        expect(document.querySelectorAll('.lai-ai-input')).toHaveLength(1);
+        expect(assistantRecipient().textContent).toContain('partial');
+        expect(global.showMessage).toHaveBeenCalledWith('model offline', 'error');
+        expect(sentMessages('removeStreamRequestState')).toEqual([expect.objectContaining({ requestId: 'r7' })]);
+    });
+
+    it('cancels an adopted request through abortFetch', async () => {
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() }
+        ]);
+        await restore();
+
+        await laiAbortRequest();
+
+        expect(sentMessages('abortFetch')).toEqual([{ action: 'abortFetch' }]);
+        expect(document.getElementById('laiAbort').classList.contains('invisible')).toBe(true);
+        expect(document.getElementById('laiUserInput').classList.contains('invisible')).toBe(false);
+    });
+
+    it('logs an ignored foreign stream request once per request id', async () => {
+        setActiveStreamRequestId('own');
+        const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+        try {
+            await messageProcessor({ action: 'streamData', requestId: 'foreign', seq: 1, contentDelta: 'x' });
+            await messageProcessor({ action: 'streamData', requestId: 'foreign', seq: 2, contentDelta: 'y' });
+            await messageProcessor({ action: 'streamData', requestId: 'other-foreign', seq: 1, contentDelta: 'z' });
+
+            const ignoredLogs = debugSpy.mock.calls.filter(call => `${call[0]}`.includes('Ignoring stream message'));
+            expect(ignoredLogs).toHaveLength(2);
+            expect(ignoredLogs.filter(call => call[1]?.requestId === 'foreign')).toHaveLength(1);
+        } finally {
+            debugSpy.mockRestore();
+        }
+    });
+    const expectControlsReset = () => {
+        expect(document.getElementById('laiAbort').classList.contains('invisible')).toBe(true);
+        expect(document.getElementById('laiUserInput').classList.contains('invisible')).toBe(false);
+        expect(document.querySelector('#laiSidebar .notification').textContent).toBe('Ready.');
+    };
+
+    it('leaves a card finalised during a gap resync untouched when the stale snapshot arrives', async () => {
+        let resolveResync;
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() }
+        ]);
+        await restore();
+
+        sendMessage.mockImplementation(async message => {
+            if (message?.action === 'getTabState') {
+                return new Promise(resolve => { resolveResync = () => resolve({ tab: binding(), request: streamingSnapshot({ content: 'stale partial', seq: 5 }) }); });
+            }
+            return { result: true };
+        });
+
+        const gapHandled = messageProcessor({ action: 'streamData', requestId: 'r1', seq: 6, contentDelta: 'gap', thinkingDelta: '' });
+        await Promise.resolve();
+        await messageProcessor({ action: 'streamEnd', requestId: 'r1', response: JSON.stringify({ message: { role: 'assistant', content: 'Final answer' } }) });
+        const finalText = assistantRecipient().textContent;
+
+        resolveResync();
+        await gapHandled;
+
+        expect(finalText).toContain('Final answer');
+        expect(assistantRecipient().textContent).toBe(finalText);
+        expect(document.querySelector('.lai-aborted-text')).toBeNull();
+        expect(global.showMessage).not.toHaveBeenCalledWith(expect.anything(), 'error');
+        expect(sentMessages('removeStreamRequestState')).toHaveLength(0);
+        expect(getActiveStreamRequestId()).toBeNull();
+    });
+
+    it('re-renders the saved history instead of leaving an empty card when the fresh snapshot is gone', async () => {
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: null }
+        ]);
+
+        await restore();
+
+        expect(document.querySelectorAll('.lai-ai-input')).toHaveLength(0);
+        expect(renderedSessions).toHaveLength(2);
+        expect(getActiveStreamRequestId()).toBeNull();
+        expectControlsReset();
+    });
+
+    it('renders a completed gap resync from the saved session, not from the accumulated snapshot', async () => {
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot({ status: 'complete', content: 'tool round text plus final', seq: 9 }) }
+        ]);
+        await restore();
+
+        await messageProcessor({ action: 'streamData', requestId: 'r1', seq: 7, contentDelta: 'gap', thinkingDelta: '' });
+
+        expect(renderedSessions).toHaveLength(2);
+        expect(document.getElementById('laiChatMessageList').textContent).not.toContain('tool round text plus final');
+        expectControlsReset();
+    });
+
+    it.each(['aborted', 'error'])('resets the controls after presenting a request that ended as %s while loading', async (status) => {
+        document.getElementById('laiAbort').classList.remove('invisible');
+        document.getElementById('laiUserInput').classList.add('invisible');
+        replyToTabState([{ tab: binding(), request: streamingSnapshot({ status, requestId: 'r7', content: 'partial', error: status === 'error' ? 'model failed' : undefined }) }]);
+
+        await restore();
+
+        expectControlsReset();
+        expect(sentMessages('removeStreamRequestState')).toEqual([expect.objectContaining({ requestId: 'r7' })]);
+    });
+
+    it('resets controls left over by a frozen instance whose request has already ended', async () => {
+        document.getElementById('laiAbort').classList.remove('invisible');
+        document.getElementById('laiUserInput').classList.add('invisible');
+        replyToTabState([{ tab: binding(), request: null }]);
+
+        await restore();
+
+        expectControlsReset();
+    });
+
+    it('keeps the Abort control for a frozen instance whose request is still streaming', async () => {
+        document.getElementById('laiAbort').classList.remove('invisible');
+        document.getElementById('laiUserInput').classList.add('invisible');
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() }
+        ]);
+
+        await restore();
+
+        expect(document.getElementById('laiAbort').classList.contains('invisible')).toBe(false);
+        expect(document.getElementById('laiUserInput').classList.contains('invisible')).toBe(true);
+        expect(getActiveStreamRequestId()).toBe('r1');
+    });
+
+    it('unbinds a stale instance when the tab no longer has a bound session', async () => {
+        replyToTabState([
+            { tab: binding(), request: null },
+            { tab: binding({ sessionId: null }), request: null }
+        ]);
+        await restore();
+        expect(document.querySelectorAll('.lai-chat-history')).toHaveLength(2);
+
+        await restore();
+
+        expect(global.deleteActiveSessionId).toHaveBeenCalled();
+        expect(await global.getActiveSessionId()).toBeNull();
+        expect(document.querySelectorAll('.lai-chat-history')).toHaveLength(0);
+        expectControlsReset();
+    });
+
+    it('unbinds a stale instance and clears the binding when its session was deleted', async () => {
+        replyToTabState([
+            { tab: binding(), request: null },
+            { tab: binding(), request: null }
+        ]);
+        await restore();
+        getActiveSessionById.mockResolvedValueOnce(null);
+
+        await restore();
+
+        expect(sentMessages('updateTabState')).toContainEqual(expect.objectContaining({ sessionId: null }));
+        expect(await global.getActiveSessionId()).toBeNull();
+        expect(document.querySelectorAll('.lai-chat-history')).toHaveLength(0);
+    });
+
+    it('does not clear a fresh panel that never had a session', async () => {
+        document.getElementById('laiChatMessageList').innerHTML = '<div class="keep"></div>';
+        replyToTabState([{ tab: null, request: null }]);
+
+        await restore();
+
+        expect(document.querySelector('#laiChatMessageList .keep')).not.toBeNull();
+    });
+
+    it('ends open when two callers open the panel concurrently', async () => {
+        replyToTabState([]);
+        const pendingOptions = [];
+        global.getOptions = vi.fn(() => new Promise(resolve => { pendingOptions.push(() => resolve({})); }));
+
+        const first = openSidebarPanelIfClosed();
+        const second = laiSwapSidebarWithButton();
+        await Promise.resolve();
+        global.getOptions = vi.fn(async () => ({}));
+        pendingOptions.forEach(release => release());
+        await Promise.all([first, second]);
+
+        expect(document.getElementById('laiSidebar').classList.contains('active')).toBe(true);
+    });
+
+    it('reports the panel state on every open and close', async () => {
+        replyToTabState([]);
+
+        await laiSwapSidebarWithButton();
+        await laiSwapSidebarWithButton(true);
+
+        expect(sentMessages('updateTabState')).toEqual([
+            expect.objectContaining({ panelOpen: true }),
+            expect.objectContaining({ panelOpen: false })
+        ]);
     });
 });

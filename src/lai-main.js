@@ -1,6 +1,9 @@
 let restartCounter = 0;
 const RESTART_LIMIT = 5; //TODO add the limit as in param and remove these 2 vars
 let activeStreamRequestId = null;
+let activeStreamSeq = 0;
+let streamResyncInFlight = false;
+const ignoredForeignRequestIds = new Set();
 
 function initRibbonWithRetry(deadline) {
     if (deadline < Date.now()) {
@@ -187,6 +190,7 @@ async function createNewSessionClicked(e, shadowRoot) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ['laiUserInput'] element not found!`, userInput);
     }
     await deleteActiveSessionId();
+    await reportTabBinding({ sessionId: null });
     showMessage('New session created.', 'success');
 }
 
@@ -200,6 +204,7 @@ async function onCloseSidebarClick(e, shadowRoot) {
 async function recycleActiveSession(e, shadowRoot) {
     if (!shadowRoot) { shadowRoot = getShadowRoot(); }
     await deleteActiveSession();
+    await reportTabBinding({ sessionId: null });
     showMessage("Active session deleted.", "success");
     clearChatHistoryUI();
     const newSessionBtn = shadowRoot.querySelector('#newSession');
@@ -216,6 +221,7 @@ async function recycleAllSessions(e, shadowRoot) {
             // chrome.storage.sync.remove(activeSessionKey),
             clearAllMemory()
         ]);
+        await reportTabBinding({ sessionId: null });
         showMessage('Session history deleted.', 'success');
         // await createNewSessionClicked(e, shadowRoot); // no need of new session; this also clears the user input
     } catch (error) {
@@ -1021,8 +1027,13 @@ async function editUserInput(e, type) {
 
     if ((currentSession?.messages || []).length > 0) {
         currentSession.messages.splice(idx, 1);
-        if (currentSession.messages.length > 0) { await setActiveSession(currentSession); }
-        else { await deleteActiveSession(); }
+        if (currentSession.messages.length > 0) {
+            await setActiveSession(currentSession);
+            await reportTabBinding({ sessionId: currentSession.id });
+        } else {
+            await deleteActiveSession();
+            await reportTabBinding({ sessionId: null });
+        }
     }
 
     userInputField.focus();
@@ -1067,6 +1078,7 @@ async function laiSwapSidebarWithButton(forceClose = false) {
 
     const isNowActive = sideBar.classList.contains('active');
     mainButton.classList.toggle('invisible', isNowActive); // hide button if sidebar shown
+    await reportTabBinding({ panelOpen: isNowActive });
     if (isNowActive) {
         sideBar.querySelector('textarea#laiUserInput')?.focus();
     }
@@ -1159,6 +1171,9 @@ async function queryAI(userInput) {
 
     try {
         activeStreamRequestId = requestData.requestId;
+        activeStreamSeq = 0;
+        streamResyncInFlight = false;
+        await reportTabBinding({ sessionId });
         updateStatusBar('Prompt sent to the model, awaiting response...');
         const response = await chrome.runtime.sendMessage(requestData);
         if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
@@ -1383,6 +1398,199 @@ async function finaliseStreamRecipient(recipient, response = {}) {
     }
 }
 
+function renderStreamSnapshot(recipient, snapshot = {}) {
+    if (!recipient) { return; }
+    recipient._laiStreamThinking = '';
+    recipient._laiStreamContent = '';
+    appendStreamChunkToRecipient(recipient, {
+        contentDelta: snapshot.content || '',
+        thinkingDelta: snapshot.thinking || '',
+        model: snapshot.model
+    });
+}
+
+async function finaliseActiveStreamFromSnapshot(snapshot) {
+    const recipient = laiGetRecipient();
+    const requestId = snapshot?.requestId ?? activeStreamRequestId;
+    activeStreamRequestId = null;
+
+    if (!snapshot || snapshot.status === 'complete') {
+        const sessionId = await getActiveSessionId();
+        const session = sessionId ? await getActiveSessionById(sessionId) : null;
+        if (session) { await renderSessionHistoryMessages(session); }
+    } else if (snapshot.status === 'aborted') {
+        await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
+    } else if (snapshot.status === 'error') {
+        renderStreamSnapshot(recipient, snapshot);
+        laiHandleStreamActions('Stream Error', recipient);
+        if (snapshot.error) { showMessage(snapshot.error, 'error'); }
+    }
+
+    resetStreamControls();
+    if (requestId) { await acknowledgeTabRequestSnapshot(requestId); }
+}
+
+function resetStreamControls() {
+    laiHandleStreamActions('Stream controls reset');
+    resetStatusbar();
+}
+
+async function resyncActiveStreamFromSnapshot() {
+    // While the snapshot request is in flight its reply supersedes any chunks that
+    // arrive meanwhile, so they are dropped instead of appended past the gap.
+    const requestId = activeStreamRequestId;
+    streamResyncInFlight = true;
+    try {
+        const startup = await fetchTabStartupState();
+        if (activeStreamRequestId !== requestId) { return; }
+        const snapshot = startup?.request ?? null;
+        if (snapshot && snapshot.status === 'streaming' && snapshot.requestId === activeStreamRequestId) {
+            activeStreamSeq = Number(snapshot.seq) || 0;
+            renderStreamSnapshot(laiGetRecipient(), snapshot);
+            return;
+        }
+        await finaliseActiveStreamFromSnapshot(snapshot);
+    } finally {
+        streamResyncInFlight = false;
+    }
+}
+
+async function handleStreamDataMessage(response) {
+    if (streamResyncInFlight) { return ''; }
+
+    const rootRecipient = laiGetRecipient();
+    if (!rootRecipient) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Target element not found!`); }
+
+    const seq = Number(response.seq);
+    const hasVisibleDelta = !!((response?.contentDelta || '') || (response?.thinkingDelta || ''));
+    if (hasVisibleDelta && Number.isFinite(seq)) {
+        if (seq <= activeStreamSeq) {
+            // Duplicate visible delta; keep only the raw debug chunk.
+            appendStreamChunkToRecipient(rootRecipient, { ...response, contentDelta: '', thinkingDelta: '' });
+            return '';
+        }
+        if (seq > activeStreamSeq + 1) {
+            await resyncActiveStreamFromSnapshot();
+            return '';
+        }
+        activeStreamSeq = seq;
+    }
+
+    updateStatusBar('Receiving and processing data...');
+    const previewText = appendStreamChunkToRecipient(rootRecipient, response);
+    if (!previewText) { return ''; }
+    scrollChatHistoryContainer({ target: rootRecipient });
+    return previewText;
+}
+
+function showAdoptedStreamControls() {
+    const shadowRoot = getShadowRoot();
+    shadowRoot?.getElementById('laiAbort')?.classList.remove('invisible');
+    shadowRoot?.getElementById('laiUserInput')?.classList.add('invisible');
+    updateStatusBar('Receiving and processing data...');
+}
+
+async function openSidebarPanelIfClosed() {
+    if (!getSideBar()?.classList.contains('active')) {
+        await laiSwapSidebarWithButton();
+        if (!getSideBar()?.classList.contains('active')) {
+            await laiSwapSidebarWithButton();
+        }
+    }
+}
+
+async function presentTerminalRequestSnapshot(snapshot) {
+    if (snapshot.status === 'complete') {
+        // The assistant message was saved to the durable session before the complete
+        // checkpoint, so the rendered history already contains it; no duplicate card.
+        await acknowledgeTabRequestSnapshot(snapshot.requestId);
+        return;
+    }
+
+    await addInputCardToUIChatHistory('', 'ai');
+    const recipient = laiGetRecipient();
+    renderStreamSnapshot(recipient, snapshot);
+    if (snapshot.status === 'aborted') {
+        await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
+    } else {
+        laiHandleStreamActions('Stream Error', recipient);
+        if (snapshot.error) { showMessage(snapshot.error, 'error'); }
+    }
+    resetStreamControls();
+    await acknowledgeTabRequestSnapshot(snapshot.requestId);
+}
+
+// A bfcache-restored instance may still hold a session the tab is no longer bound to.
+async function unbindStaleTabSession() {
+    const hadSession = !!(await getActiveSessionId());
+    await deleteActiveSessionId();
+    if (hadSession) {
+        clearChatHistoryUI();
+        clearAttachments();
+    }
+    resetStreamControls();
+}
+
+/**
+ * Restores this tab's bound session and reconnects its pending response (#40).
+ * Runs once the sidebar UI exists, and again after a bfcache restore (pageshow with
+ * event.persisted) so a stale instance cannot show or write an outdated session.
+ */
+async function restoreTabSessionFromBackground() {
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) { return; }
+
+    activeStreamRequestId = null;
+    activeStreamSeq = 0;
+    streamResyncInFlight = false;
+
+    const startup = await fetchTabStartupState();
+    const binding = startup?.tab;
+    const initialSnapshot = startup?.request ?? null;
+    if (!binding?.sessionId) {
+        await unbindStaleTabSession();
+        return;
+    }
+
+    const session = await getActiveSessionById(binding.sessionId);
+    if (!session) {
+        await reportTabBinding({ sessionId: null });
+        await unbindStaleTabSession();
+        return;
+    }
+
+    await setActiveSessionId(binding.sessionId);
+    await reportTabBinding({ sessionId: binding.sessionId });
+    await renderSessionHistoryMessages(session);
+    // A bfcache-restored instance can still show the controls of a request that ended
+    // while it was frozen; a live request re-enables them on adoption below.
+    resetStreamControls();
+
+    if (binding.panelOpen) { await openSidebarPanelIfClosed(); }
+
+    if (initialSnapshot?.status === 'streaming') {
+        await addInputCardToUIChatHistory('', 'ai');
+        // A fresh snapshot closes the race with chunks that arrived while history was
+        // rendering; the request is adopted synchronously with the reply.
+        const fresh = await fetchTabStartupState();
+        const snapshot = fresh?.request ?? null;
+        if (snapshot?.status === 'streaming') {
+            ignoredForeignRequestIds.delete(snapshot.requestId);
+            activeStreamRequestId = snapshot.requestId;
+            activeStreamSeq = Number(snapshot.seq) || 0;
+            renderStreamSnapshot(laiGetRecipient(), snapshot);
+            showAdoptedStreamControls();
+            return;
+        }
+        await finaliseActiveStreamFromSnapshot(snapshot);
+        return;
+    }
+
+    if (initialSnapshot) {
+        await presentTerminalRequestSnapshot(initialSnapshot);
+    }
+}
+
 function createAbortHandler(controller, abortBtn, rootEl) {
     return function abortHandler(event) {
         if (!event.composedPath().includes(abortBtn)) { return; }
@@ -1471,11 +1679,14 @@ async function messageProcessor(response, sender) {
     }
 
     if (response?.action?.startsWith('stream') && response.requestId !== activeStreamRequestId) {
-        console.debug(`>>> ${manifest?.name ?? ''} - Ignoring stream message for an inactive request`, {
-            action: response.action,
-            requestId: response.requestId,
-            activeStreamRequestId
-        });
+        if (!ignoredForeignRequestIds.has(response.requestId)) {
+            ignoredForeignRequestIds.add(response.requestId);
+            console.debug(`>>> ${manifest?.name ?? ''} - Ignoring stream message for an inactive request`, {
+                action: response.action,
+                requestId: response.requestId,
+                activeStreamRequestId
+            });
+        }
         return { requestId: null };
     }
 
@@ -1522,19 +1733,7 @@ async function messageProcessor(response, sender) {
 
             let streamDataError;
             try {
-                const rootRecipient = laiGetRecipient();
-                if (!rootRecipient) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Target element not found!`) }
-                updateStatusBar('Receiving and processing data...');
-                const previewText = appendStreamChunkToRecipient(rootRecipient, response);
-                if (!previewText) { return; }
-                scrollChatHistoryContainer({ target: rootRecipient });
-                // console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Stream chunk appended`, {
-                //     responseAction: response.action,
-                //     contentLength: previewText.length,
-                //     aiCardCount: shadowRoot.querySelectorAll('.lai-ai-input').length,
-                //     recipientChildCount: rootRecipient.childNodes.length,
-                //     recipientTextLength: rootRecipient.innerText?.length ?? 0
-                // });
+                await handleStreamDataMessage(response);
             } catch (err) {
                 streamDataError = err;
                 console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, response);
@@ -2098,6 +2297,7 @@ async function reconcileActiveSessionWithStorage(changes, areaName) {
     if (!wasStored || isStored) { return false; }
 
     await deleteActiveSessionId();
+    await reportTabBinding({ sessionId: null });
     clearChatHistoryUI();
     clearAttachments();
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Active session ${sessionId} was deleted elsewhere; panel unbound.`);
