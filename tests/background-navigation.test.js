@@ -162,6 +162,23 @@ describe('background.js navigation lifecycle', () => {
         expect(deps.streamRequestState.removeForTab.mock.calls).toEqual([[1]]);
     });
 
+    it('treats a string abort reason from a pending stream read as an abort, not an error', async () => {
+        const { deps } = createDeps([]);
+        deps.consumeStreamResponse.mockImplementation((response, tabId, debug, signal) => new Promise((resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        }));
+        const requestId = '88888888-8888-4888-8888-888888888888';
+        const pending = loadFetchDataAction(deps)({ ...request(), requestId }, sender);
+        await vi.waitFor(() => expect(deps.consumeStreamResponse).toHaveBeenCalled());
+
+        deps.controllers.get(1).abort('User aborted last request.');
+
+        await expect(pending).resolves.toEqual({ status: 'aborted', message: 'User aborted last request.' });
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'aborted' }), true);
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'streamAbort', requestId });
+        expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError' }));
+    });
+
     it('records genuine errors and sends a request-scoped stream error', async () => {
         const { deps } = createDeps([]);
         deps.consumeStreamResponse.mockRejectedValueOnce(new Error('model failed'));

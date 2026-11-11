@@ -1202,6 +1202,31 @@ describe('tab session restoration (#40)', () => {
         expect(sentMessages('removeStreamRequestState')).toEqual([expect.objectContaining({ requestId: 'r7' })]);
     });
 
+    it('resets controls left over by a frozen instance whose request has already ended', async () => {
+        document.getElementById('laiAbort').classList.remove('invisible');
+        document.getElementById('laiUserInput').classList.add('invisible');
+        replyToTabState([{ tab: binding(), request: null }]);
+
+        await restore();
+
+        expectControlsReset();
+    });
+
+    it('keeps the Abort control for a frozen instance whose request is still streaming', async () => {
+        document.getElementById('laiAbort').classList.remove('invisible');
+        document.getElementById('laiUserInput').classList.add('invisible');
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() }
+        ]);
+
+        await restore();
+
+        expect(document.getElementById('laiAbort').classList.contains('invisible')).toBe(false);
+        expect(document.getElementById('laiUserInput').classList.contains('invisible')).toBe(true);
+        expect(getActiveStreamRequestId()).toBe('r1');
+    });
+
     it('unbinds a stale instance when the tab no longer has a bound session', async () => {
         replyToTabState([
             { tab: binding(), request: null },

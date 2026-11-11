@@ -1562,6 +1562,9 @@ async function restoreTabSessionFromBackground() {
     await setActiveSessionId(binding.sessionId);
     await reportTabBinding({ sessionId: binding.sessionId });
     await renderSessionHistoryMessages(session);
+    // A bfcache-restored instance can still show the controls of a request that ended
+    // while it was frozen; a live request re-enables them on adoption below.
+    resetStreamControls();
 
     if (binding.panelOpen) { await openSidebarPanelIfClosed(); }
 

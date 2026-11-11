@@ -1338,6 +1338,11 @@ async function fetchDataAction(request, sender) {
         }
         catch (e) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
+            // abort(reason) rejects a pending fetch or reader.read() with the bare reason
+            // string, which carries no AbortError name.
+            if (controller.signal.aborted && e?.name !== 'AbortError') {
+                e = new DOMException(typeof e === 'string' ? e : (e?.message || 'The operation was aborted.'), 'AbortError');
+            }
             if (e.name === 'AbortError') {
                 if (streamState) {
                     streamState.status = 'aborted';
