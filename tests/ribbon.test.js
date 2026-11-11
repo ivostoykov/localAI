@@ -513,3 +513,178 @@ describe('ribbon.js session restore', () => {
         expect(deps.showMessage).not.toHaveBeenCalled();
     });
 });
+
+describe('ribbon.js model capability refresh', () => {
+    const onModelOptionsChangedCode = ribbonCode.match(/function onModelOptionsChanged\([\s\S]*?\n}\n/)[0];
+    const adjustThinkingStatusCode = ribbonCode.match(/async function adjustThinkingStatus\([\s\S]*?\n}\n/)[0];
+    const adjustToolsStatusCode = ribbonCode.match(/async function adjustToolsStatus\([\s\S]*?\n}\n/)[0];
+
+    const buildExports = (deps) => new Function('deps',
+        `with (deps) { ${onModelOptionsChangedCode}\n${adjustThinkingStatusCode}\n${adjustToolsStatusCode}\n return { onModelOptionsChanged, adjustThinkingStatus, adjustToolsStatus }; }`
+    )(deps);
+
+    const baseDeps = () => ({
+        storageOptionKey: 'laiOptions',
+        setModelNameLabel: vi.fn(),
+        scheduleModelCapabilityRefresh: vi.fn(),
+        getAiModel: vi.fn(async () => 'llama3.2'),
+        modelCanUseToolsHelper: vi.fn(async () => true),
+        modelCanThinkHelper: vi.fn(async () => true),
+        getShadowRoot: vi.fn(() => null),
+        updateStatusBar: vi.fn(),
+        resetStatusbar: vi.fn()
+    });
+
+    const makeElement = () => new JSDOM('<!DOCTYPE html><body></body>').window.document.createElement('img');
+
+    it('ignores option changes in a non-sync storage area', () => {
+        const deps = baseDeps();
+        const { onModelOptionsChanged } = buildExports(deps);
+
+        const result = onModelOptionsChanged({ laiOptions: { oldValue: { aiModel: 'a' }, newValue: { aiModel: 'b' } } }, 'local');
+
+        expect(result).toBe(false);
+        expect(deps.setModelNameLabel).not.toHaveBeenCalled();
+        expect(deps.scheduleModelCapabilityRefresh).not.toHaveBeenCalled();
+    });
+
+    it('ignores storage changes that do not touch the options key', () => {
+        const deps = baseDeps();
+        const { onModelOptionsChanged } = buildExports(deps);
+
+        const result = onModelOptionsChanged({ someOtherKey: { newValue: { aiModel: 'b' } } }, 'sync');
+
+        expect(result).toBe(false);
+        expect(deps.setModelNameLabel).not.toHaveBeenCalled();
+        expect(deps.scheduleModelCapabilityRefresh).not.toHaveBeenCalled();
+    });
+
+    it('ignores unrelated option writes', () => {
+        const deps = baseDeps();
+        const { onModelOptionsChanged } = buildExports(deps);
+
+        const result = onModelOptionsChanged({
+            laiOptions: { oldValue: { aiModel: 'a', aiUrl: 'u', debug: false }, newValue: { aiModel: 'a', aiUrl: 'u', debug: true } }
+        }, 'sync');
+
+        expect(result).toBe(false);
+        expect(deps.setModelNameLabel).not.toHaveBeenCalled();
+        expect(deps.scheduleModelCapabilityRefresh).not.toHaveBeenCalled();
+    });
+
+    it('refreshes the label and the switches when the model changes', () => {
+        const deps = baseDeps();
+        const { onModelOptionsChanged } = buildExports(deps);
+
+        const result = onModelOptionsChanged({
+            laiOptions: { oldValue: { aiModel: 'a', aiUrl: 'u' }, newValue: { aiModel: 'b', aiUrl: 'u' } }
+        }, 'sync');
+
+        expect(result).toBe(true);
+        expect(deps.setModelNameLabel).toHaveBeenCalledWith({ model: 'b' });
+        expect(deps.scheduleModelCapabilityRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshes when the options are written for the first time', () => {
+        const deps = baseDeps();
+        const { onModelOptionsChanged } = buildExports(deps);
+
+        const result = onModelOptionsChanged({
+            laiOptions: { newValue: { aiModel: 'b', aiUrl: 'u' } }
+        }, 'sync');
+
+        expect(result).toBe(true);
+        expect(deps.setModelNameLabel).toHaveBeenCalledWith({ model: 'b' });
+        expect(deps.scheduleModelCapabilityRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('refreshes when only the endpoint changes', () => {
+        const deps = baseDeps();
+        const { onModelOptionsChanged } = buildExports(deps);
+
+        const result = onModelOptionsChanged({
+            laiOptions: { oldValue: { aiModel: 'a', aiUrl: 'http://one' }, newValue: { aiModel: 'a', aiUrl: 'http://two' } }
+        }, 'sync');
+
+        expect(result).toBe(true);
+        expect(deps.scheduleModelCapabilityRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('enables the tools switch for a capable model', async () => {
+        const deps = baseDeps();
+        const { adjustToolsStatus } = buildExports(deps);
+        const el = makeElement();
+        el.classList.add('disabled');
+
+        await adjustToolsStatus(el, { suppressStatusBar: true });
+
+        expect(el.classList.contains('disabled')).toBe(false);
+        expect(el.title).toBe('Disable System Tool Functions');
+        expect(el.alt).toBe('Disable System Tool Functions');
+        expect(deps.updateStatusBar).not.toHaveBeenCalled();
+    });
+
+    it('disables the tools switch for a non-capable model', async () => {
+        const deps = baseDeps();
+        deps.modelCanUseToolsHelper = vi.fn(async () => false);
+        const { adjustToolsStatus } = buildExports(deps);
+        const el = makeElement();
+
+        await adjustToolsStatus(el, { suppressStatusBar: true });
+
+        expect(el.classList.contains('disabled')).toBe(true);
+        expect(el.title).toBe('Enable System Tool Functions');
+        expect(el.alt).toBe('Enable System Tool Functions');
+    });
+
+    it('keeps the tools switch untouched when the model changed while probing', async () => {
+        const deps = baseDeps();
+        deps.getAiModel = vi.fn()
+            .mockResolvedValueOnce('a')
+            .mockResolvedValueOnce('b');
+        const { adjustToolsStatus } = buildExports(deps);
+        const el = makeElement();
+        el.classList.add('disabled');
+
+        await adjustToolsStatus(el, { suppressStatusBar: true });
+
+        expect(el.classList.contains('disabled')).toBe(true);
+        expect(el.title).toBe('');
+    });
+
+    it('enables the thinking switch for a capable model', async () => {
+        const deps = baseDeps();
+        const { adjustThinkingStatus } = buildExports(deps);
+        const el = makeElement();
+        el.classList.add('disabled');
+
+        await adjustThinkingStatus(el, { suppressStatusBar: true });
+
+        expect(el.classList.contains('disabled')).toBe(false);
+    });
+
+    it('disables the thinking switch for a non-capable model', async () => {
+        const deps = baseDeps();
+        deps.modelCanThinkHelper = vi.fn(async () => false);
+        const { adjustThinkingStatus } = buildExports(deps);
+        const el = makeElement();
+
+        await adjustThinkingStatus(el, { suppressStatusBar: true });
+
+        expect(el.classList.contains('disabled')).toBe(true);
+    });
+
+    it('keeps the thinking switch untouched when the model changed while probing', async () => {
+        const deps = baseDeps();
+        deps.getAiModel = vi.fn()
+            .mockResolvedValueOnce('a')
+            .mockResolvedValueOnce('b');
+        const { adjustThinkingStatus } = buildExports(deps);
+        const el = makeElement();
+        el.classList.add('disabled');
+
+        await adjustThinkingStatus(el, { suppressStatusBar: true });
+
+        expect(el.classList.contains('disabled')).toBe(true);
+    });
+});
