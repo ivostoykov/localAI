@@ -196,6 +196,13 @@ describe('background.js', () => {
             await handleStreamEnd({}, 1, '', false, 'id', { id: 1 });
             expect(global.showUIMessage).not.toHaveBeenCalled();
         });
+
+        it('reports another terminal delivery failure against the originating tab', async () => {
+            global.showUIMessage = vi.fn();
+            global.chrome = { tabs: { sendMessage: vi.fn(async () => { throw new Error('Permission denied'); }) }, runtime: {} };
+            await handleResponse({}, 1, 'id', { id: 1 });
+            expect(global.showUIMessage).toHaveBeenCalledWith('Permission denied', 'error', { id: 1 });
+        });
     });
 
     describe('processTextChunk', () => {

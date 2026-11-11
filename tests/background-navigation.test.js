@@ -108,6 +108,40 @@ describe('background.js navigation lifecycle', () => {
         ];
     });
 
+    it('checkpoints a completed request after receiver loss and saves the assistant once', async () => {
+        const { deps } = createDeps([{ message: { role: 'assistant', content: 'Saved answer' } }]);
+        deps.consumeStreamResponse.mockResolvedValueOnce({ responseText: '{}', body: { message: { role: 'assistant', content: 'Saved answer' } } });
+        const result = await loadFetchDataAction(deps)({ ...request(), requestId: '11111111-1111-4111-8111-111111111111' }, sender);
+        expect(result.status).toBe('success');
+        expect(deps.saveSession).toHaveBeenCalledTimes(2);
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'complete' }), true);
+        expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError' }));
+    });
+
+    it('checkpoints aborted state after receiver loss', async () => {
+        const { deps } = createDeps([]);
+        deps.consumeStreamResponse.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
+        const result = await loadFetchDataAction(deps)({ ...request(), requestId: '22222222-2222-4222-8222-222222222222' }, sender);
+        expect(result.status).toBe('aborted');
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'aborted' }), true);
+    });
+
+    it('records genuine errors and sends a request-scoped stream error', async () => {
+        const { deps } = createDeps([]);
+        deps.consumeStreamResponse.mockRejectedValueOnce(new Error('model failed'));
+        const result = await loadFetchDataAction(deps)({ ...request(), requestId: '33333333-3333-4333-8333-333333333333' }, sender);
+        expect(result.status).toBe('error');
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'error', error: 'model failed' }), true);
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError', requestId: '33333333-3333-4333-8333-333333333333' }));
+    });
+
+    it('removes terminal state only after a matching acknowledgement', async () => {
+        const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
+        deps.handleStreamEnd.mockResolvedValueOnce({ requestId: '44444444-4444-4444-8444-444444444444' });
+        await loadFetchDataAction(deps)({ ...request(), requestId: '44444444-4444-4444-8444-444444444444' }, sender);
+        expect(deps.streamRequestState.remove).toHaveBeenCalledWith('44444444-4444-4444-8444-444444444444');
+    });
+
     it('uses one navigation session for the whole tool loop and disposes it after the final response', async () => {
         const { deps, sessions } = createDeps(bodies);
         deps.handleStreamEnd.mockImplementation(async () => {
