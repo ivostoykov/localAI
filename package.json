@@ -1,6 +1,6 @@
 {
   "name": "local-ai-helper",
-  "version": "1.29.90",
+  "version": "1.29.91",
   "type": "module",
   "description": "Local AI helper Chrome extension",
   "scripts": {

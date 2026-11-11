@@ -15,6 +15,7 @@ function importBackgroundScript(path) {
 importBackgroundScript('jslib/constants.js');
 importBackgroundScript('jslib/utils.js');
 importBackgroundScript('jslib/model-catalogue.js');
+importBackgroundScript('jslib/stream-request-state.js');
 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
@@ -62,6 +63,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     originRequestControllers.delete(tabId);
     controllers.get(tabId)?.abort('Originating tab closed.');
     controllers.delete(tabId);
+    await streamRequestState?.removeForTab(tabId);
     await handleNavigationTabRemoved(tabId);
     await removeActiveSessionPageData(tabId);
 
@@ -430,23 +432,42 @@ function getStreamChunkUiPayload(chunk = {}, rawChunk = '') {
     };
 }
 
-async function sendStreamChunkToUi(senderTabId, payload = {}, debugEnabled = false) {
+function isUiReceiverUnavailableError(error) {
+    const message = `${error?.message || error || ''}`;
+    return [
+        'The message port closed before a response was received.',
+        'Receiving end does not exist',
+        'Message manager disconnected',
+        'moved into back/forward cache'
+    ].some(text => message.includes(text));
+}
+
+async function sendStreamChunkToUi(senderTabId, payload = {}, debugEnabled = false, requestId = '', deliveryState = {}) {
     if (!senderTabId) { return; }
 
     const hasVisibleDelta = !!((payload?.contentDelta || '') || (payload?.thinkingDelta || ''));
     if (!hasVisibleDelta && !debugEnabled) { return; }
 
-    await chrome.tabs.sendMessage(senderTabId, {
-        action: "streamData",
-        model: payload?.model || '',
-        contentDelta: payload?.contentDelta || '',
-        thinkingDelta: payload?.thinkingDelta || '',
-        rawChunk: debugEnabled ? (payload?.rawChunk || '') : ''
-    });
-    if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+    try {
+        await chrome.tabs.sendMessage(senderTabId, {
+            action: "streamData",
+            requestId,
+            model: payload?.model || '',
+            contentDelta: payload?.contentDelta || '',
+            thinkingDelta: payload?.thinkingDelta || '',
+            rawChunk: debugEnabled ? (payload?.rawChunk || '') : ''
+        });
+        if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+    } catch (error) {
+        if (!isUiReceiverUnavailableError(error)) { throw error; }
+        if (!deliveryState.receiverUnavailableLogged) {
+            deliveryState.receiverUnavailableLogged = true;
+            console.debug(`>>> ${manifest?.name ?? ''} - UI receiver unavailable for stream request ${requestId}; continuing model stream.`);
+        }
+    }
 }
 
-async function consumeStreamResponse(response, senderTabId, debugEnabled = false, signal = null) {
+async function consumeStreamResponse(response, senderTabId, debugEnabled = false, signal = null, requestId = '', onChunk = async () => {}) {
     if (!response?.body || typeof response.body.getReader !== 'function') {
         const responseText = await response.clone().text();
         return {
@@ -461,6 +482,7 @@ async function consumeStreamResponse(response, senderTabId, debugEnabled = false
     let responseText = '';
     let body = {};
     let streamFinished = false;
+    const deliveryState = {};
 
     try {
         while (true) {
@@ -480,7 +502,9 @@ async function consumeStreamResponse(response, senderTabId, debugEnabled = false
                 responseText += `${line}\n`;
                 const chunk = JSON.parse(line);
                 body = mergeStreamChunkBody(body, chunk);
-                await sendStreamChunkToUi(senderTabId, getStreamChunkUiPayload(chunk, line), debugEnabled);
+                const payload = getStreamChunkUiPayload(chunk, line);
+                await onChunk(payload);
+                await sendStreamChunkToUi(senderTabId, payload, debugEnabled, requestId, deliveryState);
 
                 if (chunk?.done === true) {
                     streamFinished = true;
@@ -495,7 +519,9 @@ async function consumeStreamResponse(response, senderTabId, debugEnabled = false
             responseText += `${trailingLine}\n`;
             const chunk = JSON.parse(trailingLine);
             body = mergeStreamChunkBody(body, chunk);
-            await sendStreamChunkToUi(senderTabId, getStreamChunkUiPayload(chunk, trailingLine), debugEnabled);
+            const payload = getStreamChunkUiPayload(chunk, trailingLine);
+            await onChunk(payload);
+            await sendStreamChunkToUi(senderTabId, payload, debugEnabled, requestId, deliveryState);
         }
     } finally {
         if (!streamFinished) {
@@ -565,39 +591,45 @@ async function applyAutomaticModelOptions(requestData = {}, modelName = '') {
     return requestData;
 }
 
-async function handleResponse(responseData = '', senderTabId) {
+async function handleResponse(responseData = '', senderTabId, requestId = '', senderTab = null) {
     try {
         if (!responseData) {
-            await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd" });
+            const delivery = await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd", requestId });
             if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-            return;
+            return delivery;
         }
 
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response (type: ${typeof (responseData)})`, responseData);
-        await chrome.tabs.sendMessage(senderTabId, {
+        const delivery = await chrome.tabs.sendMessage(senderTabId, {
             action: "streamEnd",
+            requestId,
             response: JSON.stringify(responseData)
         });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        return delivery;
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
-        await showUIMessage(error.message, 'error');
+        if (isUiReceiverUnavailableError(error)) { return; }
+        await showUIMessage(error.message, 'error', senderTab);
     }
 
     return;
 }
 
-async function handleStreamEnd(responseData = '', senderTabId, rawResponse = '', debugEnabled = false) {
+async function handleStreamEnd(responseData = '', senderTabId, rawResponse = '', debugEnabled = false, requestId = '', senderTab = null) {
     try {
-        await chrome.tabs.sendMessage(senderTabId, {
+        const delivery = await chrome.tabs.sendMessage(senderTabId, {
             action: "streamEnd",
+            requestId,
             response: JSON.stringify(responseData),
             rawResponse: debugEnabled ? rawResponse : ''
         });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        return delivery;
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
-        await showUIMessage(error.message, 'error');
+        if (isUiReceiverUnavailableError(error)) { return; }
+        await showUIMessage(error.message, 'error', senderTab);
     }
 }
 
@@ -904,18 +936,43 @@ async function throwIfRequestCancelled(controller, tabId) {
     }
 }
 
-async function sendStreamAbort(tabId) {
+async function sendStreamAbort(tabId, requestId = '') {
     try {
-        await chrome.tabs.sendMessage(tabId, { action: "streamAbort" });
+        const delivery = await chrome.tabs.sendMessage(tabId, { action: "streamAbort", requestId });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
+        return delivery;
     } catch (e1) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e1.message}`, e1);
     }
 }
 
+function createStreamRequestId(requestId) {
+    if (typeof requestId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+        return requestId;
+    }
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') { return crypto.randomUUID(); }
+    return `lai-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function sendStreamError(tabId, requestId, error) {
+    try {
+        const delivery = await chrome.tabs.sendMessage(tabId, { action: 'streamError', requestId, error: error.toString() });
+        if (chrome.runtime.lastError) { throw new Error(chrome.runtime.lastError.message); }
+        return delivery;
+    } catch (deliveryError) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${deliveryError.message}`, deliveryError);
+    }
+}
+
+function wasTerminalMessageDelivered(delivery, requestId) {
+    return delivery?.requestId === requestId;
+}
+
 async function fetchDataAction(request, sender) {
     const controller = new AbortController();
+    const requestId = createStreamRequestId(request?.requestId);
     let tabId = sender?.tab?.id ?? null;
+    let streamState = null;
     registerRequestController(tabId, controller);
 
     // Registration happens before the first await and everything after it runs inside this try,
@@ -931,6 +988,7 @@ async function fetchDataAction(request, sender) {
             }
         }
         await throwIfRequestCancelled(controller, tabId);
+        await streamRequestState?.sweepExpired();
 
         const laiOptions = await getLaiOptions();
         const toolsEnabled = request?.tools || false;
@@ -970,6 +1028,18 @@ async function fetchDataAction(request, sender) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - fetchData request without a session id; refusing to pick another session.`, { tabId, sessionId: request?.sessionId });
             return { "status": "error", "message": msg };
         }
+        streamState = {
+            requestId,
+            tabId,
+            sessionId: activeSession.id,
+            status: 'streaming',
+            content: '',
+            thinking: '',
+            seq: 0,
+            model: request.data?.model || model || '',
+            debug: !!laiOptions?.debug
+        };
+        await streamRequestState?.checkpoint(streamState, true);
         const userAssistantMessages = (activeSession?.messages || []).filter(m => m.role === 'user' || m.role === 'assistant');
         const turnNumber = Math.floor(userAssistantMessages.length / 2) + 1;
         let attachments = [...(activeSession?.attachments || [])];
@@ -1054,7 +1124,20 @@ async function fetchDataAction(request, sender) {
                 reqOpt.body = JSON.stringify(request.data);
                 response = await fetch(url, reqOpt);
                 if (request.data.stream && response.ok) {
-                    const streamedResponse = await consumeStreamResponse(response, sender?.tab?.id, laiOptions?.debug ?? false, controller.signal);
+                    const streamedResponse = await consumeStreamResponse(
+                        response,
+                        sender?.tab?.id,
+                        laiOptions?.debug ?? false,
+                        controller.signal,
+                        requestId,
+                        async (payload) => {
+                            streamState.content += payload.contentDelta || '';
+                            streamState.thinking += payload.thinkingDelta || '';
+                            streamState.model = payload.model || streamState.model;
+                            streamState.seq += 1;
+                            await streamRequestState?.checkpoint(streamState);
+                        }
+                    );
                     responseText = streamedResponse.responseText;
                     body = streamedResponse.body;
                 } else {
@@ -1151,9 +1234,14 @@ async function fetchDataAction(request, sender) {
             //     await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamEnd" });
             // } else {
                 if (request.data.stream) {
-                    await handleStreamEnd(body, sender?.tab?.id, responseText, laiOptions?.debug ?? false);
+                    streamState.status = 'complete';
+                    await streamRequestState?.checkpoint(streamState, true);
+                    const delivery = await handleStreamEnd(body, sender?.tab?.id, responseText, laiOptions?.debug ?? false, requestId, sender?.tab);
+                    if (wasTerminalMessageDelivered(delivery, requestId)) {
+                        await streamRequestState?.remove(requestId);
+                    }
                 } else {
-                    await handleResponse(body, sender?.tab?.id);
+                    await handleResponse(body, sender?.tab?.id, requestId, sender?.tab);
                 }
             // }
 
@@ -1166,17 +1254,26 @@ async function fetchDataAction(request, sender) {
         catch (e) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
             if (e.name === 'AbortError') {
-                await sendStreamAbort(sender?.tab?.id);
+                if (streamState) {
+                    streamState.status = 'aborted';
+                    await streamRequestState?.checkpoint(streamState, true);
+                }
+                const delivery = await sendStreamAbort(sender?.tab?.id, requestId);
+                if (wasTerminalMessageDelivered(delivery, requestId)) {
+                    await streamRequestState?.remove(requestId);
+                }
                 return { "status": "aborted", "message": e.message };
             } else {
-                try {
-                    await chrome.tabs.sendMessage(sender?.tab?.id, { action: "streamError", error: e.toString() });
-                    if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
-                    await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error: ${e.message}`, e, 'error', sender?.tab?.id);
-
-                } catch (e2) {
-                    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e2.message}`, e2);
+                if (streamState) {
+                    streamState.status = 'error';
+                    streamState.error = e.message;
+                    await streamRequestState?.checkpoint(streamState, true);
                 }
+                const delivery = await sendStreamError(sender?.tab?.id, requestId, e);
+                if (wasTerminalMessageDelivered(delivery, requestId)) {
+                    await streamRequestState?.remove(requestId);
+                }
+                await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error: ${e.message}`, e, 'error', sender?.tab?.id);
 
                 return { "status": "error", "message": e.message };
             }
@@ -1187,7 +1284,14 @@ async function fetchDataAction(request, sender) {
     catch (e) {
         if (e?.name !== 'AbortError') { throw e; }
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Request cancelled during setup`, e.message);
-        await sendStreamAbort(sender?.tab?.id);
+        if (streamState) {
+            streamState.status = 'aborted';
+            await streamRequestState?.checkpoint(streamState, true);
+        }
+        const delivery = await sendStreamAbort(sender?.tab?.id, requestId);
+        if (wasTerminalMessageDelivered(delivery, requestId)) {
+            await streamRequestState?.remove(requestId);
+        }
         return { "status": "aborted", "message": e.message };
     }
     finally {

@@ -12,7 +12,7 @@ const backgroundCode = fs.readFileSync(
 const fetchDataActionCode = backgroundCode.match(/async function fetchDataAction\([\s\S]*?\n}\n/)[0];
 const onRemovedListenerCode = backgroundCode.match(/chrome\.tabs\.onRemoved\.addListener\(async \(tabId\) => \{[\s\S]*?\n\}\);\n/)[0];
 
-const requestHelpersCode = ['registerRequestController', 'unregisterRequestController', 'throwIfRequestCancelled', 'sendStreamAbort']
+const requestHelpersCode = ['registerRequestController', 'unregisterRequestController', 'throwIfRequestCancelled', 'sendStreamAbort', 'createStreamRequestId', 'sendStreamError', 'wasTerminalMessageDelivered']
     .map(name => backgroundCode.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0])
     .join('\n');
 
@@ -28,10 +28,17 @@ function createDeps(bodies) {
     deps = {
         controllers: new Map(),
         originRequestControllers: new Map(),
+        streamRequestState: {
+            sweepExpired: vi.fn(async () => undefined),
+            checkpoint: vi.fn(async () => true),
+            remove: vi.fn(async () => undefined),
+            removeForTab: vi.fn(async () => undefined)
+        },
         manifest: { name: 'Local AI helper' },
         getLineNumber: () => 'test',
         openTabs: new Set([1, 2]),
         chrome: {
+            runtime: {},
             tabs: {
                 sendMessage: vi.fn(async () => undefined),
                 get: vi.fn(async (tabId) => {
@@ -102,6 +109,80 @@ describe('background.js navigation lifecycle', () => {
         ];
     });
 
+    it('checkpoints a completed request after receiver loss and saves the assistant once', async () => {
+        const { deps } = createDeps([{ message: { role: 'assistant', content: 'Saved answer' } }]);
+        deps.consumeStreamResponse.mockResolvedValueOnce({ responseText: '{}', body: { message: { role: 'assistant', content: 'Saved answer' } } });
+        const result = await loadFetchDataAction(deps)({ ...request(), requestId: '11111111-1111-4111-8111-111111111111' }, sender);
+        expect(result.status).toBe('success');
+        expect(deps.saveSession).toHaveBeenCalledTimes(2);
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'complete' }), true);
+        expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError' }));
+    });
+
+    it('checkpoints aborted state after receiver loss', async () => {
+        const { deps } = createDeps([]);
+        deps.consumeStreamResponse.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
+        const result = await loadFetchDataAction(deps)({ ...request(), requestId: '22222222-2222-4222-8222-222222222222' }, sender);
+        expect(result.status).toBe('aborted');
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'aborted' }), true);
+    });
+
+    it('aborts and checkpoints state when the originating tab closes after receiver loss', async () => {
+        const { deps } = createDeps([]);
+        let onRemoved;
+        deps.chrome.tabs.onRemoved = { addListener: fn => { onRemoved = fn; } };
+        deps.chrome.tabs.query = vi.fn(async () => []);
+        deps.chrome.storage = { local: { get: vi.fn(async () => ({})), remove: vi.fn() } };
+        registerOnRemoved(deps);
+        deps.consumeStreamResponse.mockImplementation((response, tabId, debug, signal) => new Promise((resolve, reject) => {
+            signal.addEventListener('abort', () => reject(new DOMException('Originating tab closed.', 'AbortError')), { once: true });
+        }));
+        const pending = loadFetchDataAction(deps)({ ...request(), requestId: '77777777-7777-4777-8777-777777777777' }, sender);
+        await vi.waitFor(() => expect(deps.consumeStreamResponse).toHaveBeenCalled());
+        deps.openTabs.delete(1);
+        await onRemoved(1);
+        await expect(pending).resolves.toMatchObject({ status: 'aborted' });
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'aborted' }), true);
+    });
+
+    it('records genuine errors and sends a request-scoped stream error', async () => {
+        const { deps } = createDeps([]);
+        deps.consumeStreamResponse.mockRejectedValueOnce(new Error('model failed'));
+        const result = await loadFetchDataAction(deps)({ ...request(), requestId: '33333333-3333-4333-8333-333333333333' }, sender);
+        expect(result.status).toBe('error');
+        expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'error', error: 'model failed' }), true);
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError', requestId: '33333333-3333-4333-8333-333333333333' }));
+    });
+
+    it('removes terminal state only after a matching acknowledgement', async () => {
+        const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
+        deps.handleStreamEnd.mockResolvedValueOnce({ requestId: '44444444-4444-4444-8444-444444444444' });
+        await loadFetchDataAction(deps)({ ...request(), requestId: '44444444-4444-4444-8444-444444444444' }, sender);
+        expect(deps.streamRequestState.remove).toHaveBeenCalledWith('44444444-4444-4444-8444-444444444444');
+    });
+
+    it('retains terminal state for null, missing, and failed terminal acknowledgements', async () => {
+        for (const acknowledgement of [{ requestId: null }, undefined]) {
+            const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
+            deps.handleStreamEnd.mockResolvedValueOnce(acknowledgement);
+            await loadFetchDataAction(deps)({ ...request(), requestId: '55555555-5555-4555-8555-555555555555' }, sender);
+            expect(deps.streamRequestState.remove).not.toHaveBeenCalled();
+        }
+    });
+
+    it('removes setup-aborted state after a matching abort acknowledgement', async () => {
+        const { deps } = createDeps([]);
+        let resolveOptions;
+        deps.getLaiOptions.mockImplementation(() => new Promise(resolve => { resolveOptions = resolve; }));
+        deps.chrome.tabs.sendMessage.mockResolvedValue({ requestId: '66666666-6666-4666-8666-666666666666' });
+        const pending = loadFetchDataAction(deps)({ ...request(), requestId: '66666666-6666-4666-8666-666666666666' }, sender);
+        await vi.waitFor(() => expect(resolveOptions).toBeTypeOf('function'));
+        deps.openTabs.delete(1);
+        resolveOptions({ toolFunc: '', debug: false });
+        await pending;
+        expect(deps.streamRequestState.remove).toHaveBeenCalledWith('66666666-6666-4666-8666-666666666666');
+    });
+
     it('uses one navigation session for the whole tool loop and disposes it after the final response', async () => {
         const { deps, sessions } = createDeps(bodies);
         deps.handleStreamEnd.mockImplementation(async () => {
@@ -162,7 +243,7 @@ describe('background.js navigation lifecycle', () => {
         const result = await fetchDataAction(request(), sender);
 
         expect(result.status).toBe('aborted');
-        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'streamAbort' });
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamAbort' }));
         expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
         expect(deps.disposeNavigationSession).toHaveBeenCalledWith(sessions[0]);
         expect(sessions[0].signal.aborted).toBe(true);
@@ -492,7 +573,7 @@ describe('background.js navigation lifecycle', () => {
             expect(result.status).toBe('success');
             expect(deps.backgroundMemory.storeTurnWithEmbeddings).toHaveBeenCalledTimes(1);
             expect(deps.generateAndUpdateSessionTitle).not.toHaveBeenCalled();
-            expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, { action: 'streamAbort' });
+            expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamAbort' }));
         });
 
         it('does not persist tool results when the origin closes during a tool call', async () => {

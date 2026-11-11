@@ -38,12 +38,12 @@ global.chrome = {
 const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 
 // Extract the functions we want to test
-const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint };';
+const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint };';
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'isMessagePersistable',
     isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + laiMainCode + laiMainExports
 );
 
-let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, isMessagePersistable;
+let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId, getActiveStreamRequestId, isMessagePersistable;
 let setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint;
 
 describe('lai-main.js', () => {
@@ -70,6 +70,9 @@ describe('lai-main.js', () => {
         resetStreamTracking = exports.resetStreamTracking;
         clearStreamingRecipient = exports.clearStreamingRecipient;
         finaliseStreamRecipient = exports.finaliseStreamRecipient;
+        messageProcessor = exports.messageProcessor;
+        setActiveStreamRequestId = exports.setActiveStreamRequestId;
+        getActiveStreamRequestId = exports.getActiveStreamRequestId;
         isMessagePersistable = exports.isMessagePersistable;
         setMarkdownSource = exports.setMarkdownSource;
         getMarkdownSource = exports.getMarkdownSource;
@@ -160,6 +163,23 @@ describe('lai-main.js', () => {
 
             expect(globalThis.localAIHelpers.getLastRawResponse()).toContain('"content":"Answer"');
             expect(globalThis.localAIHelpers.dumpLastRawResponse()).toContain('"content":"Answer"');
+        });
+    });
+
+    describe('stream request identity', () => {
+        it.each(['streamData', 'streamEnd', 'streamAbort', 'streamError'])('ignores foreign and missing %s messages', async (action) => {
+            setActiveStreamRequestId('own');
+            const before = document.body.innerHTML;
+            await expect(messageProcessor({ action, requestId: 'other' }, {})).resolves.toEqual({ requestId: null });
+            await expect(messageProcessor({ action }, {})).resolves.toEqual({ requestId: null });
+            expect(document.body.innerHTML).toBe(before);
+        });
+
+        it.each(['streamEnd', 'streamAbort', 'streamError'])('acknowledges and clears its own %s terminal message', async (action) => {
+            document.body.innerHTML = '<div class="lai-ai-input"><span class="lai-input-text" id="laiActiveAiInput"></span></div><textarea id="laiUserInput"></textarea><button id="laiAbort"></button>';
+            setActiveStreamRequestId('own');
+            await expect(messageProcessor({ action, requestId: 'own', response: JSON.stringify({ message: { content: '' } }) }, {})).resolves.toEqual({ requestId: 'own' });
+            expect(getActiveStreamRequestId()).toBeNull();
         });
     });
 

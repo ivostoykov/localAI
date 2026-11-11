@@ -1,5 +1,12 @@
 # Local AI - Changelog
 
+## [1.29.91] - 2026-11-11 - latest
+
+### Streaming
+
+- Model streams continue while a page navigation temporarily removes the content script; the completed response is still saved to its chat session (#39)
+- Stream delivery is scoped to the prompt request, so an earlier page's reply cannot render into a later page's chat
+
 ## [1.29.90] - 2026-11-10 - latest
 
 ### Dependencies
