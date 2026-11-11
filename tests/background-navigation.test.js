@@ -147,6 +147,21 @@ describe('background.js navigation lifecycle', () => {
         expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'aborted' }), true);
     });
 
+    it('removes the closed tab binding and request state and leaves other tabs alone', async () => {
+        const { deps } = createDeps([]);
+        let onRemoved;
+        deps.chrome.tabs.onRemoved = { addListener: fn => { onRemoved = fn; } };
+        deps.chrome.tabs.query = vi.fn(async () => []);
+        deps.chrome.storage = { local: { get: vi.fn(async () => ({})), remove: vi.fn() } };
+        registerOnRemoved(deps);
+
+        deps.openTabs.delete(1);
+        await onRemoved(1);
+
+        expect(deps.tabState.remove.mock.calls).toEqual([[1]]);
+        expect(deps.streamRequestState.removeForTab.mock.calls).toEqual([[1]]);
+    });
+
     it('records genuine errors and sends a request-scoped stream error', async () => {
         const { deps } = createDeps([]);
         deps.consumeStreamResponse.mockRejectedValueOnce(new Error('model failed'));

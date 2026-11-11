@@ -228,6 +228,113 @@ describe('background context never reports tab bindings (#40, #29)', () => {
     });
 });
 
+describe('tab state follow-ups (#40 review)', () => {
+    it('refuses to remove the stored state of a request that is still live', async () => {
+        const { deps, entries } = createHandlerDeps({
+            'laiStreamRequest:r1': { requestId: 'r1', tabId: 1, sessionId: 's1', status: 'streaming', content: 'x', thinking: '', seq: 1, model: 'm', updatedAt: 1 }
+        });
+        deps.liveStreamStates.set('r1', { requestId: 'r1' });
+        const handlers = loadBackgroundHandlers(deps);
+
+        await handlers.removeStreamRequestStateForSender({ requestId: 'r1' }, { tab: { id: 1 } });
+
+        expect(entries['laiStreamRequest:r1']).toBeDefined();
+        expect(deps.streamRequestState.remove).not.toHaveBeenCalled();
+    });
+
+    it('keeps two tabs apart when both read their startup state concurrently', async () => {
+        const { deps } = createHandlerDeps({
+            'laiStreamRequest:r1': { requestId: 'r1', tabId: 1, sessionId: 's1', status: 'complete', content: 'one', thinking: '', seq: 2, model: 'm', updatedAt: 5 },
+            'laiStreamRequest:r2': { requestId: 'r2', tabId: 2, sessionId: 's2', status: 'aborted', content: 'two', thinking: '', seq: 4, model: 'm', updatedAt: 6 }
+        });
+        const handlers = loadBackgroundHandlers(deps);
+        await Promise.all([
+            handlers.updateTabBindingForSender({ sessionId: 's1', panelOpen: true }, { tab: { id: 1 } }),
+            handlers.updateTabBindingForSender({ sessionId: 's2', panelOpen: false }, { tab: { id: 2 } })
+        ]);
+
+        const [first, second, third] = await Promise.all([
+            handlers.readTabStartupStateForSender({ tab: { id: 1 } }),
+            handlers.readTabStartupStateForSender({ tab: { id: 2 } }),
+            handlers.readTabStartupStateForSender({ tab: { id: 3 } })
+        ]);
+
+        expect(first).toMatchObject({ tab: { tabId: 1, sessionId: 's1', panelOpen: true }, request: { requestId: 'r1', content: 'one' } });
+        expect(second).toMatchObject({ tab: { tabId: 2, sessionId: 's2', panelOpen: false }, request: { requestId: 'r2', content: 'two' } });
+        expect(third).toEqual({ tab: null, request: null });
+    });
+
+    it('sends nothing from the background context, where chrome.tabs exists', async () => {
+        const sendMessage = vi.fn(async () => undefined);
+        const { reportTabBinding } = loadTabStateModule({ runtime: { sendMessage }, tabs: { query: vi.fn() } });
+
+        await reportTabBinding({ sessionId: 's1' });
+
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('sends the update from a content script, where chrome.tabs is absent', async () => {
+        const sendMessage = vi.fn(async () => undefined);
+        const { reportTabBinding } = loadTabStateModule({ runtime: { sendMessage } });
+
+        await reportTabBinding({ sessionId: 's1' });
+
+        expect(sendMessage).toHaveBeenCalledWith({ action: 'updateTabState', sessionId: 's1' });
+    });
+
+    describe('session identity changes report the binding from sessions.js', () => {
+        const loadSessionsWithReporter = (reportTabBinding) => {
+            const chrome = {
+                runtime: { sendMessage: vi.fn(async () => undefined) },
+                storage: { local: createStorage({}), session: createStorage({}) }
+            };
+            return new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', 'crypto', 'reportTabBinding',
+                `${sessionsCode}; return { createNewSession, getSession, setActiveSessionId, deleteActiveSessionId, getOrCreateActiveSessionId, getActiveSessionId };`
+            )(chrome, { name: 'Local AI helper' }, () => 'test', 'LAI_SESSIONS', 'LAI_ACTIVE_SESSION_ID', 'LAI_USER_COMMANDS', 'LAI_OPTIONS', 'LAI_ACTIVE_PAGE', [], global.crypto, reportTabBinding);
+        };
+
+        it('reports a new id once and not again while it is unchanged', async () => {
+            const report = vi.fn(async () => undefined);
+            const sessions = loadSessionsWithReporter(report);
+
+            const sessionId = await sessions.getOrCreateActiveSessionId();
+            await sessions.setActiveSessionId(sessionId);
+            await sessions.getOrCreateActiveSessionId();
+
+            expect(report.mock.calls).toEqual([[{ sessionId }]]);
+        });
+
+        it('reports sessions created implicitly by createNewSession and getSession', async () => {
+            const report = vi.fn(async () => undefined);
+            const sessions = loadSessionsWithReporter(report);
+
+            const created = await sessions.createNewSession('Attachment Session');
+            await sessions.deleteActiveSessionId();
+            const implicit = await sessions.getSession();
+
+            expect(report.mock.calls).toEqual([
+                [{ sessionId: created.id }],
+                [{ sessionId: null }],
+                [{ sessionId: implicit.id }]
+            ]);
+        });
+
+        it('reports null once when the active session is dropped and stays silent when there was none', async () => {
+            const report = vi.fn(async () => undefined);
+            const sessions = loadSessionsWithReporter(report);
+
+            await sessions.deleteActiveSessionId();
+            expect(report).not.toHaveBeenCalled();
+
+            await sessions.setActiveSessionId('s1');
+            await sessions.deleteActiveSessionId();
+            await sessions.deleteActiveSessionId();
+
+            expect(report.mock.calls).toEqual([[{ sessionId: 's1' }], [{ sessionId: null }]]);
+        });
+    });
+});
+
 describe('tab-state wiring (#40)', () => {
     const readJson = file => JSON.parse(fs.readFileSync(path.join(root, file), 'utf-8'));
 

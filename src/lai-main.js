@@ -4,7 +4,6 @@ let activeStreamRequestId = null;
 let activeStreamSeq = 0;
 let streamResyncInFlight = false;
 const ignoredForeignRequestIds = new Set();
-let restoredTabSessionId = null;
 
 function initRibbonWithRetry(deadline) {
     if (deadline < Date.now()) {
@@ -1416,7 +1415,8 @@ async function finaliseActiveStreamFromSnapshot(snapshot) {
     activeStreamRequestId = null;
 
     if (!snapshot || snapshot.status === 'complete') {
-        const session = restoredTabSessionId ? await getActiveSessionById(restoredTabSessionId) : null;
+        const sessionId = await getActiveSessionId();
+        const session = sessionId ? await getActiveSessionById(sessionId) : null;
         if (session) { await renderSessionHistoryMessages(session); }
     } else if (snapshot.status === 'aborted') {
         await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
@@ -1424,10 +1424,15 @@ async function finaliseActiveStreamFromSnapshot(snapshot) {
         renderStreamSnapshot(recipient, snapshot);
         laiHandleStreamActions('Stream Error', recipient);
         if (snapshot.error) { showMessage(snapshot.error, 'error'); }
-        resetStatusbar();
     }
 
+    resetStreamControls();
     if (requestId) { await acknowledgeTabRequestSnapshot(requestId); }
+}
+
+function resetStreamControls() {
+    laiHandleStreamActions('Stream controls reset');
+    resetStatusbar();
 }
 
 async function resyncActiveStreamFromSnapshot() {
@@ -1510,9 +1515,20 @@ async function presentTerminalRequestSnapshot(snapshot) {
     } else {
         laiHandleStreamActions('Stream Error', recipient);
         if (snapshot.error) { showMessage(snapshot.error, 'error'); }
-        resetStatusbar();
     }
+    resetStreamControls();
     await acknowledgeTabRequestSnapshot(snapshot.requestId);
+}
+
+// A bfcache-restored instance may still hold a session the tab is no longer bound to.
+async function unbindStaleTabSession() {
+    const hadSession = !!(await getActiveSessionId());
+    await deleteActiveSessionId();
+    if (hadSession) {
+        clearChatHistoryUI();
+        clearAttachments();
+    }
+    resetStreamControls();
 }
 
 /**
@@ -1532,25 +1548,18 @@ async function restoreTabSessionFromBackground() {
     const binding = startup?.tab;
     const initialSnapshot = startup?.request ?? null;
     if (!binding?.sessionId) {
-        restoredTabSessionId = null;
-        await deleteActiveSessionId();
-        clearChatHistoryUI();
-        laiHandleStreamActions('Session reset');
+        await unbindStaleTabSession();
         return;
     }
 
     const session = await getActiveSessionById(binding.sessionId);
     if (!session) {
-        restoredTabSessionId = null;
         await reportTabBinding({ sessionId: null });
-        await deleteActiveSessionId();
-        clearChatHistoryUI();
-        laiHandleStreamActions('Session reset');
+        await unbindStaleTabSession();
         return;
     }
 
     await setActiveSessionId(binding.sessionId);
-    restoredTabSessionId = binding.sessionId;
     await reportTabBinding({ sessionId: binding.sessionId });
     await renderSessionHistoryMessages(session);
 

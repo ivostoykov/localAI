@@ -6,15 +6,17 @@
 
 - Navigating within a tab now restores its panel state, conversation and an in-progress reply without sharing them with another tab (#40)
 - Captured page context is refreshed for a different document in the same tab; fragment-only URL changes retain it
+- A reply that ends while the next page is loading is shown from the saved conversation; an aborted or failed one keeps its partial text and marker
+- Returning to a page through the browser's back/forward cache re-synchronises its panel with the tab's current session
 
-## [1.29.91] - 2026-11-11 - latest
+## [1.29.91] - 2026-11-11
 
 ### Streaming
 
 - Model streams continue while a page navigation temporarily removes the content script; the completed response is still saved to its chat session (#39)
 - Stream delivery is scoped to the prompt request, so an earlier page's reply cannot render into a later page's chat
 
-## [1.29.90] - 2026-11-10 - latest
+## [1.29.90] - 2026-11-10
 
 ### Dependencies
 

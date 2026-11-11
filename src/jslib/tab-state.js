@@ -67,7 +67,14 @@ class TabStateStore {
     }
 }
 
+// chrome.tabs is not exposed to content scripts, which makes it the discriminator for
+// the background (service worker in Chrome, event page with a window in Firefox).
+function isTabStateBackgroundContext() {
+    return typeof chrome?.tabs?.query === 'function';
+}
+
 async function reportTabBinding(update = {}) {
+    if (isTabStateBackgroundContext()) { return; }
     try {
         await chrome.runtime.sendMessage({ action: 'updateTabState', ...update });
         if (chrome.runtime.lastError) { throw new Error(chrome.runtime.lastError.message); }
