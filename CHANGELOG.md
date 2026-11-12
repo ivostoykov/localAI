@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.29.95] - 2026-11-12 - latest
+## [1.29.96] - 2026-11-12 - latest
+
+### Chat history
+
+- User prompts are rendered as Markdown in the chat history, identically when submitted and when a session is restored (#41)
+- `Edit` and `Add this prompt as User Command` use the original prompt text instead of the rendered text
+- Code block titles in user prompts copy the code, as in AI replies
+
+## [1.29.95] - 2026-11-12
 
 ### Page extraction
 

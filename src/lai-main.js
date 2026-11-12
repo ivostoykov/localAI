@@ -621,7 +621,7 @@ async function onPromptTextAreaKeyDown(e) {
         }
 
         // update UI
-        await addInputCardToUIChatHistory(userInput, 'user');
+        await renderUserPromptCard(userInput);
         await addInputCardToUIChatHistory('', 'ai');
 
         try {
@@ -821,7 +821,7 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
             switch (action) {
                 case "add":
                     const thisPromptContainer = e.target.closest('.lai-chat-history');
-                    prompt2UserCommand(thisPromptContainer.querySelector('.lai-input-text').textContent);
+                    prompt2UserCommand(getUserPromptSource(thisPromptContainer.querySelector('.lai-input-text')));
                     break;
                 case 'copy':
                     await copyChatElementContent(e, type);
@@ -845,13 +845,19 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
         });
     });
 
-    if (type === 'ai') {
-        lastChatText.addEventListener('click', function (e) { laiSourceTextClicked(e); });
-    }
+    lastChatText.addEventListener('click', function (e) { laiSourceTextClicked(e); });
 
     messageList.scrollTop = messageList.scrollHeight;
 
     return lastChatText;
+}
+
+async function renderUserPromptCard(text, index = -1) {
+    const el = await addInputCardToUIChatHistory('', 'user', index);
+    if (!el) { return; }
+    await parseAndRender(text, el, { streamReply: false });
+    setMarkdownSource(el, text);
+    return el;
 }
 
 function insertIntoDocument(e, type) {
@@ -978,6 +984,14 @@ function setMarkdownSource(element, markdown = '') {
     }
 }
 
+
+function getUserPromptSource(element) {
+    if (typeof element?._laiMarkdownSource === 'string' && element._laiMarkdownSource.trim()) {
+        return element._laiMarkdownSource;
+    }
+    return element?.innerText || element?.textContent || '';
+}
+
 function getMarkdownSource(element) {
     if (typeof element?._laiMarkdownSource === 'string' && element._laiMarkdownSource.trim()) {
         return element._laiMarkdownSource;
@@ -1014,7 +1028,7 @@ async function copyChatElementContentAsMarkdown(e, type) {
 
 async function editUserInput(e, type) {
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
-    const textContent = element.innerText || '';
+    const textContent = getUserPromptSource(element);
     const container = element.closest("#laiChatMessageList");
     const currentSession = await getActiveSession();
     const idx = await findElementHistoryIndex(element);

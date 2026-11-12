@@ -229,6 +229,14 @@ local-ai *,
     left: -4px;
 }
 
+.lai-user-input .lai-input-text p:first-child {
+    margin-top: 0;
+}
+
+.lai-user-input .lai-input-text p:last-child {
+    margin-bottom: 0;
+}
+
 .lai-aborted-text {
     color: #bf6b6b;
 }

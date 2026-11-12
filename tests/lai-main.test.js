@@ -1294,3 +1294,176 @@ describe('tab session restoration (#40)', () => {
         ]);
     });
 });
+
+describe('user prompt Markdown rendering (#41)', () => {
+    const solomdCode = fs.readFileSync(
+        path.join(__dirname, '../src/jslib/solomd2html.js'),
+        'utf-8'
+    );
+    const loadParser = () => new Function(
+        'document',
+        'DocumentFragment',
+        'CustomEvent',
+        'Node',
+        'navigator',
+        solomdCode + '; return parseAndRender;'
+    )(global.document, global.window.DocumentFragment, global.window.CustomEvent, global.window.Node, global.navigator);
+
+    const executeUserPromptCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
+        tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\nlet aiUserCommands = [];\n' + laiMainCode +
+        '; return { renderUserPromptCard, getUserPromptSource, onPromptTextAreaKeyDown, editUserInput };'
+    );
+
+    let renderUserPromptCard, getUserPromptSource, onPromptTextAreaKeyDown, editUserInput;
+    let sendMessage;
+    let writeText;
+
+    const userCard = () => Array.from(document.querySelectorAll('.lai-user-input')).pop();
+    const userText = () => userCard()?.querySelector('.lai-input-text');
+
+    const submit = async (value) => {
+        const textarea = document.getElementById('laiUserInput');
+        textarea.value = value;
+        await onPromptTextAreaKeyDown({
+            key: 'Enter',
+            code: 'Enter',
+            shiftKey: false,
+            target: textarea,
+            preventDefault: () => {},
+            stopPropagation: () => {},
+            stopImmediatePropagation: () => {}
+        });
+    };
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getSideBar = vi.fn(() => document.body);
+        global.getOptions = vi.fn(async () => ({ aiUrl: 'http://localhost:11434/api/chat' }));
+        global.getModelModifiers = vi.fn(() => null);
+        global.getOrCreateActiveSessionId = vi.fn(async () => 'session-41');
+        global.getActiveSession = vi.fn(async () => null);
+        global.setActiveSession = vi.fn(async () => {});
+        global.deleteActiveSession = vi.fn(async () => {});
+        global.reportTabBinding = vi.fn(async () => {});
+        global.parseAndRender = loadParser();
+        writeText = vi.fn(async () => undefined);
+        Object.defineProperty(global.navigator, 'clipboard', { value: { writeText }, configurable: true });
+        sendMessage = vi.fn(async () => ({ status: 'success' }));
+        global.chrome = { runtime: { sendMessage, onMessage: { addListener: vi.fn() }, getURL: path => `chrome-extension://test/${path}` } };
+
+        document.body.innerHTML = `
+            <div id="laiSidebar">
+                <template id="editorTemplate">
+                    <div id="userCommandEditor" class="user-command-editor">
+                        <div class="help-close-btn" title="Close">✖</div>
+                        <div class="row"><input type="text" id="commandName" placeholder="Enter command without spaces..."></div>
+                        <div class="row"><input type="text" id="commandDescription" placeholder="Optional"></div>
+                        <div class="command-row"><textarea id="commandBody" placeholder="Enter Prompt..."></textarea></div>
+                        <button>Save</button>
+                    </div>
+                </template>
+            </div>
+            <div id="laiSuggestionBox" class="invisible"></div>
+            <div id="laiSysIntructContainer" class="active"></div>
+            <button id="laiAbort" class="invisible"></button>
+            <div id="attachContainer"></div>
+            <div id="panel">
+                <div id="laiChatMessageList"></div>
+                <textarea id="laiUserInput"></textarea>
+            </div>
+            <div id="laiCopyHint" class="invisible"></div>
+        `;
+
+        ({ renderUserPromptCard, getUserPromptSource, onPromptTextAreaKeyDown, editUserInput } =
+            executeUserPromptCode(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, global.isMessagePersistable));
+    });
+
+    it('renders the Markdown structure of a submitted prompt immediately and sends the original text to the model', async () => {
+        const prompt = [
+            '## Heading',
+            '',
+            '- one',
+            '- two',
+            '',
+            '**bold** [link](https://example.com) `code`',
+            '',
+            '```js',
+            'console.log("hi")',
+            '```'
+        ].join('\n');
+
+        await submit(prompt);
+
+        expect(userText().querySelector('h2').textContent).toBe('Heading');
+        expect([...userText().querySelectorAll('ul li')].map(li => li.textContent)).toEqual(['one', 'two']);
+        expect(userText().querySelector('p strong').textContent).toBe('bold');
+        expect(userText().querySelector('p a[href="https://example.com"]').textContent).toBe('link');
+        expect(userText().querySelector('p code').textContent).toBe('code');
+        expect(userText().querySelector('.code-block code').textContent).toBe('console.log("hi")');
+        expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'fetchData',
+            data: { userInput: prompt }
+        }));
+    });
+
+    it('keeps plain prompts as plain text with one block line per line', async () => {
+        await submit('Just a simple question');
+        expect([...userText().querySelectorAll('p')].map(p => p.textContent)).toEqual(['Just a simple question']);
+        expect(userText().querySelectorAll('br, ul, h1, h2, h3, pre').length).toBe(0);
+
+        await submit('line one\nline two\nline three');
+        expect([...userText().querySelectorAll('p')].map(p => p.textContent)).toEqual(['line one', 'line two', 'line three']);
+    });
+
+    it('shows embedded unsafe HTML literally without creating elements', async () => {
+        await submit('<img src=x onerror=alert(1)>\n<script>alert(1)</script>\nplain <b>text</b> here');
+
+        expect(userText().querySelectorAll('img, script, b').length).toBe(0);
+        expect(userText().textContent).toContain('<img src=x onerror=alert(1)>');
+        expect(userText().textContent).toContain('<script>alert(1)</script>');
+        expect(userText().textContent).toContain('plain <b>text</b> here');
+    });
+
+    it('restores the byte-for-byte original prompt through Edit after a fresh submission', async () => {
+        const original = '## Task\n\nExplain this  \n- **item** with trailing space  \n\nend `code`';
+        await submit(original);
+
+        await editUserInput({ target: userCard().querySelector('[data-type="edit"]') }, 'user');
+
+        expect(document.getElementById('laiUserInput').value).toBe(original);
+    });
+
+    it('puts the original Markdown source into Add as User Command', async () => {
+        const original = '## Task\n\n- **item**  \n\nend `code`';
+        await submit(original);
+
+        userCard().querySelector('[data-type="add"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+
+        expect(document.querySelector('#userCommandEditor #commandBody').value).toBe(original);
+    });
+
+    it('copies code-block content from a user card when its title is clicked', async () => {
+        await submit('```\nsecret user code\n```');
+        const pre = userText().querySelector('pre');
+        const title = document.createElement('span');
+        title.className = 'lai-source-title';
+        pre.appendChild(title);
+
+        title.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+        await Promise.resolve();
+
+        expect(writeText).toHaveBeenCalledWith(expect.stringContaining('secret user code'));
+    });
+
+    it('returns the recorded source and falls back to the rendered text', () => {
+        const withSource = document.createElement('span');
+        withSource._laiMarkdownSource = '# original';
+        expect(getUserPromptSource(withSource)).toBe('# original');
+
+        const withoutSource = document.createElement('span');
+        withoutSource.textContent = 'rendered text';
+        expect(getUserPromptSource(withoutSource)).toBe('rendered text');
+    });
+});
