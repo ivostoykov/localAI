@@ -360,7 +360,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Call this when user references 'current page', 'current tab', 'this page', 'this tab', 'the page', 'the tab', or any variation, including phrases like 'using the current page', 'extract from this page', 'what does this page say about'. In browser context, 'page' and 'tab' are interchangeable. Returns clean visible text content from the active browser tab including all text, data, and information visible on the page. This should satisfy most extraction requests. Only if specific data is still missing after using this tool should you call get_enhanced_page_content next. Do NOT use web_search for current page - use this instead.",
+            "description": "Call this when user references 'current page', 'current tab', 'this page', 'this tab', 'the page', 'the tab', or any variation, including phrases like 'using the current page', 'extract from this page', 'what does this page say about'. In browser context, 'page' and 'tab' are interchangeable. Returns clean visible text content from the active browser tab including all text, data, and information visible on the page. This should satisfy most extraction requests. Only if specific data is still missing after using this tool should you call get_enhanced_page_content next. Do NOT use web_search for current page - use this instead. The PAGE METADATA header reports 'Content scope' and 'Coverage' (extracted versus visible page characters); when coverage is low, say that the answer is based on partial page content.",
             "name": "get_current_tab_page_content",
             "parameters": {
                 "properties": {},
@@ -374,7 +374,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Call this ONLY if get_current_tab_page_content left gaps in required information. Returns enhanced page content with preserved structure, links in [text](url) format, tables, lists, code blocks, and semantic HTML. More comprehensive than basic text extraction. If this still doesn't satisfy all requirements, call get_page_metadata as last resort.",
+            "description": "Call this ONLY if get_current_tab_page_content left gaps in required information. Returns enhanced page content with preserved structure, links in [text](url) format, tables, lists, code blocks, and semantic HTML. More comprehensive than basic text extraction. If this still doesn't satisfy all requirements, call get_page_metadata as last resort. The PAGE METADATA header reports 'Content scope' and 'Coverage' (extracted versus visible page characters); when coverage is low, say that the answer is based on partial page content.",
             "name": "get_enhanced_page_content",
             "parameters": {
                 "properties": {},
@@ -590,7 +590,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Search the web using the user's configured search engine. Opens a background browser tab, fetches the search results page, and returns extracted content from the top result pages. Use when the user explicitly asks to search the web, look something up online, or find information not available on the current page. Do NOT use for current page content — use get_current_tab_page_content instead.",
+            "description": "Search the web using the user's configured search engine. Opens a background browser tab, fetches the search results page, and returns extracted content from the top result pages. Use when the user explicitly asks to search the web, look something up online, or find information not available on the current page. Do NOT use for current page content — use get_current_tab_page_content instead. A result ending with '[TRUNCATED: ...]' was cut to the stated length.",
             "name": "search_web",
             "parameters": {
                 "properties": {
@@ -628,7 +628,7 @@ const INTERNAL_TOOL_DEFINITIONS = [
     },
     {
         "function": {
-            "description": "Extract only the main content area (article/blog post) without navigation, sidebars, ads, or footer. Use when user asks to summarise, analyse, or understand the main article/post. More focused than get_current_tab_page_content. If no main content area is detected, the whole page is returned, including navigation and footer, and the result starts with 'CONTENT SCOPE: whole page (no main content region detected)'.",
+            "description": "Extract only the main content area (article/blog post) without navigation, sidebars, ads, or footer. Use when user asks to summarise, analyse, or understand the main article/post. More focused than get_current_tab_page_content. If no main content area is detected, the whole page is returned, including navigation and footer, and the result starts with 'CONTENT SCOPE: whole page (no main content region detected)'. The PAGE METADATA header reports 'Content scope' and 'Coverage' (extracted versus visible page characters); when coverage is low, say that the answer is based on partial page content.",
             "name": "get_main_content",
             "parameters": {
                 "properties": {},

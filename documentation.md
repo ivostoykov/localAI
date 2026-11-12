@@ -124,6 +124,10 @@ A helping table with short description is available [here](https://github.com/ol
 <img src="Chrome/img/tools.svg" height="30" alt="Tools"/> - Enable or disable the tools. Also avaliable in the [Options](#options) page - see [Tools](#functions-tools).
 
 
+Page-reading tools include `Content scope` and `Coverage` in the metadata sent to the model. Scope identifies the selected main content region or a whole-page fallback. Coverage compares the approximate number of extracted text characters, after hidden content and your filters are removed, with the visible page text. A note flags coverage below 50%, and the model is instructed to explain when its answer relies on partial page content. LinkedIn job adverts report their site-specific scope without a percentage.
+
+Web search summaries longer than 2,000 characters end with `[TRUNCATED: first 2000 of N characters shown]`, where `N` is the original length. This marks the existing search-summary limit; it does not introduce a limit on page-reading tools.
+
 # Context menu
 
 ![Context menu](media/context_menu.png)

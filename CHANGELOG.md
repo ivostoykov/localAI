@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.29.96] - 2026-11-12 - latest
+## [1.29.97] - 2026-11-12 - latest
+
+### Page extraction
+
+- Page content now reports its scope and approximate coverage in the metadata sent to the model, with a note when less than half of the visible page is included (#35)
+- LinkedIn job adverts identify their site-specific scope without claiming whole-page coverage
+- Web search summaries now state when they have been cut to the existing 2,000-character limit
+
+## [1.29.96] - 2026-11-12
 
 ### Chat history
 

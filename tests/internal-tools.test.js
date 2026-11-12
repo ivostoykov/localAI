@@ -14,6 +14,20 @@ const executeInternalToolsCode = new Function(
 );
 
 describe('internal-tools.js', () => {
+    it.each(['get_current_tab_page_content', 'get_enhanced_page_content', 'get_main_content'])(
+        'explains coverage in %s', name => {
+            const { INTERNAL_TOOL_DEFINITIONS } = executeInternalToolsCode();
+            const tool = INTERNAL_TOOL_DEFINITIONS.find(tool => tool.function.name === name);
+            expect(tool.function.description).toContain("The PAGE METADATA header reports 'Content scope' and 'Coverage' (extracted versus visible page characters); when coverage is low, say that the answer is based on partial page content.");
+        }
+    );
+
+    it('explains search result truncation', () => {
+        const { INTERNAL_TOOL_DEFINITIONS } = executeInternalToolsCode();
+        const tool = INTERNAL_TOOL_DEFINITIONS.find(tool => tool.function.name === 'search_web');
+        expect(tool.function.description).toContain("A result ending with '[TRUNCATED: ...]' was cut to the stated length.");
+    });
+
     it('uses Ollama-compatible function tool definitions', () => {
         const { INTERNAL_TOOL_DEFINITIONS } = executeInternalToolsCode();
 

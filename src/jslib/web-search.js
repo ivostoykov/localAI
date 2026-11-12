@@ -5,6 +5,7 @@
  */
 
 const SEARCH_TAB_KEY = 'searchTabId';
+const SEARCH_SUMMARY_MAX_CHARS = 2000;
 
 async function getOrCreateSearchTab() {
     const stored = await chrome.storage.session.get(SEARCH_TAB_KEY);
@@ -167,7 +168,10 @@ async function searchWeb(query) {
     for (const url of resultUrls) {
         const { content } = await fetchPageSummary(searchTabId, url);
         if (content?.trim()) {
-            summaries.push(`## ${url}\n\n${content.slice(0, 2000)}`);
+            const summary = content.length > SEARCH_SUMMARY_MAX_CHARS
+                ? `${content.slice(0, SEARCH_SUMMARY_MAX_CHARS)}\n[TRUNCATED: first ${SEARCH_SUMMARY_MAX_CHARS} of ${content.length} characters shown]`
+                : content;
+            summaries.push(`## ${url}\n\n${summary}`);
         }
     }
 
