@@ -212,6 +212,23 @@ describe('web-search.js', () => {
     });
 
     describe('searchWeb', () => {
+        it.each([37, 2000, 2456])('reports truncation only for summaries above the cap (%s characters)', async length => {
+            vi.spyOn(chrome.tabs, 'create').mockResolvedValue({ id: 42 });
+            vi.spyOn(chrome.tabs, 'update').mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId });
+            });
+            vi.spyOn(chrome.scripting, 'executeScript')
+                .mockResolvedValueOnce([{ result: 'Search results' }])
+                .mockResolvedValueOnce([{ result: ['https://example.com/article'] }]);
+            const content = 'a'.repeat(length);
+            vi.spyOn(chrome.tabs, 'sendMessage').mockResolvedValue({ result: content });
+            const output = await searchWeb('test');
+            const summary = length > 2000
+                ? `${content.slice(0, 2000)}\n[TRUNCATED: first 2000 of ${length} characters shown]`
+                : content;
+            expect(output).toBe(`# Web Search: "test"\nEngine: DuckDuckGo\n\n## https://example.com/article\n\n${summary}`);
+        });
+
         it('returns early for an empty query', async () => {
             expect(await searchWeb('')).toBe('No search query provided.');
         });
