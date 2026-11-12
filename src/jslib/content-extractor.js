@@ -201,6 +201,64 @@ function isDataTable(table) {
   return rows >= 10 || columns > 4 || rows * columns > 10;
 }
 
+const INLINE_FALLBACK_TAGS = new Set([
+  'A', 'ABBR', 'B', 'BDI', 'BDO', 'BIG', 'CITE', 'CODE', 'DATA', 'DEL', 'DFN',
+  'EM', 'FONT', 'I', 'INS', 'KBD', 'LABEL', 'MARK', 'NOBR', 'Q', 'RP', 'RT',
+  'RUBY', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRIKE', 'STRONG', 'SUB', 'SUP',
+  'TIME', 'TT', 'U', 'VAR', 'WBR', 'IMG', 'PICTURE', 'SVG', 'BUTTON', 'INPUT',
+  'SELECT', 'TEXTAREA'
+]);
+
+function isInlineLevelElement(element) {
+  const display = typeof getClonedElementDisplay === 'function' ? getClonedElementDisplay(element) : undefined;
+  if (typeof display === 'string' && display) {
+    return display.startsWith('inline') || display === 'contents' || display.startsWith('ruby');
+  }
+  const tag = element.tagName.toUpperCase();
+  return INLINE_FALLBACK_TAGS.has(tag) || tag.includes('-');
+}
+
+function getBlockContainer(node, root) {
+  let ancestor = node.parentElement;
+  while (ancestor && ancestor !== root && isInlineLevelElement(ancestor)) {
+    ancestor = ancestor.parentElement;
+  }
+  return ancestor || root;
+}
+
+function renderInlineLine(segments) {
+  const wrap = (text, render) => {
+    const trimmed = text.trim();
+    if (!trimmed) return text;
+    return (text.startsWith(' ') ? ' ' : '') + render(trimmed) + (text.endsWith(' ') ? ' ' : '');
+  };
+  const pieces = [];
+  for (let i = 0; i < segments.length; i++) {
+    const { anchor, codeElement } = segments[i];
+    let text = segments[i].text;
+    if (codeElement) {
+      while (i + 1 < segments.length && segments[i + 1].codeElement === codeElement) {
+        text += segments[++i].text;
+      }
+      text = wrap(text, value => `\`${value}\``);
+    }
+    pieces.push({ text, anchor });
+  }
+  const rendered = [];
+  for (let i = 0; i < pieces.length; i++) {
+    const { anchor } = pieces[i];
+    let text = pieces[i].text;
+    if (anchor) {
+      while (i + 1 < pieces.length && pieces[i + 1].anchor === anchor) {
+        text += pieces[++i].text;
+      }
+      text = wrap(text, value => `[${value}](${new URL(anchor.getAttribute('href'), document.location.href).href})`);
+    }
+    rendered.push(text);
+  }
+  return rendered.join('').replace(/[ \t\n\r\f]+/g, ' ').trim();
+}
+
 /**
  * Enhanced text structure extraction with better formatting
  * @param {HTMLElement} domClone - Cleaned DOM
@@ -208,7 +266,6 @@ function isDataTable(table) {
  */
 function extractEnhancedTextStructure(domClone) {
   const structure = [];
-  const headings = ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
   let currentSection = {
     level: 0,
     title: '',
@@ -227,6 +284,46 @@ function extractEnhancedTextStructure(domClone) {
 
   const processedElements = new WeakSet();
 
+  let lineSegments = [];
+  let lineContainer = null;
+  let lineHeading = null;
+  let currentHeadingElement = null;
+
+  function flushLine() {
+    const text = renderInlineLine(lineSegments);
+    const heading = lineHeading;
+    lineSegments = [];
+    lineContainer = null;
+    lineHeading = null;
+    if (!text) return;
+    if (heading) {
+      if (heading === currentHeadingElement) {
+        currentSection.title += ` ${text}`;
+      } else {
+        if (currentSection.title || currentSection.content.length > 0 || currentSection.lists.length > 0 ||
+            currentSection.tables.length > 0 || currentSection.codeBlocks.length > 0 ||
+            currentSection.images.length > 0) {
+          structure.push(currentSection);
+        }
+        const level = parseInt(heading.tagName.charAt(1));
+        currentSection = {
+          level,
+          title: text,
+          content: [],
+          lists: [],
+          tables: [],
+          codeBlocks: [],
+          images: [],
+          blocks: []
+        };
+        currentHeadingElement = heading;
+      }
+    } else {
+      currentSection.content.push(text);
+      currentSection.blocks.push({ type: 'text', text });
+    }
+  }
+
   while (walker.nextNode()) {
     const node = walker.currentNode;
 
@@ -235,8 +332,11 @@ function extractEnhancedTextStructure(domClone) {
 
       if (isInsideProcessedElement(node, processedElements, domClone)) continue;
 
+      if (!isInlineLevelElement(node) || tag === 'BR') flushLine();
+
       // Handle lists
       if (tag === 'UL' || tag === 'OL') {
+        flushLine();
         const currentList = extractList(node);
         const list = { type: tag, items: currentList };
         currentSection.lists.push(list);
@@ -247,6 +347,7 @@ function extractEnhancedTextStructure(domClone) {
 
       // Handle tables
       if (tag === 'TABLE' && isDataTable(node)) {
+        flushLine();
         const currentTable = extractTable(node);
         currentSection.tables.push(currentTable);
         currentSection.blocks.push({ type: 'table', table: currentTable });
@@ -256,6 +357,8 @@ function extractEnhancedTextStructure(domClone) {
 
       // Handle code blocks
       if (tag === 'PRE' || tag === 'CODE') {
+        if (tag === 'CODE' && isInlineLevelElement(node)) continue;
+        flushLine();
         const code = node.textContent?.trim();
         if (code) {
           const block = {
@@ -273,6 +376,7 @@ function extractEnhancedTextStructure(domClone) {
       if (tag === 'IMG') {
         const alt = node.getAttribute('alt');
         const src = node.getAttribute('src');
+        if (alt) flushLine();
         if (alt || src) {
           const image = { alt: alt || '', src: src || '' };
           currentSection.images.push(image);
@@ -283,6 +387,7 @@ function extractEnhancedTextStructure(domClone) {
 
       // Handle figure captions
       if (tag === 'FIGCAPTION') {
+        flushLine();
         const caption = node.textContent?.trim();
         if (caption) {
           const text = `[Figure: ${caption}]`;
@@ -298,58 +403,41 @@ function extractEnhancedTextStructure(domClone) {
 
     // Text nodes
     if (node.nodeType === Node.TEXT_NODE) {
-      if (!hasVisibleText(node)) continue;
-
-      const parent = node.parentElement;
-
       if (isInsideProcessedElement(node, processedElements, domClone)) continue;
 
-      const parentTag = parent?.tagName || '';
-      let text = node.nodeValue.trim();
-
-      text = text.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
-      if (!text) continue;
-
-      const ariaContext = getARIAContext(parent, domClone);
-      if (ariaContext === null) continue;
-
-      if (ariaContext) text = ariaContext + text;
-
-      // Handle links with context
-      if (parentTag === 'A') {
-        const href = parent.getAttribute('href');
-        if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
-          const fullUrl = new URL(href, document.location.href).href;
-          text = `[${text}](${fullUrl})`;
-        }
-      }
-
-      // Handle headings
-      if (headings.includes(parentTag)) {
-        if (currentSection.content.length > 0 || currentSection.lists.length > 0 ||
-            currentSection.tables.length > 0 || currentSection.codeBlocks.length > 0 ||
-            currentSection.images.length > 0) {
-          structure.push(currentSection);
-        }
-        const level = parseInt(parentTag.charAt(1));
-        currentSection = {
-          level,
-          title: text,
-          content: [],
-          lists: [],
-          tables: [],
-          codeBlocks: [],
-          images: [],
-          blocks: []
-        };
+      const parent = node.parentElement;
+      let text = node.nodeValue.replace(/<!\[CDATA\[|\]\]>/g, '').replace(/[ \t\n\r\f]+/g, ' ');
+      const container = getBlockContainer(node, domClone);
+      const blank = !text || text === ' ';
+      if (blank) {
+        if (!lineSegments.length || container !== lineContainer) continue;
+        text = ' ';
       } else {
-        currentSection.content.push(text);
-        currentSection.blocks.push({ type: 'text', text });
+        if (!hasVisibleText(node)) continue;
+        const ariaContext = getARIAContext(parent, domClone);
+        if (ariaContext === null) continue;
+        if (ariaContext) text = ariaContext + text;
+        if (lineSegments.length > 0 && container !== lineContainer) flushLine();
+        lineContainer = container;
+        if (!lineSegments.length) {
+          const heading = parent.closest('h1,h2,h3,h4,h5,h6');
+          lineHeading = heading && domClone.contains(heading) ? heading : null;
+        }
       }
+
+      let anchor = parent.closest('a[href]');
+      const href = anchor?.getAttribute('href');
+      if (!anchor || !domClone.contains(anchor) || !href || href.startsWith('javascript:') || href.startsWith('#')) {
+        anchor = null;
+      }
+      let codeElement = parent.closest('code');
+      if (codeElement && !domClone.contains(codeElement)) codeElement = null;
+      lineSegments.push({ text, anchor, codeElement });
     }
   }
 
-  if (currentSection.content.length > 0 || currentSection.lists.length > 0 ||
+  flushLine();
+  if (currentSection.title || currentSection.content.length > 0 || currentSection.lists.length > 0 ||
       currentSection.tables.length > 0 || currentSection.codeBlocks.length > 0 ||
       currentSection.images.length > 0) {
     structure.push(currentSection);

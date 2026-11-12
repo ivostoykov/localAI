@@ -315,6 +315,7 @@ async function removeElementsBySelectors() {
   return domClone;
 }
 
+const CLONED_ELEMENT_DISPLAY = new WeakMap();
 const HIDDEN_ELEMENT_TEXT_ATTRIBUTES = ['alt', 'title', 'aria-label', 'aria-labelledby', 'aria-describedby', 'aria-description'];
 
 // Must run synchronously straight after cloneNode(): it pairs live and clone nodes by
@@ -338,6 +339,9 @@ function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => wind
   const classify = (live, copy) => {
     const style = getStyle(live);
     if (style?.display === 'none') {  return 'remove';  }
+    if (typeof style?.display === 'string' && style.display) {
+      CLONED_ELEMENT_DISPLAY.set(copy, style.display);
+    }
     if (isVisibilityHidden(live)) {  hiddenAttributeHosts.push(copy);  }
     if (style?.contentVisibility === 'hidden' && style.display !== 'contents' && style.display !== 'inline') {
       return 'empty';
@@ -384,6 +388,10 @@ function removeHiddenContentFromClone(liveRoot, cloneRoot, getStyle = el => wind
   hiddenNodes.forEach(node => node.remove());
   hiddenContentHosts.forEach(host => host.replaceChildren());
   console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Visibility filtering removed ${hiddenNodes.length} node(s), emptied ${hiddenContentHosts.length} element(s) and stripped text attributes from ${hiddenAttributeHosts.length} visibility:hidden element(s)`);
+}
+
+function getClonedElementDisplay(element) {
+  return CLONED_ELEMENT_DISPLAY.get(element);
 }
 
 function getARIAContext(element, rootElement) {

@@ -1,6 +1,14 @@
 # Local AI - Changelog
 
-## [1.29.94] - 2026-11-11 - latest
+## [1.29.95] - 2026-11-12 - latest
+
+### Page extraction
+
+- Inline text is joined using the live computed display, preserving spaces between inline elements while keeping line breaks at block boundaries and `<br>` (#36)
+- Inline code is rendered with backticks inside sentences; links spanning inline children are rendered as one Markdown link
+- Linked or formatted headings now open sections, including headings without body content
+
+## [1.29.94] - 2026-11-11
 
 ### Page extraction
 
