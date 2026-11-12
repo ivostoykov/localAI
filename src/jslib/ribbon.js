@@ -869,6 +869,11 @@ async function renderSessionHistoryMessages(session) {
             continue;
         }
 
+        if (role === 'user') {
+            await renderUserPromptCard(msg.content, i);
+            continue;
+        }
+
         const aiReplyTextElement = await addInputCardToUIChatHistory('', role, i);
         await parseAndRender(msg.content, aiReplyTextElement, { streamReply: false });
         setMarkdownSource(aiReplyTextElement, msg.content);
