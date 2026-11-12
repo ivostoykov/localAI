@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -25,6 +25,7 @@ const helperNames = [
     'removeAllExtensionInjectedElements',
     'removeElementsBySelectors',
     'removeHiddenContentFromClone',
+    'getClonedElementDisplay',
     'hasVisibleText',
     'getARIAContext'
 ];
@@ -32,13 +33,13 @@ const helperNames = [
 let filterConfig;
 const helpers = new Function(
     'loadFilteringConfig',
-    `${sliceConst(contentCode, 'HIDDEN_ELEMENT_TEXT_ATTRIBUTES')}\n${helperNames.map(n => sliceFunction(contentCode, n)).join('\n')}\nreturn { ${helperNames.join(', ')} };`
+    `${sliceConst(contentCode, 'CLONED_ELEMENT_DISPLAY')}\n${sliceConst(contentCode, 'HIDDEN_ELEMENT_TEXT_ATTRIBUTES')}\n${helperNames.map(n => sliceFunction(contentCode, n)).join('\n')}\nreturn { ${helperNames.join(', ')} };`
 )(async () => filterConfig);
 
 const extractor = new Function(
-    'getDocumentContentFiltered', 'hasVisibleText', 'getARIAContext',
+    'getDocumentContentFiltered', 'hasVisibleText', 'getARIAContext', 'getClonedElementDisplay',
     `${ceCode}\nreturn { getEnhancedPageContent };`
-)(helpers.getDocumentContentFiltered, helpers.hasVisibleText, helpers.getARIAContext);
+)(helpers.getDocumentContentFiltered, helpers.hasVisibleText, helpers.getARIAContext, helpers.getClonedElementDisplay);
 
 // jsdom has no layout engine and does not resolve content-visibility, so these
 // unit tests drive the pairing logic through declared styles. Real computed-style
@@ -177,6 +178,32 @@ describe('removeHiddenContentFromClone', () => {
         expect(words(clone)).toEqual(['Visible', 'Plain']);
     });
 
+    it('records display for the root, descendants and emptied hosts', () => {
+        const clone = filterClone('<span id="inline" data-style="display:inline">Text</span><section id="empty" data-style="display:flex;content-visibility:hidden">Hidden</section>');
+        expect(helpers.getClonedElementDisplay(clone)).toBe('block');
+        expect(helpers.getClonedElementDisplay(clone.querySelector('#inline'))).toBe('inline');
+        expect(helpers.getClonedElementDisplay(clone.querySelector('#empty'))).toBe('flex');
+        expect(clone.querySelector('#empty').textContent).toBe('');
+        expect(helpers.getClonedElementDisplay(document.body)).toBeUndefined();
+    });
+
+    it('does not record display for removed elements', () => {
+        document.body.innerHTML = '<span data-style="display:none">Hidden</span>';
+        const clone = document.body.cloneNode(true);
+        const removed = clone.firstElementChild;
+        helpers.removeHiddenContentFromClone(document.body, clone, declaredStyle);
+        expect(removed.parentElement).toBeNull();
+        expect(helpers.getClonedElementDisplay(removed)).toBeUndefined();
+    });
+
+    it('leaves absent or empty display values unknown', () => {
+        for (const style of [undefined, {}, { display: '' }]) {
+            const clone = document.body.cloneNode(true);
+            helpers.removeHiddenContentFromClone(document.body, clone, () => style);
+            expect(helpers.getClonedElementDisplay(clone)).toBeUndefined();
+        }
+    });
+
     it('tolerates missing roots', () => {
         expect(() => helpers.removeHiddenContentFromClone(null, null)).not.toThrow();
     });
@@ -222,6 +249,18 @@ describe('getDocumentContentFiltered', () => {
         const filtered = await helpers.getDocumentContentFiltered();
         expect(words(filtered)).toEqual(['Article', 'WidgetText']);
         expect(document.body.innerHTML).toBe(before);
+    });
+
+    it('uses live display when extracting a detached filtered clone', async () => {
+        document.body.innerHTML = '<main>one<span data-style="display:block">two</span>three<div data-style="display:inline"> four</div> five</main>';
+        const getStyle = vi.spyOn(window, 'getComputedStyle').mockImplementation(declaredStyle);
+        try {
+            const out = await extractor.getEnhancedPageContent();
+            expect(out.split('=== PAGE CONTENT ===\n\n')[1].split('=== END OF PAGE CONTENT ===')[0])
+                .toBe('one\ntwo\nthree four five\n\n');
+        } finally {
+            getStyle.mockRestore();
+        }
     });
 
     it('keeps hidden image alt text out of enhanced extraction', async () => {
