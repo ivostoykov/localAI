@@ -441,6 +441,7 @@ describe('ribbon.js session restore', () => {
     const laiMainCode = fs.readFileSync(path.join(__dirname, '../src/lai-main.js'), 'utf-8');
     const markdownSourceCode = laiMainCode.match(/function setMarkdownSource\([\s\S]*?\n}\n/)[0]
         + laiMainCode.match(/function getMarkdownSource\([\s\S]*?\n}\n/)[0];
+    const renderUserPromptCardCode = laiMainCode.match(/async function renderUserPromptCard\([\s\S]*?\n}\n/)[0];
 
     it('keeps the stored Markdown of restored messages for Copy as Markdown', async () => {
         const dom = new JSDOM('<!DOCTYPE html><div id="laiChatMessageList"></div>');
@@ -474,7 +475,7 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked, getMarkdownSource } = new Function('deps',
-            `with (deps) { ${markdownSourceCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
+            `with (deps) { ${markdownSourceCode}\n${renderUserPromptCardCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1');
@@ -505,7 +506,7 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked } = new Function('deps',
-            `with (deps) { ${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
+            `with (deps) { ${renderUserPromptCardCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1', { silent: true });
@@ -686,5 +687,85 @@ describe('ribbon.js model capability refresh', () => {
         await adjustThinkingStatus(el, { suppressStatusBar: true });
 
         expect(el.classList.contains('disabled')).toBe(true);
+    });
+});
+
+describe('ribbon.js restored user prompts (#41)', () => {
+    const laiMainCode = fs.readFileSync(path.join(__dirname, '../src/lai-main.js'), 'utf-8');
+    const tabStateCode = fs.readFileSync(path.join(__dirname, '../src/jslib/tab-state.js'), 'utf-8');
+    const utilsCode = fs.readFileSync(path.join(__dirname, '../src/jslib/utils.js'), 'utf-8');
+    const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
+    const solomdCode = fs.readFileSync(path.join(__dirname, '../src/jslib/solomd2html.js'), 'utf-8');
+    const renderSessionHistoryMessagesCode = ribbonCode.match(/async function renderSessionHistoryMessages\([\s\S]*?\n}\n/)[0];
+
+    const loadParser = () => new Function(
+        'document',
+        'DocumentFragment',
+        'CustomEvent',
+        'Node',
+        'navigator',
+        solomdCode + '; return parseAndRender;'
+    )(global.document, global.window.DocumentFragment, global.window.CustomEvent, global.window.Node, global.navigator);
+
+    const executeRestore = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
+        tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\nlet aiUserCommands = [];\n' +
+        laiMainCode + '\n' + renderSessionHistoryMessagesCode +
+        '; return { renderUserPromptCard, editUserInput, renderSessionHistoryMessages };'
+    );
+
+    let renderUserPromptCard, editUserInput, renderSessionHistoryMessages;
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getSideBar = vi.fn(() => document.body);
+        global.getOptions = vi.fn(async () => ({}));
+        global.getActiveSession = vi.fn(async () => null);
+        global.setActiveSession = vi.fn(async () => {});
+        global.deleteActiveSession = vi.fn(async () => {});
+        global.reportTabBinding = vi.fn(async () => {});
+        global.parseAndRender = loadParser();
+        global.chrome = { runtime: { sendMessage: vi.fn(), onMessage: { addListener: vi.fn() }, getURL: path => `chrome-extension://test/${path}` } };
+
+        document.body.innerHTML = `
+            <div id="panel">
+                <div id="laiChatMessageList"></div>
+                <textarea id="laiUserInput"></textarea>
+            </div>
+            <div id="laiCopyHint" class="invisible"></div>
+        `;
+
+        ({ renderUserPromptCard, editUserInput, renderSessionHistoryMessages } =
+            executeRestore(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, global.isMessagePersistable));
+    });
+
+    it('renders a restored user prompt identically to a fresh submission', async () => {
+        const md = '## Heading\n\n- item\n\n**bold** and `code`\n\n```\nfenced\n```';
+        const fresh = await renderUserPromptCard(md);
+
+        await renderSessionHistoryMessages({ messages: [{ role: 'user', content: md }] });
+
+        const restored = document.querySelector('.lai-user-input .lai-input-text');
+        expect(restored.innerHTML).toBe(fresh.innerHTML);
+        expect(restored.querySelector('h2').textContent).toBe('Heading');
+    });
+
+    it('keeps the assistant path and returns the original Markdown through Edit after restore', async () => {
+        const original = 'Explain\n\nthis  \n- **item**  \n\nend `code`';
+        await renderSessionHistoryMessages({
+            messages: [
+                { role: 'user', content: original },
+                { role: 'assistant', content: 'Answer **here**' }
+            ]
+        });
+
+        const assistantText = document.querySelector('.lai-ai-input .lai-input-text');
+        expect(assistantText.querySelector('p strong').textContent).toBe('here');
+
+        const userCard = document.querySelector('.lai-user-input');
+        await editUserInput({ target: userCard.querySelector('[data-type="edit"]') }, 'user');
+
+        expect(document.getElementById('laiUserInput').value).toBe(original);
     });
 });
