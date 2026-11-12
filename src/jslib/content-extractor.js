@@ -20,6 +20,7 @@ async function getEnhancedPageContent() {
 
   const jobContent = getLinkedInJobContentSafely();
   if (jobContent) {
+    metadata.coverage = { scope: 'site-specific extraction (LinkedIn job advert)' };
     return formatEnhancedPageContent([{
       title: '', images: [], content: [jobContent], lists: [], tables: [], codeBlocks: []
     }], metadata);
@@ -27,6 +28,7 @@ async function getEnhancedPageContent() {
 
   const cleanedDOM = await getDocumentContentFiltered();
   const mainContent = detectMainContent(cleanedDOM);
+  metadata.coverage = buildCoverage(describeContentScope(mainContent), mainContent || cleanedDOM);
   const structure = extractEnhancedTextStructure(mainContent || cleanedDOM);
   let result = formatEnhancedPageContent(structure, metadata);
 
@@ -120,6 +122,45 @@ function extractPageMetadata() {
   }
 
   return metadata;
+}
+
+/**
+ * Approximate text size by summing collapsed non-blank text nodes without
+ * trimming their boundary spaces; blank nodes count zero and no joined copy
+ * is built. Script, style, noscript and template text is excluded.
+ */
+function countTextCharacters(root) {
+  if (!root) return 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let count = 0;
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (node.parentElement?.closest('script, style, noscript, template')) continue;
+    const text = node.nodeValue.replace(/[ \t\n\r\f]+/g, ' ');
+    if (text.trim()) count += text.length;
+  }
+  return count;
+}
+
+function getVisiblePageCharacters() {
+  const text = document.body?.innerText;
+  return text === undefined || text === null
+    ? countTextCharacters(document.body)
+    : text.replace(/[ \t\n\r\f]+/g, ' ').trim().length;
+}
+
+function describeContentScope(region) {
+  if (!region) return 'whole page (no main content region detected)';
+  const tag = region.tagName.toLowerCase();
+  return `main content region (<${tag}${region.id ? `#${region.id}` : ''}>)`;
+}
+
+/**
+ * Counts the filtered clone, so extracted characters reflect both region
+ * selection and removal of hidden or user-filtered elements.
+ */
+function buildCoverage(scope, root) {
+  return { scope, extractedChars: countTextCharacters(root), visibleChars: getVisiblePageCharacters() };
 }
 
 /**
@@ -603,6 +644,18 @@ function formatEnhancedPageContent(structure, metadata) {
     parts.push(`Type: ${metadata.type}`);
   }
 
+  if (metadata.coverage) {
+    const { scope, extractedChars, visibleChars } = metadata.coverage;
+    parts.push(`Content scope: ${scope}`);
+    if (Number.isFinite(extractedChars) && Number.isFinite(visibleChars) && visibleChars > 0) {
+      const pct = Math.min(100, Math.round(extractedChars / visibleChars * 100));
+      parts.push(`Coverage: ${extractedChars} of ${visibleChars} visible page characters (${pct}%)`);
+      if (pct < 50) {
+        parts.push('Coverage note: most of the visible page is not included in this extract.');
+      }
+    }
+  }
+
   parts.push('');
   parts.push('=== PAGE CONTENT ===');
   parts.push('');
@@ -848,6 +901,7 @@ async function getMainContentOnly() {
 
   const structure = extractEnhancedTextStructure(mainContent || cleanedDOM);
   const metadata = extractPageMetadata();
+  metadata.coverage = buildCoverage(describeContentScope(mainContent), mainContent || cleanedDOM);
   const formatted = formatEnhancedPageContent(structure, metadata);
 
   if (mainContent) return formatted;
