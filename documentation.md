@@ -59,6 +59,10 @@ A new Markdown parser is included for an improved experience. It is available as
 
 <img src="media/ai_reply.png" height="600" />
 
+# User prompts in chat history
+
+User prompts are rendered as Markdown in the chat history, both when submitted and when a session is restored. `Edit` puts the original prompt text back into the prompt area, and `Add this prompt as User Command` keeps the original Markdown notation.
+
 
 ## Ribbon
 ![alt text](media/ribbon.png)

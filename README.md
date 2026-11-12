@@ -20,6 +20,7 @@ If you value privacy but still want the power of LLMs, LocalAI is for you. There
 * **Web Search:** Ask the AI to search the web and it will use your configured search engine in a background tab — no external APIs, no credential sharing.
 * **Read Links (opt-in):** The AI can open a link in a separate background tab and read it, leaving your current tab untouched. It asks first in a Local AI pop-up window (`Allow always`, `Allow this time`, `Cancel`) unless you turn on `Allow navigation` in the options; the tab is closed when the answer is finished. See [Allow navigation](documentation.md#allow-navigation).
 * **Copy as Markdown:** Copy any AI reply as its original Markdown, including replies restored from history.
+* **Markdown Chat History:** User prompts are rendered as Markdown in the chat history, and `Edit` and `Add this prompt as User Command` keep the original prompt text.
 * **Decision Model (optional):** Configure an Ollama System One decision model for structured choices and scores. It is off by default, requires Ollama 0.40.6 or later, and lists only decision-capable models; cloud models use Ollama cloud quota. A weaker model produces weaker decisions, and Ollama rejects non-decision models.
 * **Custom Prompts:** Create, store, and execute your own prompts locally for a personalised experience.
 * **Backup and Transfer:** Export your settings, user prompts and functions to one file with `Export All` in the options and restore them with `Import All`. See [Export All / Import All](documentation.md#export-all--import-all).
