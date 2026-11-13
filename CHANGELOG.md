@@ -1,6 +1,6 @@
 # Local AI - Changelog
 
-## [1.29.101] - 2026-11-13 - latest
+## [1.30.1] - 2026-11-13 - latest
 
 ### Sessions
 
