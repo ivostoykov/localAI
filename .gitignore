@@ -26,6 +26,7 @@ Chrome_changes/
 .issues/
 .continue/
 .project-map/
+.agents/
 
 # Test and dependencies
 node_modules/
