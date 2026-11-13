@@ -1438,19 +1438,45 @@ describe('sidebar session catch-up on focus (#61)', () => {
         expect(getMarkdownSource(shownAfter[1].querySelector('.lai-input-text'))).toBe('edited answer');
     });
 
-    it('re-renders when the shown turns are longer than the saved ones', async () => {
+    it('keeps local-only cards when the shown turns are longer than the saved ones', async () => {
         storedSessions.s1 = sessionWith([
             { role: 'user', content: 'question' },
             { role: 'assistant', content: 'answer' }
         ]);
         await renderSessionHistoryMessages(storedSessions.s1);
+        await addInputCardToUIChatHistory('', 'ai');
+        const shownBefore = cards();
+        shownBefore[2].querySelector('.lai-input-text').textContent = 'partial unsaved reply';
 
         storedSessions.s1 = sessionWith([
             { role: 'user', content: 'question' }
         ]);
+        const htmlBefore = chatListHtml();
         await catchUpActiveSessionFromStorage();
 
-        expect(cards()).toHaveLength(1);
+        const shownAfter = cards();
+        expect(shownAfter).toHaveLength(3);
+        expect(shownAfter[0]).toBe(shownBefore[0]);
+        expect(shownAfter[1]).toBe(shownBefore[1]);
+        expect(shownAfter[2]).toBe(shownBefore[2]);
+        expect(chatListHtml()).toBe(htmlBefore);
+        expect(separators()).toHaveLength(0);
+    });
+
+    it('keeps an unsaved fresh user card on focus', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+        await renderUserPromptCard('prompt not saved yet');
+        const shownBefore = cards();
+
+        await catchUpActiveSessionFromStorage();
+
+        const shownAfter = cards();
+        expect(shownAfter).toHaveLength(3);
+        expect(shownAfter[2]).toBe(shownBefore[2]);
         expect(separators()).toHaveLength(0);
     });
 

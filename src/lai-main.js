@@ -1631,7 +1631,8 @@ function getShownChatTurns(messageList) {
 /**
  * Appends the turns the bound session gained in another tab while this sidebar was
  * not in the foreground (#61). A strict prefix of the saved turns is appended under
- * one separator; any other difference re-renders the whole history.
+ * one separator; a mismatch in the common part re-renders the whole history, while
+ * turns shown beyond the saved ones are local only (aborted or pending) and stay.
  */
 async function catchUpActiveSessionFromStorage() {
     const shadowRoot = getShadowRoot();
@@ -1655,15 +1656,16 @@ async function catchUpActiveSessionFromStorage() {
             .filter(({ message }) => isRenderableSessionMessage(message));
         const shownTurns = getShownChatTurns(messageList);
 
-        const shownIsPrefix = shownTurns.length <= savedTurns.length
-            && shownTurns.every((turn, i) => turn.role === savedTurns[i].message.role && turn.content === savedTurns[i].message.content);
+        const commonLength = Math.min(shownTurns.length, savedTurns.length);
+        const commonMatches = shownTurns.slice(0, commonLength).every((turn, i) =>
+            turn.role === savedTurns[i].message.role && turn.content === savedTurns[i].message.content);
 
-        if (!shownIsPrefix) {
+        if (!commonMatches) {
             await renderSessionHistoryMessages(session);
             return;
         }
 
-        if (shownTurns.length === savedTurns.length) { return; }
+        if (shownTurns.length >= savedTurns.length) { return; }
 
         appendSessionCatchUpSeparator(messageList);
         for (const turn of savedTurns.slice(shownTurns.length)) {
