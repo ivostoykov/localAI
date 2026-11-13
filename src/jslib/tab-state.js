@@ -34,6 +34,19 @@ class TabStateStore {
         }
     }
 
+    async listBySession(sessionId) {
+        if (typeof sessionId !== 'string' || !sessionId.trim() || !this.storage?.get) { return []; }
+        try {
+            const entries = await this.storage.get(null);
+            return Object.entries(entries ?? {})
+                .filter(([key, binding]) => key.startsWith(laiTabStatePrefix) && binding?.sessionId === sessionId)
+                .map(([, binding]) => binding);
+        } catch (error) {
+            console.warn('>>> Failed to read tab state', error);
+            return [];
+        }
+    }
+
     async update(tabId, changes = {}) {
         if (!this.storage?.get || !this.storage?.set || tabId == null) { return null; }
         const { sessionId, panelOpen } = changes;

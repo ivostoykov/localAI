@@ -107,7 +107,7 @@ When you hover over the [Ribbon](#ribbon), you'll see the extension's version nu
 
 <img src="media/temperature.svg" height="30" alt="Modifiers"/> - Show some of the model's [modifiers](#modifiers).
 
-Each tab's panel has its own session. A prompt sent from one tab does not include another tab's conversation or attachments unless you have explicitly restored the same session in both tabs, and it never includes page content captured in another tab. Navigating within a tab keeps its panel state and conversation; an in-progress reply reconnects when the next page is ready. A restored session is bound to the tab where it was restored only. If the same session is restored in two tabs, they share its history and attachments, but page content captured in one tab is not reused in the other. Such a session keeps only the most recently captured page, so capturing a page in one tab drops the page remembered for the other tab; use `@{{page}}` to include it again. If a session open in a panel is deleted, from another tab or the Options page, that panel is cleared and the next prompt starts a new session.
+Each tab's panel has its own session. A prompt sent from one tab does not include another tab's conversation or attachments unless you have explicitly restored the same session in both tabs, and it does not automatically reuse page content captured in another tab. A tool-capable model can explicitly read another tab sharing the session through the [session tab tools](#session-tab-tools). Navigating within a tab keeps its panel state and conversation; an in-progress reply reconnects when the next page is ready. A restored session is bound to the tab where it was restored only. If the same session is restored in two tabs, they share its history and attachments, but page content captured in one tab is not reused in the other. Such a session keeps only the most recently captured page, so capturing a page in one tab drops the page remembered for the other tab; use `@{{page}}` to include it again. If a session open in a panel is deleted, from another tab or the Options page, that panel is cleared and the next prompt starts a new session.
 
 Sessions can be managed also from the [Options](#options) page.
 
@@ -129,6 +129,15 @@ A helping table with short description is available [here](https://github.com/ol
 Page-reading tools include `Content scope` and `Coverage` in the metadata sent to the model. Scope identifies the selected main content region or a whole-page fallback. Coverage compares the approximate number of extracted text characters, after hidden content and your filters are removed, with the visible page text. A note flags coverage below 50%, and the model is instructed to explain when its answer relies on partial page content. LinkedIn job adverts report their site-specific scope without a percentage.
 
 Web search summaries longer than 2,000 characters end with `[TRUNCATED: first 2000 of N characters shown]`, where `N` is the original length. This marks the existing search-summary limit; it does not introduce a limit on page-reading tools.
+
+#### Session tab tools
+
+With a tool-capable model, load the same conversation in two tabs and ask about the page open in the other tab:
+
+- **`list_session_tabs`**: Lists the other open tabs sharing this conversation, with a tab reference, title and URL. Discarded tabs are marked. The model calls this first.
+- **`read_session_tab_page`**: Reads a listed tab's page at call time using its tab reference. The tab must still share this conversation. Closed, discarded or unreachable tabs return a status message; they are not reopened.
+
+Reading another tab does not replace the stored page context used for your current tab. These tools read open tabs, independently of the stored page-history tools `get_all_session_pages` and `get_last_session_pages`.
 
 # Context menu
 

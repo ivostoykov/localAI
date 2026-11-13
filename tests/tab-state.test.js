@@ -356,3 +356,40 @@ describe('tab-state wiring (#40)', () => {
         expect(backgroundCode).toMatch(/const tabState = new TabStateStore\(\)/);
     });
 });
+
+describe('TabStateStore.listBySession (#62)', () => {
+    it('selects matching bindings only within the binding namespace', async () => {
+        const { TabStateStore } = loadTabStateModule({});
+        const storage = createStorage({
+            'laiTabState:1': { tabId: 1, sessionId: 's1' },
+            'laiTabState:2': { tabId: 2, sessionId: 's2' },
+            'laiTabState:3': { tabId: 3, sessionId: null },
+            'laiTabState:4': null,
+            'unrelated:5': { tabId: 5, sessionId: 's1' }
+        });
+        const store = new TabStateStore({ storage });
+        expect(await store.listBySession('s1')).toEqual([{ tabId: 1, sessionId: 's1' }]);
+        expect(await store.listBySession(' s1')).toEqual([]);
+    });
+
+    it.each(['', ' ', null, undefined, 1, {}, []])('rejects invalid session %j', async sessionId => {
+        const { TabStateStore } = loadTabStateModule({});
+        const storage = createStorage();
+        expect(await new TabStateStore({ storage }).listBySession(sessionId)).toEqual([]);
+        expect(storage.get).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty list and warns on storage failure', async () => {
+        const { TabStateStore } = loadTabStateModule({});
+        const failure = new Error('Storage unavailable');
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            const storage = { get: vi.fn().mockRejectedValue(failure) };
+            expect(await new TabStateStore({ storage }).listBySession('s1')).toEqual([]);
+            expect(warning).toHaveBeenCalledWith('>>> Failed to read tab state', failure);
+            expect(await new TabStateStore({ storage: null }).listBySession('s1')).toEqual([]);
+        } finally {
+            warning.mockRestore();
+        }
+    });
+});
