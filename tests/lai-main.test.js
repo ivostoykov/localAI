@@ -19,6 +19,11 @@ const utilsCode = fs.readFileSync(
     path.join(__dirname, '../src/jslib/utils.js'),
     'utf-8'
 );
+
+const ribbonCode = fs.readFileSync(
+    path.join(__dirname, '../src/jslib/ribbon.js'),
+    'utf-8'
+);
 // Setup DOM environment
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.document = dom.window.document;
@@ -1292,6 +1297,273 @@ describe('tab session restoration (#40)', () => {
             expect.objectContaining({ panelOpen: true }),
             expect.objectContaining({ panelOpen: false })
         ]);
+    });
+});
+
+describe('sidebar session catch-up on focus (#61)', () => {
+    const isRenderableSessionMessageCode = ribbonCode.match(/function isRenderableSessionMessage\([\s\S]*?\n}\n/)[0];
+    const renderSessionHistoryMessageCode = ribbonCode.match(/async function renderSessionHistoryMessage\([\s\S]*?\n}\n/)[0];
+    const renderSessionHistoryMessagesCode = ribbonCode.match(/async function renderSessionHistoryMessages\([\s\S]*?\n}\n/)[0];
+
+    const executeCatchUp = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
+        tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' +
+        isRenderableSessionMessageCode + '\n' + renderSessionHistoryMessageCode + '\n' + renderSessionHistoryMessagesCode + '\n' +
+        laiMainCode + '; return { catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId };'
+    );
+
+    let catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory;
+    let setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId, getActiveStreamRequestId;
+    let storedSessions;
+    let activeSessionId;
+
+    const seedChat = () => {
+        document.body.innerHTML = `
+            <div id="laiChatMessageList"></div>
+            <textarea id="laiUserInput"></textarea>
+            <button id="laiAbort" class="invisible"></button>`;
+    };
+
+    const cards = () => Array.from(document.querySelectorAll('#laiChatMessageList .lai-chat-history'));
+    const separators = () => Array.from(document.querySelectorAll('#laiChatMessageList .lai-session-catch-up-separator'));
+    const sessionWith = messages => ({ id: 's1', title: 'Bound', messages });
+    const chatListHtml = () => document.getElementById('laiChatMessageList').innerHTML;
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.setModelNameLabel = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getSideBar = vi.fn(() => null);
+        global.getOptions = vi.fn(async () => ({}));
+        global.parseAndRender = vi.fn(async (markdown, element) => { element.textContent = markdown; });
+        global.chrome.runtime.getURL = path => `chrome-extension://test/${path}`;
+
+        seedChat();
+        activeSessionId = 's1';
+        global.getActiveSessionId = vi.fn(async () => activeSessionId);
+        storedSessions = {};
+        global.getActiveSessionById = vi.fn(async id => storedSessions[id] ?? null);
+
+        ({
+            catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard,
+            addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex,
+            setActiveStreamRequestId, getActiveStreamRequestId
+        } = executeCatchUp(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, undefined));
+    });
+
+    it('changes nothing when the saved session has no new turns', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+        const htmlBefore = chatListHtml();
+
+        await catchUpActiveSessionFromStorage();
+
+        expect(chatListHtml()).toBe(htmlBefore);
+        expect(separators()).toHaveLength(0);
+    });
+
+    it('appends only the missing turns under one separator with their original message indices', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+        const shownBefore = cards();
+
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' },
+            { role: 'tool', tool_name: 'browse_url', content: 'tool output' },
+            { role: 'user', content: 'second question' },
+            { role: 'assistant', content: 'second answer' }
+        ]);
+        await catchUpActiveSessionFromStorage();
+
+        const shownAfter = cards();
+        expect(shownAfter).toHaveLength(4);
+        expect(shownAfter[0]).toBe(shownBefore[0]);
+        expect(shownAfter[1]).toBe(shownBefore[1]);
+
+        expect(separators()).toHaveLength(1);
+        const separator = separators()[0];
+        expect(separator.getAttribute('role')).toBe('separator');
+        expect(separator.textContent).toBe('Added from another tab');
+
+        const appendedUser = shownAfter[2];
+        expect(appendedUser.classList.contains('lai-user-input')).toBe(true);
+        expect(appendedUser.querySelector('[data-type="edit"]').dataset.index).toBe('3');
+        const appendedAi = shownAfter[3];
+        expect(appendedAi.classList.contains('lai-ai-input')).toBe(true);
+        expect(getMarkdownSource(appendedAi.querySelector('.lai-input-text'))).toBe('second answer');
+    });
+
+    it('compares a tab with only its own fresh turns equal to the saved session', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'fresh question' },
+            { role: 'assistant', content: 'fresh answer' }
+        ]);
+        await renderUserPromptCard('fresh question');
+        const recipient = await addInputCardToUIChatHistory('', 'ai');
+        setMarkdownSource(recipient, 'fresh answer');
+        const shownBefore = cards();
+
+        await catchUpActiveSessionFromStorage();
+
+        expect(separators()).toHaveLength(0);
+        expect(cards()[0]).toBe(shownBefore[0]);
+        expect(cards()[1]).toBe(shownBefore[1]);
+    });
+
+    it('re-renders the whole history without a separator on a mismatch inside the common part', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'question' },
+            { role: 'assistant', content: 'answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+        const shownBefore = cards();
+
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'question' },
+            { role: 'assistant', content: 'edited answer' }
+        ]);
+        await catchUpActiveSessionFromStorage();
+
+        const shownAfter = cards();
+        expect(shownAfter).toHaveLength(2);
+        expect(shownAfter[0]).not.toBe(shownBefore[0]);
+        expect(separators()).toHaveLength(0);
+        expect(getMarkdownSource(shownAfter[1].querySelector('.lai-input-text'))).toBe('edited answer');
+    });
+
+    it('re-renders when the shown turns are longer than the saved ones', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'question' },
+            { role: 'assistant', content: 'answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'question' }
+        ]);
+        await catchUpActiveSessionFromStorage();
+
+        expect(cards()).toHaveLength(1);
+        expect(separators()).toHaveLength(0);
+    });
+
+    it('appends once per new batch and never duplicates on repeated catch-ups', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' },
+            { role: 'user', content: 'second question' },
+            { role: 'assistant', content: 'second answer' }
+        ]);
+        await catchUpActiveSessionFromStorage();
+        expect(cards()).toHaveLength(4);
+        expect(separators()).toHaveLength(1);
+
+        await catchUpActiveSessionFromStorage();
+        expect(cards()).toHaveLength(4);
+        expect(separators()).toHaveLength(1);
+
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' },
+            { role: 'user', content: 'second question' },
+            { role: 'assistant', content: 'second answer' },
+            { role: 'user', content: 'third question' },
+            { role: 'assistant', content: 'third answer' }
+        ]);
+        await catchUpActiveSessionFromStorage();
+
+        expect(cards()).toHaveLength(6);
+        expect(separators()).toHaveLength(2);
+        expect(cards()[4].querySelector('[data-type="edit"]').dataset.index).toBe('4');
+    });
+
+    it('appends once when catch-up is triggered concurrently', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' },
+            { role: 'user', content: 'second question' },
+            { role: 'assistant', content: 'second answer' }
+        ]);
+        await Promise.all([catchUpActiveSessionFromStorage(), catchUpActiveSessionFromStorage()]);
+
+        expect(cards()).toHaveLength(4);
+        expect(separators()).toHaveLength(1);
+    });
+
+    it('does nothing while a reply is streaming in this tab', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+        const htmlBefore = chatListHtml();
+
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' },
+            { role: 'user', content: 'second question' },
+            { role: 'assistant', content: 'second answer' }
+        ]);
+        setActiveStreamRequestId('r1');
+        await catchUpActiveSessionFromStorage();
+
+        expect(chatListHtml()).toBe(htmlBefore);
+        expect(separators()).toHaveLength(0);
+        expect(getActiveStreamRequestId()).toBe('r1');
+    });
+
+    it('does nothing without a bound session or when the session no longer exists', async () => {
+        storedSessions.s1 = sessionWith([{ role: 'user', content: 'question' }]);
+        document.getElementById('laiChatMessageList').innerHTML = '<div class="lai-chat-history keep"></div>';
+
+        activeSessionId = null;
+        await catchUpActiveSessionFromStorage();
+        expect(cards()).toHaveLength(1);
+
+        activeSessionId = 's1';
+        storedSessions.s1 = null;
+        await catchUpActiveSessionFromStorage();
+        expect(cards()).toHaveLength(1);
+        expect(separators()).toHaveLength(0);
+    });
+
+    it('does not let the separator disturb the history index lookup', async () => {
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ]);
+        await renderSessionHistoryMessages(storedSessions.s1);
+
+        storedSessions.s1 = sessionWith([
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' },
+            { role: 'user', content: 'second question' },
+            { role: 'assistant', content: 'second answer' }
+        ]);
+        await catchUpActiveSessionFromStorage();
+
+        const shown = cards();
+        expect(await findElementHistoryIndex(shown[2].querySelector('.lai-input-text'))).toBe(2);
+        expect(await findElementHistoryIndex(shown[3].querySelector('.lai-input-text'))).toBe(3);
     });
 });
 
