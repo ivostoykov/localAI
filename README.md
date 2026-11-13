@@ -22,6 +22,7 @@ If you value privacy but still want the power of LLMs, LocalAI is for you. There
 * **Session Tabs:** With a tool-capable model, `list_session_tabs` lists other open tabs sharing this conversation; `read_session_tab_page` reads a listed page on demand. Load the same conversation in both tabs first. See [Session tab tools](documentation.md#session-tab-tools).
 * **Copy as Markdown:** Copy any AI reply as its original Markdown, including replies restored from history.
 * **Markdown Chat History:** User prompts are rendered as Markdown in the chat history, and `Edit` and `Add this prompt as User Command` keep the original prompt text.
+* **Sessions Dialog:** The header history button or `/session` opens a dialog listing every saved session by last use with its state (`current`, `open` or `closed`) and last page, and per-row `rename`, `load` and `delete`; `delete all` asks first.
 * **Decision Model (optional):** Configure an Ollama System One decision model for structured choices and scores. It is off by default, requires Ollama 0.40.6 or later, and lists only decision-capable models; cloud models use Ollama cloud quota. A weaker model produces weaker decisions, and Ollama rejects non-decision models.
 * **Custom Prompts:** Create, store, and execute your own prompts locally for a personalised experience.
 * **Backup and Transfer:** Export your settings, user prompts and functions to one file with `Export All` in the options and restore them with `Import All`. See [Export All / Import All](documentation.md#export-all--import-all).
