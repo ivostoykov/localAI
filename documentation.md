@@ -99,9 +99,9 @@ When you hover over the [Ribbon](#ribbon), you'll see the extension's version nu
 ### Session
 <img src="Chrome/img/plus.svg" height="30" alt="New Session"/> - new session
 
-<img src="Chrome/img/history-icon.svg" height="30" alt="Load Session"/> - Show session list. Click to reload any.
+<img src="Chrome/img/history-icon.svg" height="30" alt="Sessions dialog"/> - Open the sessions dialog. Type `/session` in the prompt to open it too. Every saved session is listed by last use, newest first, with its state — `current` for this tab's session, `open` for a session bound to another open tab (dimmed rows are `closed`) — and a second line with the domain and page title of its last page when known. Each row has `rename`, `load` and `delete` buttons; clicking the title or `load` loads the session and closes the dialog, and a failed load keeps the dialog and the current session. `delete all` asks for confirmation with `Delete` / `Cancel` before anything is deleted; cancelling deletes nothing. `close`, `Escape` or a click outside dismisses the dialog, and with no saved sessions it says so. Renaming saves with `Enter` and cancels with `Escape`; deleting the current session unbinds the tab.
 
-<img src="Chrome/img/recycle.svg" height="30" alt="Delete Session"/> - Delete sessions
+<img src="Chrome/img/recycle.svg" height="30" alt="Delete Session"/> - Delete the current session
 
 <img src="Chrome/img/think.svg" height="30" alt="Think"/> - Toggle thinking. When the model [is changed](#changing-ollama-model) the thinking status is adjusted with the model capability.
 
@@ -258,7 +258,7 @@ To list all available commands type `/list` and press `Enter`.
 
 On the top of the list there are two buttons: `Close` (<img src="Chrome/img/remove-all.svg" height="26" alt="Close"/>) on the right and `New` (<img src="Chrome/img/new.svg" height="26" alt="New"/>) on the left. Custom commands could be imported (<img src="Chrome/img/import.svg" height="26" alt="Close"/>) and exported (<img src="Chrome/img/export.svg" height="26" alt="Close"/>) from here.
 
-Following are a few predefined commands which connot be changed, with their descriptions: `/add`, `/list` and `/error`.
+Following are a few predefined commands which connot be changed, with their descriptions: `/add`, `/list`, `/error` and `/session` (opens the [sessions dialog](#session)).
 
 The rest in the list are the commands created by the User. Above each command there are a few buttons:
 

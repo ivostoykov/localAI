@@ -2171,6 +2171,11 @@ async function checkCommandHandler(userInput) {
                 popUserCommandList(userInput);
                 res = true;
                 break;
+            case 'session':
+                continueLoop = false;
+                popSessionList(userInput);
+                res = true;
+                break;
             case 'model':
                 continueLoop = false;
                 try {

@@ -13,11 +13,9 @@ const ribbonCode = fs.readFileSync(
 const closeAllDropDownRibbonMenusCode = ribbonCode.match(/async function closeAllDropDownRibbonMenus\([\s\S]*?\n}\n/)[0];
 const closeRibbonMenuElementCode = ribbonCode.match(/function closeRibbonMenuElement\([\s\S]*?\n}\n/)[0];
 const closeModelListMenuCode = ribbonCode.match(/function closeModelListMenu\([\s\S]*?\n}\n/)[0];
-const closeSessionHistoryMenuCode = ribbonCode.match(/function closeSessionHistoryMenu\([\s\S]*?\n}\n/)[0];
 const modelListTabClickedCode = ribbonCode.match(/function modelListTabClicked\([\s\S]*?\n}\n/)[0];
 const refreshCloudModelListBtnClickCode = ribbonCode.match(/async function refreshCloudModelListBtnClick\([\s\S]*?\n}\n/)[0];
 const fillAndShowModelListCode = ribbonCode.match(/async function fillAndShowModelList\([\s\S]*?\n}\n/)[0];
-const deleteHistoryMenuItemClickedCode = ribbonCode.match(/async function deleteHistoryMenuItemClicked\([\s\S]*?\n}\n/)[0];
 const deleteAllHistorySessionsClickedCode = ribbonCode.match(/async function deleteAllHistorySessionsClicked\([\s\S]*?\n}\n/)[0];
 const executeRibbonCode = new Function(
     'document',
@@ -39,14 +37,12 @@ const executeRibbonCode = new Function(
 ${closeAllDropDownRibbonMenusCode}
 ${closeRibbonMenuElementCode}
 ${closeModelListMenuCode}
-${closeSessionHistoryMenuCode}
 ${modelListTabClickedCode}
 ${refreshCloudModelListBtnClickCode}
 ${fillAndShowModelListCode}
-${deleteHistoryMenuItemClickedCode}
 ${deleteAllHistorySessionsClickedCode}
 
-return { closeAllDropDownRibbonMenus, modelListTabClicked, refreshCloudModelListBtnClick, fillAndShowModelList, deleteHistoryMenuItemClicked, deleteAllHistorySessionsClicked };
+return { closeAllDropDownRibbonMenus, modelListTabClicked, refreshCloudModelListBtnClick, fillAndShowModelList, deleteAllHistorySessionsClicked };
 `
 );
 
@@ -331,108 +327,370 @@ describe('ribbon.js model list', () => {
         expect(selectedOption?.value).toBe('gpt-oss:120b');
     });
 
-    it('closes the session history menu when the last session row is deleted', async () => {
-        const shadowRoot = getShadowRoot();
-        const header = document.createElement('header');
-        header.className = 'lai-header';
-        const historyButton = document.createElement('img');
-        historyButton.id = 'sessionHistory';
-        historyButton.classList.add('js-menu-is-open');
-        historyButton.dataset.menuId = 'sessionHistMenu';
-        const menu = document.createElement('div');
-        menu.id = 'sessionHistMenu';
-        const scrollable = document.createElement('div');
-        scrollable.className = 'scrollable';
-        const menuItem = document.createElement('div');
-        menuItem.className = 'menu-item';
-        const title = document.createElement('span');
-        title.className = 'menu-item-title';
-        title.textContent = 'Only session';
-        const deleteButton = document.createElement('span');
-        deleteButton.setAttribute('data-sessionId', 'session-1');
-        menuItem.appendChild(title);
-        menuItem.appendChild(deleteButton);
-        scrollable.appendChild(menuItem);
-        menu.appendChild(scrollable);
-        header.appendChild(historyButton);
-        header.appendChild(menu);
-        shadowRoot.appendChild(header);
+});
 
-        await exports.deleteHistoryMenuItemClicked({
-            stopPropagation: vi.fn(),
-            stopImmediatePropagation: vi.fn(),
-            currentTarget: deleteButton
-        });
+describe('ribbon.js sessions dialog (#64)', () => {
+    const sessionHistoryClickedCode = ribbonCode.match(/async function sessionHistoryClicked\([\s\S]*?\n}\n/)[0];
+    const popSessionListCode = ribbonCode.match(/async function popSessionList\([\s\S]*?\n}\n/)[0];
+    const buildSessionListRowsCode = ribbonCode.match(/function buildSessionListRows\([\s\S]*?\n}\n/)[0];
+    const showSessionListEmptyStateCode = ribbonCode.match(/function showSessionListEmptyState\([\s\S]*?\n}\n/)[0];
+    const buildSessionListRowCode = ribbonCode.match(/function buildSessionListRow\([\s\S]*?\n}\n/)[0];
+    const buildSessionListTitleButtonCode = ribbonCode.match(/function buildSessionListTitleButton\([\s\S]*?\n}\n/)[0];
+    const buildSessionListActionButtonCode = ribbonCode.match(/function buildSessionListActionButton\([\s\S]*?\n}\n/)[0];
+    const sessionListBlockClickedCode = ribbonCode.match(/async function sessionListBlockClicked\([\s\S]*?\n}\n/)[0];
+    const loadSessionFromSessionListCode = ribbonCode.match(/async function loadSessionFromSessionList\([\s\S]*?\n}\n/)[0];
+    const deleteSessionFromSessionListCode = ribbonCode.match(/async function deleteSessionFromSessionList\([\s\S]*?\n}\n/)[0];
+    const sessionListDeleteAllClickedCode = ribbonCode.match(/function sessionListDeleteAllClicked\([\s\S]*?\n}\n/)[0];
+    const sessionListDeleteAllCancelClickedCode = ribbonCode.match(/function sessionListDeleteAllCancelClicked\([\s\S]*?\n}\n/)[0];
+    const hideSessionListDeleteAllConfirmCode = ribbonCode.match(/function hideSessionListDeleteAllConfirm\([\s\S]*?\n}\n/)[0];
+    const sessionListKeydownCode = ribbonCode.match(/function sessionListKeydown\([\s\S]*?\n}\n/)[0];
+    const closeSessionListOnOutsideClickCode = ribbonCode.match(/function closeSessionListOnOutsideClick\([\s\S]*?\n}\n/)[0];
+    const closeSessionListDialogCode = ribbonCode.match(/function closeSessionListDialog\([\s\S]*?\n}\n/)[0];
+    const startSessionRenameCode = ribbonCode.match(/async function startSessionRename\([\s\S]*?\n}\n/)[0];
+    const setSessionRowAccessibleNamesCode = ribbonCode.match(/function setSessionRowAccessibleNames\([\s\S]*?\n}\n/)[0];
+    const deleteAllHistorySessionsClickedCode = ribbonCode.match(/async function deleteAllHistorySessionsClicked\([\s\S]*?\n}\n/)[0];
 
-        expect(deleteSessionById).toHaveBeenCalledWith('session-1');
-        expect(header.querySelector('#sessionHistMenu')).toBeNull();
-        expect(historyButton.classList.contains('js-menu-is-open')).toBe(false);
-        expect(historyButton.dataset.menuId).toBeUndefined();
+    const sidebarHtmlCode = fs.readFileSync(path.join(__dirname, '../src/sidebar.html'), 'utf-8');
+
+    const loadDialog = deps => new Function('deps', `with (deps) {
+${sessionHistoryClickedCode}
+${popSessionListCode}
+${buildSessionListRowsCode}
+${showSessionListEmptyStateCode}
+${buildSessionListRowCode}
+${buildSessionListTitleButtonCode}
+${buildSessionListActionButtonCode}
+${sessionListBlockClickedCode}
+${loadSessionFromSessionListCode}
+${deleteSessionFromSessionListCode}
+${sessionListDeleteAllClickedCode}
+${sessionListDeleteAllCancelClickedCode}
+${hideSessionListDeleteAllConfirmCode}
+${sessionListKeydownCode}
+${closeSessionListOnOutsideClickCode}
+${closeSessionListDialogCode}
+${startSessionRenameCode}
+${setSessionRowAccessibleNamesCode}
+${deleteAllHistorySessionsClickedCode}
+${closeAllDropDownRibbonMenusCode}
+return { sessionHistoryClicked, popSessionList, sessionListBlockClicked, loadSessionFromSessionList, deleteSessionFromSessionList, sessionListDeleteAllClicked, sessionListDeleteAllCancelClicked, sessionListKeydown, closeSessionListOnOutsideClick, closeSessionListDialog, startSessionRename, deleteAllHistorySessionsClicked };
+ }`)(deps);
+
+    const buildDom = () => new JSDOM(`<!DOCTYPE html>
+<div id="sidebar">
+    <div id="sessionListContainer" class="invisible session-list">
+        <div class="session-list-ribbon">
+            <button id="sessionListDeleteAll" type="button">delete all</button>
+            <button id="sessionListClose" type="button">close</button>
+        </div>
+        <div class="session-list-ribbon session-list-confirm invisible">
+            <button id="sessionListDeleteAllConfirm" type="button">Delete</button>
+            <button id="sessionListDeleteAllCancel" type="button">Cancel</button>
+        </div>
+        <div class="session-list-block"></div>
+    </div>
+</div>`);
+
+    let exports;
+    let doc;
+    let deps;
+    let sessions;
+    let openSessionIds;
+    let ownSessionId;
+    let fetchOpenSessions;
+    let restoreHistorySessionClicked;
+    let deleteSessionById;
+    let recycleAllSessions;
+    let getActiveSessionId;
+    let reportTabBinding;
+    let renameSession;
+    let showMessage;
+
+    beforeEach(() => {
+        doc = buildDom().window.document;
+        sessions = [];
+        openSessionIds = [];
+        ownSessionId = null;
+        fetchOpenSessions = vi.fn(async () => ({ openSessionIds, ownSessionId }));
+        restoreHistorySessionClicked = vi.fn(async () => undefined);
+        deleteSessionById = vi.fn(async () => undefined);
+        recycleAllSessions = vi.fn(async () => undefined);
+        getActiveSessionId = vi.fn(async () => 'session-current');
+        reportTabBinding = vi.fn(async () => undefined);
+        renameSession = vi.fn(async () => true);
+        showMessage = vi.fn();
+        deps = {
+            document: doc,
+            getShadowRoot: () => doc,
+            fetchOpenSessions,
+            getAllSessions: vi.fn(async () => sessions),
+            restoreHistorySessionClicked,
+            deleteSessionById,
+            recycleAllSessions,
+            getActiveSessionId,
+            reportTabBinding,
+            renameSession,
+            updateStatusBar: vi.fn(),
+            resetStatusbar: vi.fn(),
+            showMessage,
+            closeAllDropDownRibbonMenus: vi.fn(async () => undefined),
+            manifest: { name: 'Local AI helper' },
+            getLineNumber: () => 'test',
+            chrome: { runtime: { getURL: path => `chrome-extension://test/${path}` } }
+        };
+        exports = loadDialog(deps);
     });
 
-    it('reports the binding cleared when the deleted session was the active one', async () => {
-        getActiveSessionId.mockResolvedValue('session-1');
-        const btn = document.createElement('span');
-        btn.setAttribute('data-sessionId', 'session-1');
-        const menuItem = document.createElement('div');
-        menuItem.className = 'menu-item';
-        menuItem.appendChild(btn);
+    const dialog = () => doc.getElementById('sessionListContainer');
+    const rows = () => Array.from(doc.querySelectorAll('.session-list-item'));
+    const rowAction = (row, action) => Array.from(row.querySelectorAll('button')).find(b => b.dataset.action === action);
 
-        await exports.deleteHistoryMenuItemClicked({
-            stopPropagation: vi.fn(),
-            stopImmediatePropagation: vi.fn(),
-            currentTarget: btn
-        });
+    const openDialog = async () => {
+        await exports.popSessionList();
+    };
 
+    const clickEvent = (button, row) => ({
+        composedPath: () => [button, row, dialog().querySelector('.session-list-block'), dialog(), doc],
+        stopPropagation: vi.fn()
+    });
+
+    it('orders sessions by last use, newest first, falling back to createdAt', async () => {
+        sessions = [
+            { id: 'old', title: 'Old', createdAt: 10 },
+            { id: 'newest', title: 'Newest', lastAccessedAt: 300, createdAt: 1 },
+            { id: 'mid', title: 'Mid', lastAccessedAt: 200, createdAt: 500 }
+        ];
+        await openDialog();
+
+        expect(rows().map(row => row.dataset.sessionId)).toEqual(['newest', 'mid', 'old']);
+    });
+
+    it('tags rows current, open and closed and dims only closed rows', async () => {
+        sessions = [
+            { id: 'session-current', title: 'Mine' },
+            { id: 'session-other-tab', title: 'Elsewhere' },
+            { id: 'session-none', title: 'Shut' }
+        ];
+        openSessionIds = ['session-current', 'session-other-tab'];
+        ownSessionId = 'session-current';
+        await openDialog();
+
+        const tags = rows().map(row => row.querySelector('.session-list-item-state').textContent);
+        expect(tags).toEqual(['current', 'open', 'closed']);
+        expect(rows()[2].classList.contains('session-list-item-closed')).toBe(true);
+        expect(rows()[0].classList.contains('session-list-item-closed')).toBe(false);
+        expect(rows()[1].classList.contains('session-list-item-closed')).toBe(false);
+    });
+
+    it('treats every session as closed when the open-session report fails', async () => {
+        sessions = [{ id: 'session-current', title: 'Mine' }];
+        deps.fetchOpenSessions = vi.fn(async () => { throw new Error('worker gone'); });
+        exports = loadDialog(deps);
+
+        await openDialog();
+
+        const tags = rows().map(row => row.querySelector('.session-list-item-state').textContent);
+        expect(tags).toEqual(['closed']);
+        expect(rows()[0].classList.contains('session-list-item-closed')).toBe(true);
+        expect(showMessage).not.toHaveBeenCalled();
+    });
+
+    it('shows the last page on the second line and keeps it empty for older sessions', async () => {
+        sessions = [
+            { id: 'with-page', title: 'Known', lastPage: { domain: 'example.com', title: 'A page' } },
+            { id: 'without-page', title: 'Unknown' }
+        ];
+        await openDialog();
+
+        const lines = rows().map(row => row.querySelector('.session-list-item-last-page'));
+        expect(lines[0].textContent).toBe('example.com — A page');
+        expect(lines[1].textContent).toBe('');
+    });
+
+    it('loads a session from the title or the load button and dismisses the dialog', async () => {
+        sessions = [{ id: 'session-1', title: 'Target', messages: [{ role: 'user', content: 'hi' }] }];
+        await openDialog();
+
+        await exports.sessionListBlockClicked(clickEvent(rows()[0].querySelector('.session-list-item-title'), rows()[0]));
+
+        expect(restoreHistorySessionClicked).toHaveBeenCalledWith(null, 'session-1');
+        expect(dialog().classList.contains('invisible')).toBe(true);
+
+        await openDialog();
+        await exports.sessionListBlockClicked(clickEvent(rowAction(rows()[0], 'load'), rows()[0]));
+
+        expect(restoreHistorySessionClicked).toHaveBeenCalledTimes(2);
+        expect(dialog().classList.contains('invisible')).toBe(true);
+    });
+
+    it('keeps the dialog and shows a message when the session cannot be loaded', async () => {
+        sessions = [{ id: 'session-1', title: 'Empty' }];
+        await openDialog();
+
+        await exports.sessionListBlockClicked(clickEvent(rows()[0].querySelector('.session-list-item-title'), rows()[0]));
+
+        expect(restoreHistorySessionClicked).not.toHaveBeenCalled();
+        expect(showMessage).toHaveBeenCalledWith('Session "Empty" could not be loaded.', 'error');
+        expect(dialog().classList.contains('invisible')).toBe(false);
+    });
+
+    it('saves a rename with Enter and cancels it with Escape', async () => {
+        sessions = [{ id: 'session-1', title: 'Before' }];
+        await openDialog();
+        const row = rows()[0];
+
+        await exports.startSessionRename(row, 'session-1');
+        const input = row.querySelector('.session-list-rename-input');
+        expect(input).not.toBeNull();
+
+        input.value = 'After';
+        input.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        await vi.waitFor(() => expect(row.querySelector('.session-list-rename-input')).toBeNull());
+
+        expect(renameSession).toHaveBeenCalledWith('session-1', 'After');
+        const title = row.querySelector('.session-list-item-title');
+        expect(title.textContent).toBe('After');
+        expect(title.getAttribute('aria-label')).toBe('Load session After');
+        expect(rowAction(row, 'delete').getAttribute('aria-label')).toBe('Delete session After');
+        expect(dialog().classList.contains('invisible')).toBe(false);
+    });
+
+    it('cancels only the rename with Escape, not the dialog', async () => {
+        sessions = [{ id: 'session-1', title: 'Keep' }];
+        await openDialog();
+        const row = rows()[0];
+
+        await exports.startSessionRename(row, 'session-1');
+        const input = row.querySelector('.session-list-rename-input');
+        input.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+        expect(renameSession).not.toHaveBeenCalled();
+        expect(row.querySelector('.session-list-rename-input')).toBeNull();
+        expect(row.querySelector('.session-list-item-title').textContent).toBe('Keep');
+        expect(dialog().classList.contains('invisible')).toBe(false);
+    });
+
+    it('deletes a row and unbinds the tab when its own session is deleted', async () => {
+        sessions = [
+            { id: 'session-current', title: 'Mine' },
+            { id: 'session-2', title: 'Other' }
+        ];
+        await openDialog();
+
+        await exports.sessionListBlockClicked(clickEvent(rowAction(rows()[0], 'delete'), rows()[0]));
+
+        expect(deleteSessionById).toHaveBeenCalledWith('session-current');
         expect(reportTabBinding).toHaveBeenCalledWith({ sessionId: null });
+        expect(rows().map(row => row.dataset.sessionId)).toEqual(['session-2']);
+        expect(dialog().classList.contains('invisible')).toBe(false);
     });
 
-    it('keeps the binding when a session other than the active one is deleted', async () => {
-        getActiveSessionId.mockResolvedValue('session-other');
-        const btn = document.createElement('span');
-        btn.setAttribute('data-sessionId', 'session-1');
-        const menuItem = document.createElement('div');
-        menuItem.className = 'menu-item';
-        menuItem.appendChild(btn);
+    it('shows the empty state when the last row is deleted', async () => {
+        sessions = [{ id: 'session-1', title: 'Only' }];
+        await openDialog();
 
-        await exports.deleteHistoryMenuItemClicked({
-            stopPropagation: vi.fn(),
-            stopImmediatePropagation: vi.fn(),
-            currentTarget: btn
-        });
+        await exports.sessionListBlockClicked(clickEvent(rowAction(rows()[0], 'delete'), rows()[0]));
 
-        expect(reportTabBinding).not.toHaveBeenCalled();
+        expect(rows()).toHaveLength(0);
+        expect(doc.querySelector('.session-list-empty').textContent).toBe('There are no saved sessions.');
     });
 
-    it('clears session history menu state after deleting all sessions', async () => {
-        const shadowRoot = getShadowRoot();
-        const header = document.createElement('header');
-        header.className = 'lai-header';
-        const historyButton = document.createElement('img');
-        historyButton.id = 'sessionHistory';
-        historyButton.classList.add('js-menu-is-open');
-        historyButton.dataset.menuId = 'sessionHistMenu';
-        const menu = document.createElement('div');
-        menu.id = 'sessionHistMenu';
-        const deleteAllItem = document.createElement('div');
-        deleteAllItem.className = 'menu-item';
-        menu.appendChild(deleteAllItem);
-        header.appendChild(historyButton);
-        header.appendChild(menu);
-        shadowRoot.appendChild(header);
+    it('asks for confirmation before deleting all sessions and cancels without deleting', async () => {
+        sessions = [{ id: 'session-1', title: 'One' }];
+        await openDialog();
+
+        exports.sessionListDeleteAllClicked({ stopPropagation: vi.fn() });
+        expect(dialog().querySelector('.session-list-confirm').classList.contains('invisible')).toBe(false);
+
+        exports.sessionListDeleteAllCancelClicked({ stopPropagation: vi.fn() });
+        expect(dialog().querySelector('.session-list-confirm').classList.contains('invisible')).toBe(true);
+        expect(recycleAllSessions).not.toHaveBeenCalled();
+        expect(rows()).toHaveLength(1);
+    });
+
+    it('deletes all sessions on confirmation and shows the empty state with the dialog open', async () => {
+        sessions = [{ id: 'session-1', title: 'One' }];
+        await openDialog();
+        exports.sessionListDeleteAllClicked({ stopPropagation: vi.fn() });
 
         await exports.deleteAllHistorySessionsClicked({
-            composedPath: () => [deleteAllItem, menu, header, shadowRoot],
-            stopImmediatePropagation: vi.fn(),
-            preventDefault: vi.fn(),
             stopPropagation: vi.fn(),
-            target: deleteAllItem
+            stopImmediatePropagation: vi.fn(),
+            target: dialog().querySelector('#sessionListDeleteAllConfirm')
         });
 
         expect(recycleAllSessions).toHaveBeenCalled();
-        expect(header.querySelector('#sessionHistMenu')).toBeNull();
-        expect(historyButton.classList.contains('js-menu-is-open')).toBe(false);
-        expect(historyButton.dataset.menuId).toBeUndefined();
+        expect(rows()).toHaveLength(0);
+        expect(doc.querySelector('.session-list-empty')).not.toBeNull();
+        expect(dialog().querySelector('.session-list-confirm').classList.contains('invisible')).toBe(true);
+        expect(dialog().classList.contains('invisible')).toBe(false);
+    });
+
+    it('dismisses through the close button path, Escape and a click outside', async () => {
+        sessions = [{ id: 'session-1', title: 'One' }];
+        await openDialog();
+
+        exports.sessionListKeydown({ key: 'Escape', stopPropagation: vi.fn() });
+        expect(dialog().classList.contains('invisible')).toBe(true);
+
+        await openDialog();
+        exports.closeSessionListOnOutsideClick({
+            composedPath: () => [doc.getElementById('sidebar'), doc]
+        });
+        expect(dialog().classList.contains('invisible')).toBe(true);
+
+        await openDialog();
+        exports.closeSessionListDialog();
+        expect(dialog().classList.contains('invisible')).toBe(true);
+    });
+
+    it('ignores an outside click that originates from the dialog or the header button', async () => {
+        sessions = [{ id: 'session-1', title: 'One' }];
+        await openDialog();
+
+        exports.closeSessionListOnOutsideClick({
+            composedPath: () => [dialog().querySelector('.session-list-block'), dialog(), doc]
+        });
+        expect(dialog().classList.contains('invisible')).toBe(false);
+    });
+
+    it('opens the dialog from the header history button', async () => {
+        sessions = [{ id: 'session-1', title: 'One' }];
+        await exports.sessionHistoryClicked({ preventDefault: vi.fn(), stopPropagation: vi.fn(), target: {} });
+
+        expect(dialog().classList.contains('invisible')).toBe(false);
+        expect(rows()).toHaveLength(1);
+    });
+
+    it('shows the empty state when there are no saved sessions', async () => {
+        sessions = [];
+        await openDialog();
+
+        expect(doc.querySelector('.session-list-empty').textContent).toBe('There are no saved sessions.');
+        expect(dialog().classList.contains('invisible')).toBe(false);
+    });
+
+    it('builds every control as a button with an accessible name', async () => {
+        sessions = [{ id: 'session-1', title: 'Named session' }];
+        await openDialog();
+
+        const row = rows()[0];
+        const buttons = Array.from(row.querySelectorAll('button'));
+        expect(buttons).toHaveLength(4);
+        buttons.forEach(button => {
+            expect(button.tagName).toBe('BUTTON');
+            expect((button.getAttribute('aria-label') || '').trim()).not.toBe('');
+        });
+        expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
+            'Load session Named session',
+            'Rename session Named session',
+            'Load session Named session',
+            'Delete session Named session'
+        ]);
+
+        ['sessionListDeleteAll', 'sessionListClose', 'sessionListDeleteAllConfirm', 'sessionListDeleteAllCancel'].forEach(id => {
+            expect(sidebarHtmlCode).toMatch(new RegExp(`<button id="${id}"[^>]*>`));
+        });
     });
 });
 describe('ribbon.js session restore', () => {

@@ -132,7 +132,7 @@
     <div id="laiSuggestionBox" class="invisible lai-suggestion-box"></div>
     <div id="attachContainer" class="attachment-container"></div>
     <textarea id="laiUserInput"
-        placeholder="Type your message here or type...&#13;'/' to add commands;&#13;'/list' available commands;&#13;'@' to add context;&#13;/help for more.&#13;Shift+Enter or Numpad Enter for a new line&#13;&#13;Enter to send"
+        placeholder="Type your message here or type...&#13;'/' to add commands;&#13;'/list' available commands;&#13;'/session' saved sessions;&#13;'@' to add context;&#13;/help for more.&#13;Shift+Enter or Numpad Enter for a new line&#13;&#13;Enter to send"
         rows="15"></textarea>
     <button id="laiAbort" class="lai-button-abort invisible">Abort</button>
     <div class="input-controls-container">
@@ -181,6 +181,19 @@
     <div class="user-command-block"></div>
 </div>
 
+<div id="sessionListContainer" class="invisible session-list" tabindex="-1">
+    <div class="session-list-ribbon">
+        <button id="sessionListDeleteAll" type="button" title="Delete all sessions">delete all</button>
+        <button id="sessionListClose" type="button" title="Close the sessions dialog">close</button>
+    </div>
+    <div class="session-list-ribbon session-list-confirm invisible">
+        <span>Delete all saved sessions?</span>
+        <button id="sessionListDeleteAllConfirm" type="button" title="Confirm deleting all sessions">Delete</button>
+        <button id="sessionListDeleteAllCancel" type="button" title="Cancel deleting all sessions">Cancel</button>
+    </div>
+    <div class="session-list-block"></div>
+</div>
+
 <img id="spinner" class="loading invisible" data-type="reload" />
 
 <template id="helpTemplate">
@@ -193,9 +206,6 @@
     </div>
 </template>
 
-<template id="histMenuTemplate">
-    <div></div>
-</template>
 
 <template id="editorTemplate">
     <div id="userCommandEditor" class="user-command-editor">
