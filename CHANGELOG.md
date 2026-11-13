@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.29.99] - 2026-11-13 - latest
+## [1.29.100] - 2026-11-13 - latest
+
+### Sessions
+
+- Each session now remembers the domain and title of the page its last prompt was sent from; no full address is stored (#63)
+- Groundwork for the sessions dialog: the panel can ask which sessions are currently open in a tab. No visible change yet
+
+## [1.29.99] - 2026-11-13
 
 ### Tools
 
