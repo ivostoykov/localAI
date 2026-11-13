@@ -3,6 +3,7 @@ const RESTART_LIMIT = 5; //TODO add the limit as in param and remove these 2 var
 let activeStreamRequestId = null;
 let activeStreamSeq = 0;
 let streamResyncInFlight = false;
+let sessionCatchUpInFlight = false;
 const ignoredForeignRequestIds = new Set();
 
 function initRibbonWithRetry(deadline) {
@@ -1602,6 +1603,78 @@ async function restoreTabSessionFromBackground() {
 
     if (initialSnapshot) {
         await presentTerminalRequestSnapshot(initialSnapshot);
+    }
+}
+
+function appendSessionCatchUpSeparator(messageList) {
+    const separator = document.createElement('div');
+    separator.className = 'lai-session-catch-up-separator';
+    separator.setAttribute('role', 'separator');
+    separator.textContent = 'Added from another tab';
+    messageList.appendChild(separator);
+    return separator;
+}
+
+// Separators are view-only markers, so only .lai-chat-history cards count as turns.
+function getShownChatTurns(messageList) {
+    return Array.from(messageList?.querySelectorAll('.lai-chat-history') || []).map(card => {
+        const textElement = card.querySelector('.lai-input-text');
+        if (!textElement) { return { role: null, content: '' }; }
+        const isUserTurn = card.classList.contains('lai-user-input');
+        return {
+            role: isUserTurn ? 'user' : 'assistant',
+            content: isUserTurn ? getUserPromptSource(textElement) : getMarkdownSource(textElement)
+        };
+    });
+}
+
+/**
+ * Appends the turns the bound session gained in another tab while this sidebar was
+ * not in the foreground (#61). A strict prefix of the saved turns is appended under
+ * one separator; a mismatch in the common part re-renders the whole history, while
+ * turns shown beyond the saved ones are local only (aborted or pending) and stay.
+ */
+async function catchUpActiveSessionFromStorage() {
+    const shadowRoot = getShadowRoot();
+    if (!shadowRoot) { return; }
+    if (activeStreamRequestId) { return; }
+    if (sessionCatchUpInFlight) { return; }
+
+    sessionCatchUpInFlight = true;
+    try {
+        const sessionId = await getActiveSessionId();
+        if (!sessionId || activeStreamRequestId) { return; }
+
+        const session = await getActiveSessionById(sessionId);
+        if (!session || activeStreamRequestId || await getActiveSessionId() !== sessionId) { return; }
+
+        const messageList = shadowRoot.querySelector('#laiChatMessageList');
+        if (!messageList) { return; }
+
+        const savedTurns = (session.messages ?? [])
+            .map((message, index) => ({ message, index }))
+            .filter(({ message }) => isRenderableSessionMessage(message));
+        const shownTurns = getShownChatTurns(messageList);
+
+        const commonLength = Math.min(shownTurns.length, savedTurns.length);
+        const commonMatches = shownTurns.slice(0, commonLength).every((turn, i) =>
+            turn.role === savedTurns[i].message.role && turn.content === savedTurns[i].message.content);
+
+        if (!commonMatches) {
+            await renderSessionHistoryMessages(session);
+            return;
+        }
+
+        if (shownTurns.length >= savedTurns.length) { return; }
+
+        appendSessionCatchUpSeparator(messageList);
+        for (const turn of savedTurns.slice(shownTurns.length)) {
+            if (activeStreamRequestId || await getActiveSessionId() !== sessionId) { return; }
+            await renderSessionHistoryMessage(turn.message, turn.index);
+        }
+        messageList.scrollTop = messageList.scrollHeight;
+    } finally {
+        sessionCatchUpInFlight = false;
     }
 }
 

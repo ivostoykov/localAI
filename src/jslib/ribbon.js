@@ -855,28 +855,33 @@ async function restoreHistorySessionClicked(e = null, sessionIdx = null, { silen
     }
 }
 
+function isRenderableSessionMessage(msg) {
+    if (!msg || (msg.role !== 'user' && msg.role !== 'assistant')) { return false; }
+    if (!msg.content || msg.content.trim() === '') { return false; }
+    if (msg?.tool_calls) { return false; }
+    return true;
+}
+
+async function renderSessionHistoryMessage(msg, index = -1) {
+    if (!isRenderableSessionMessage(msg)) { return false; }
+
+    if (msg.role === 'user') {
+        await renderUserPromptCard(msg.content, index);
+        return true;
+    }
+
+    const aiReplyTextElement = await addInputCardToUIChatHistory('', 'ai', index);
+    await parseAndRender(msg.content, aiReplyTextElement, { streamReply: false });
+    setMarkdownSource(aiReplyTextElement, msg.content);
+    return true;
+}
+
 async function renderSessionHistoryMessages(session) {
     clearChatHistoryUI();
 
     for (const [i, msg] of (session?.messages ?? []).entries()) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Restoring message ${i}:`, msg);
-        if(!msg.role || (msg.role !== 'user' && msg.role !== 'assistant'))  {  continue;  }
-        if(!msg.content || msg.content.trim() === '')  {  continue;  }
-        if(msg?.tool_calls)  {  continue;  }
-        const role = msg?.role?.replace(/assistant/i, 'ai');
-        if (!role) {
-            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping message ${i} - no role found`);
-            continue;
-        }
-
-        if (role === 'user') {
-            await renderUserPromptCard(msg.content, i);
-            continue;
-        }
-
-        const aiReplyTextElement = await addInputCardToUIChatHistory('', role, i);
-        await parseAndRender(msg.content, aiReplyTextElement, { streamReply: false });
-        setMarkdownSource(aiReplyTextElement, msg.content);
+        await renderSessionHistoryMessage(msg, i);
     }
 
     const shadowRoot = getShadowRoot();

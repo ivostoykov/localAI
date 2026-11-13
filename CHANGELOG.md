@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.29.97] - 2026-11-12 - latest
+## [1.29.98] - 2026-11-13 - latest
+
+### Sessions
+
+- A panel whose session was continued in another tab now catches up when its tab is shown or focused again: the new turns are added under an `Added from another tab` marker, without a reload (#61)
+- The marker is view-only and disappears after a reload or a history restore; an aborted or unsent reply shown only in that panel is kept
+
+## [1.29.97] - 2026-11-12
 
 ### Page extraction
 
