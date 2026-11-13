@@ -246,7 +246,7 @@ async function setActiveSession(session) {
  * Writes only the given session into the latest catalogue (replacing or appending its record);
  * other sessions, including empty ones that belong to other tabs, are left untouched.
  */
-async function saveSession(session) {
+async function saveSession(session, beforeSave = null) {
     if (!session?.id) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: session object is missing a valid id!`, session);
         return false;
@@ -262,6 +262,7 @@ async function saveSession(session) {
             const sessions = await getAllSessions();
             const idx = sessions.findIndex(s => s?.id === session.id);
 
+            if (beforeSave) { await beforeSave(session); }
             session.lastAccessedAt = Date.now();
             if (idx < 0) { sessions.push(session); }
             else { sessions[idx] = session; }

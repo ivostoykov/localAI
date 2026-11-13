@@ -101,6 +101,23 @@ function isOptionsPageSender(sender) {
     return typeof sender?.url === 'string' && sender.url.startsWith(optionsUrl);
 }
 
+async function getOpenSessionsForSender(sender) {
+    const bindings = await tabState.listAll();
+    const liveBindings = await Promise.all(bindings.map(async binding => {
+        try {
+            await chrome.tabs.get(binding.tabId);
+            return binding;
+        } catch {
+            return null;
+        }
+    }));
+    const openBindings = liveBindings.filter(Boolean);
+    return {
+        openSessionIds: [...new Set(openBindings.map(binding => binding.sessionId))],
+        ownSessionId: openBindings.find(binding => binding.tabId === sender?.tab?.id)?.sessionId ?? null
+    };
+}
+
 async function handleRuntimeMessage(request, sender) {
     let response;
     const tabId = sender?.tab?.id;
@@ -118,6 +135,9 @@ async function handleRuntimeMessage(request, sender) {
 
         case 'getTabState':
             return await readTabStartupStateForSender(sender);
+
+        case 'getOpenSessions':
+            return await getOpenSessionsForSender(sender);
 
         case 'removeStreamRequestState':
             return await removeStreamRequestStateForSender(request, sender);
@@ -1169,7 +1189,18 @@ async function fetchDataAction(request, sender) {
             ...getVisibleSessionMessages(activeSession.messages),
             { role: 'user', content: userInput }
         ];
-        if (!await saveSession(activeSession)) {
+        if (!await saveSession(activeSession, session => {
+            delete session.lastPage;
+            try {
+                const url = new URL(sender?.tab?.url);
+                if (url.protocol === 'http:' || url.protocol === 'https:') {
+                    session.lastPage = {
+                        domain: url.hostname,
+                        title: typeof sender?.tab?.title === 'string' ? sender.tab.title.trim() : ''
+                    };
+                }
+            } catch {}
+        })) {
             await showUIMessage(sessionSaveFailedMessage, 'error', sender?.tab);
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to save session ${activeSession.id}; request not sent.`);
             return { "status": "error", "message": sessionSaveFailedMessage };

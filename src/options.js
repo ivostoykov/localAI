@@ -1021,6 +1021,18 @@ async function importFromFile(e) {
         showSpinner();
         try {
             var json = JSON.parse(reader.result);
+            if (storageKey === 'aiSessions' && Array.isArray(json)) {
+                for (const session of json) {
+                    if (!isPlainObject(session)) { continue; }
+                    if (!isPlainObject(session.lastPage)
+                        || typeof session.lastPage.domain !== 'string'
+                        || typeof session.lastPage.title !== 'string') {
+                        delete session.lastPage;
+                    } else {
+                        session.lastPage = { domain: session.lastPage.domain, title: session.lastPage.title };
+                    }
+                }
+            }
             await chrome.storage.local.set({ [storageKey]: json });
 
             showMessage(`${file.name} imported successfully.`, 'success');
