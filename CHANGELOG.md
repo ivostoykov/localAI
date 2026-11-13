@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.29.98] - 2026-11-13 - latest
+## [1.29.99] - 2026-11-13 - latest
+
+### Tools
+
+- New `list_session_tabs` and `read_session_tab_page` tools: with a tool-capable model, a conversation loaded in several tabs can list the other tabs sharing it and read one of their pages on demand (#62)
+- Only tabs bound to the same session are reachable; closed, discarded or unreachable tabs return a status message and are never reopened
+
+## [1.29.98] - 2026-11-13
 
 ### Sessions
 
