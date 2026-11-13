@@ -405,6 +405,41 @@ describe('options global export/import', () => {
         });
     });
 
+    describe('session last-page export and import (#63)', () => {
+        async function importSessions(records) {
+            await api.importFromFile({ target: {
+                dataset: { key: 'importSessions' }, files: [makeFile(window, records, 'sessions.json')]
+            } });
+            await vi.waitFor(() => expect(messageBox(document).textContent).toContain('imported successfully'));
+            return (await fakeBrowser.storage.local.get('aiSessions')).aiSessions;
+        }
+
+        it('round-trips current and old session records without requiring lastPage', async () => {
+            const sessions = [
+                { id: 'current', title: 'Current', messages: [], lastPage: { domain: 'example.com', title: 'Page' } },
+                { id: 'old', title: 'Old', messages: [] }
+            ];
+            await fakeBrowser.storage.local.set({ aiSessions: sessions });
+            const downloads = captureDownloads(window);
+            await api.exportAsFile({ target: { id: 'exportSessions' } });
+            expect(downloads.names[0]).toMatch(/^localAI_session_export_\d{8}\.json$/);
+            const exported = readDownload(downloads.blobs[0]);
+            expect(exported).toEqual(sessions);
+            await fakeBrowser.storage.local.remove('aiSessions');
+            expect(await importSessions(exported)).toEqual(sessions);
+        });
+
+        it('drops malformed imported lastPage values and keeps valid string fields only', async () => {
+            const invalid = [null, [], 'page', 4, {}, { domain: 'example.com' }, { title: 'Page' },
+                { domain: 1, title: 'Page' }, { domain: 'example.com', title: null }];
+            const records = invalid.map((lastPage, index) => ({ id: `bad-${index}`, messages: [], lastPage }));
+            records.push({ id: 'valid', messages: [], lastPage: { domain: 'example.com', title: '', url: 'https://example.com/?secret' } });
+            const imported = await importSessions(records);
+            expect(imported.slice(0, invalid.length)).toEqual(records.slice(0, invalid.length).map(({ lastPage, ...record }) => record));
+            expect(imported.at(-1).lastPage).toEqual({ domain: 'example.com', title: '' });
+        });
+    });
+
     describe('options.html', () => {
         const ribbon = () => document.getElementById('generalRibbon');
 

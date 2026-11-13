@@ -1134,3 +1134,101 @@ describe('background.js', () => {
         });
     });
 });
+
+describe('prompt last-page data (#63)', () => {
+    const sessionsCode = fs.readFileSync(path.join(__dirname, '../src/jslib/sessions.js'), 'utf-8');
+    const fetchDataActionCode = backgroundCode.match(/async function fetchDataAction\([\s\S]*?\n}\n/)[0];
+
+    function setup() {
+        const records = { aiSessions: [{ id: 'shared', titleGenerated: true, messages: [], lastPage: { domain: 'old.example', title: 'Old' } }] };
+        const snapshots = [];
+        const chrome = {
+            storage: { local: {
+                get: vi.fn(async () => structuredClone(records)),
+                set: vi.fn(async data => {
+                    Object.assign(records, structuredClone(data));
+                    snapshots.push(structuredClone(data.aiSessions));
+                })
+            } }
+        };
+        const deps = {
+            console: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), log: vi.fn() },
+            chrome, allSessionsStorageKey: 'aiSessions', manifest: { name: 'localAI' }, getLineNumber: () => 'test',
+            getLaiOptions: async () => ({}), getAiModel: async () => 'model',
+            resolveModelNameForRequest: async value => value, applyAutomaticModelOptions: async () => {},
+            getSessionForRequest: async id => structuredClone(records.aiSessions.find(session => session.id === id)),
+            processCommandArguments: async () => ({ pageContent: null, pageHash: null }),
+            replaceCommandPlaceholders: value => value,
+            backgroundMemory: {
+                buildOptimisedContext: async () => [{ role: 'user', content: 'Prompt' }],
+                getContext: async () => null, storeTurnWithEmbeddings: vi.fn()
+            },
+            showUIMessage: vi.fn(), dumpInFrontConsole: vi.fn(), updateUIStatusBar: vi.fn(),
+            createStreamRequestId: () => 'request', registerRequestController: vi.fn(), unregisterRequestController: vi.fn(),
+            throwIfRequestCancelled: async () => {}, liveStreamStates: new Map(), streamRequestState: null,
+            validateAndGetTabId: async () => null,
+            createNavigationSession: () => ({}), disposeNavigationSession: vi.fn(),
+            fetch: vi.fn(async () => ({ status: 200, ok: true })),
+            consumeStreamResponse: async () => ({ body: { message: { role: 'assistant', content: 'Answer' } }, responseText: 'Answer' }),
+            checkResponseTextAndBody: vi.fn(), sanitizeAssistantMessageForHistory: value => value,
+            handleStreamEnd: vi.fn(), wasTerminalMessageDelivered: () => false,
+            sessionSaveFailedMessage: 'Save failed',
+            sendStreamError: async (tabId, requestId, message) => { throw new Error(message); }
+        };
+        const sessions = new Function('deps', `with (deps) { ${sessionsCode}; return { saveSession }; }`)(deps);
+        deps.saveSession = vi.fn(sessions.saveSession);
+        const run = new Function('deps', `with (deps) { ${getVisibleSessionMessagesCode}\n${fetchDataActionCode}; return fetchDataAction; }`)(deps);
+        const prompt = (tab, extra = {}) => run({
+            action: 'fetchData', sessionId: 'shared', url: 'http://localhost/api/chat',
+            data: { userInput: 'Prompt' }, ...extra
+        }, { tab });
+        return { records, snapshots, deps, prompt };
+    }
+
+    it('saves only hostname and trimmed sender title in the existing prompt save', async () => {
+        const env = setup();
+        await env.prompt({ id: 1, url: 'https://sub.example.com:8443/path?q=secret#fragment', title: '  Page title  ' }, {
+            lastPage: { domain: 'forged.example', title: 'Forged' },
+            tab: { url: 'https://forged.example/', title: 'Forged' }
+        });
+        expect(env.snapshots[0][0]).toMatchObject({
+            messages: [{ role: 'user', content: 'Prompt' }],
+            lastPage: { domain: 'sub.example.com', title: 'Page title' }
+        });
+        expect(env.snapshots).toHaveLength(2);
+        expect(env.deps.saveSession).toHaveBeenCalledTimes(2);
+        expect(env.snapshots[1][0].messages).toHaveLength(2);
+        expect(env.deps.fetch).toHaveBeenCalledOnce();
+        expect(JSON.stringify(env.records)).not.toContain('secret');
+    });
+
+    it('replaces the page on navigation and a subsequent prompt from another tab', async () => {
+        const env = setup();
+        await env.prompt({ id: 1, url: 'https://first.example/', title: 'First' });
+        await env.prompt({ id: 1, url: 'http://next.example/path', title: 'Next' });
+        expect(env.records.aiSessions[0].lastPage).toEqual({ domain: 'next.example', title: 'Next' });
+        await env.prompt({ id: 2, url: 'https://other.example/', title: 'Other tab' });
+        expect(env.records.aiSessions[0].lastPage).toEqual({ domain: 'other.example', title: 'Other tab' });
+    });
+
+    it.each([undefined, '', 'not a URL', 'file:///tmp/page.html', 'about:blank', 'chrome://settings', 'ftp://example.com']) (
+        'removes stale lastPage for URL %j, ignoring request metadata', async url => {
+            const env = setup();
+            await env.prompt({ id: 1, url }, { lastPage: { domain: 'forged.example', title: 'Forged' } });
+            expect(env.snapshots[0][0]).not.toHaveProperty('lastPage');
+            expect(env.records.aiSessions[0]).not.toHaveProperty('lastPage');
+        }
+    );
+
+    it('removes lastPage for a sender without a tab', async () => {
+        const env = setup();
+        await env.prompt(undefined);
+        expect(env.snapshots[0][0]).not.toHaveProperty('lastPage');
+    });
+
+    it('uses an empty title when the sender title is missing', async () => {
+        const env = setup();
+        await env.prompt({ id: 1, url: 'https://example.com/' });
+        expect(env.records.aiSessions[0].lastPage).toEqual({ domain: 'example.com', title: '' });
+    });
+});

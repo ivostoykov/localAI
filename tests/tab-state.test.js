@@ -10,7 +10,7 @@ const tabStateCode = fs.readFileSync(path.join(root, 'src/jslib/tab-state.js'), 
 const backgroundCode = fs.readFileSync(path.join(root, 'src/background.js'), 'utf-8');
 const sessionsCode = fs.readFileSync(path.join(root, 'src/jslib/sessions.js'), 'utf-8');
 
-const loadTabStateModule = new Function('chrome', `${tabStateCode}; return { TabStateStore, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot };`);
+const loadTabStateModule = new Function('chrome', `${tabStateCode}; return { TabStateStore, reportTabBinding, fetchTabStartupState, fetchOpenSessions, acknowledgeTabRequestSnapshot };`);
 
 const extractFunction = (name) => backgroundCode.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0];
 const backgroundHandlersCode = ['updateTabBindingForSender', 'getTabRequestSnapshotForSender', 'readTabStartupStateForSender', 'removeStreamRequestStateForSender']
@@ -391,5 +391,90 @@ describe('TabStateStore.listBySession (#62)', () => {
         } finally {
             warning.mockRestore();
         }
+    });
+});
+
+describe('open-session report (#63)', () => {
+    function setup() {
+        const storage = createStorage({
+            'laiTabState:1': { tabId: 1, sessionId: 'shared', panelOpen: true },
+            'laiTabState:2': { tabId: 2, sessionId: 'shared', panelOpen: false },
+            'laiTabState:3': { tabId: 3, sessionId: 'other' },
+            'laiTabState:4': { tabId: 4, sessionId: 'closed' },
+            'laiTabState:5': { tabId: 5, sessionId: null },
+            'laiTabState:6': { tabId: 6, sessionId: ' ' },
+            'laiTabState:7': { tabId: 7, sessionId: 123 },
+            'laiTabState:8': null,
+            'laiTabState:9': { sessionId: 'malformed' },
+            'unrelated:10': { tabId: 10, sessionId: 'unrelated' }
+        });
+        const { TabStateStore } = loadTabStateModule({});
+        const tabState = new TabStateStore({ storage });
+        const tabs = { get: vi.fn(async id => {
+            if (id === 4) { throw new Error('Closed'); }
+            return { id, title: 'Private title', url: 'https://private.example/' };
+        }) };
+        const handle = new Function('tabState', 'chrome', `${extractFunction('getOpenSessionsForSender')}\n${extractFunction('handleRuntimeMessage')}; return handleRuntimeMessage;`)(tabState, { tabs });
+        return { storage, tabState, tabs, handle };
+    }
+
+    it('lists only valid session bindings in the binding namespace', async () => {
+        const { tabState } = setup();
+        expect((await tabState.listAll()).map(binding => binding.tabId)).toEqual([1, 2, 3, 4]);
+    });
+
+    it('returns unique sessions in existing tabs and identifies only the sender tab', async () => {
+        const { handle, tabs, storage } = setup();
+        expect(await handle({ action: 'getOpenSessions', tabId: 3 }, { tab: { id: 1 } })).toEqual({
+            openSessionIds: ['shared', 'other'], ownSessionId: 'shared'
+        });
+        expect(tabs.get.mock.calls).toEqual([[1], [2], [3], [4]]);
+        expect(storage.remove).not.toHaveBeenCalled();
+    });
+
+    it('drops a closed tab session on the next report', async () => {
+        const { handle, tabs } = setup();
+        await handle({ action: 'getOpenSessions' }, { tab: { id: 3 } });
+        tabs.get.mockImplementation(async id => {
+            if (id === 3 || id === 4) { throw new Error('Closed'); }
+            return { id };
+        });
+        expect(await handle({ action: 'getOpenSessions' }, { tab: { id: 3 } })).toEqual({
+            openSessionIds: ['shared'], ownSessionId: null
+        });
+    });
+
+    it.each([{}, { tab: { id: 99 } }, { tab: { id: 5 } }])('returns no own session for sender %j', async sender => {
+        const { handle } = setup();
+        expect(await handle({ action: 'getOpenSessions', tabId: 1 }, sender)).toEqual({
+            openSessionIds: ['shared', 'other'], ownSessionId: null
+        });
+    });
+
+    it('returns an empty report on storage failure', async () => {
+        const { storage, handle, tabs } = setup();
+        storage.get.mockRejectedValue(new Error('Unavailable'));
+        expect(await handle({ action: 'getOpenSessions' }, { tab: { id: 1 } })).toEqual({
+            openSessionIds: [], ownSessionId: null
+        });
+        expect(tabs.get).not.toHaveBeenCalled();
+        const { TabStateStore } = loadTabStateModule({});
+        expect(await new TabStateStore({ storage: null }).listAll()).toEqual([]);
+    });
+
+    it('requests the report without supplying a tab identity', async () => {
+        const reply = { openSessionIds: ['s1'], ownSessionId: 's1' };
+        const sendMessage = vi.fn(async () => reply);
+        const { fetchOpenSessions } = loadTabStateModule({ runtime: { sendMessage } });
+        expect(await fetchOpenSessions()).toEqual(reply);
+        expect(sendMessage).toHaveBeenCalledWith({ action: 'getOpenSessions' });
+    });
+
+    it.each(['reject', 'lastError', 'no-reply'])('returns an empty report for messaging failure %s', async failure => {
+        const runtime = { sendMessage: vi.fn(async () => undefined) };
+        if (failure === 'reject') { runtime.sendMessage.mockRejectedValue(new Error('Unavailable')); }
+        if (failure === 'lastError') { runtime.lastError = { message: 'Unavailable' }; }
+        const { fetchOpenSessions } = loadTabStateModule({ runtime });
+        expect(await fetchOpenSessions()).toEqual({ openSessionIds: [], ownSessionId: null });
     });
 });
