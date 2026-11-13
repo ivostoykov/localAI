@@ -159,6 +159,20 @@ function handleTabSessionPageShow(event) {
 
 window.addEventListener('pageshow', handleTabSessionPageShow);
 
+function handleTabSessionCatchUp() {
+  catchUpActiveSessionFromStorage().catch(err => {
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to catch up the tab session:`, err);
+  });
+}
+
+function handleTabSessionVisibilityChange(event) {
+  if (document.visibilityState !== 'visible') { return; }
+  handleTabSessionCatchUp();
+}
+
+document.addEventListener('visibilitychange', handleTabSessionVisibilityChange);
+window.addEventListener('focus', handleTabSessionCatchUp);
+
 if ('navigation' in window) {
     window.addEventListener("popstate", triggerUpdate);
     window.addEventListener("pushstate", triggerUpdate);
