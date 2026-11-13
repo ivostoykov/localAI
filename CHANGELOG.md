@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.1] - 2026-11-13 - latest
+## [1.30.2] - 2026-11-13 - latest
+
+### Maintenance
+
+- Removed the start-up clean-up of the `activeModel` storage key left by builds before 1.29; it was temporary since 1.29.60 and scheduled for removal in 1.30
+
+## [1.30.1] - 2026-11-13
 
 ### Sessions
 
