@@ -34,6 +34,21 @@ class TabStateStore {
         }
     }
 
+    async listAll() {
+        if (!this.storage?.get) { return []; }
+        try {
+            const entries = await this.storage.get(null);
+            return Object.entries(entries ?? {})
+                .filter(([key, binding]) => key.startsWith(laiTabStatePrefix)
+                    && Number.isInteger(binding?.tabId)
+                    && typeof binding?.sessionId === 'string' && binding.sessionId.trim())
+                .map(([, binding]) => binding);
+        } catch (error) {
+            console.warn('>>> Failed to read tab state', error);
+            return [];
+        }
+    }
+
     async listBySession(sessionId) {
         if (typeof sessionId !== 'string' || !sessionId.trim() || !this.storage?.get) { return []; }
         try {
@@ -104,6 +119,18 @@ async function fetchTabStartupState() {
     } catch (error) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to read tab state`, error);
         return null;
+    }
+}
+
+async function fetchOpenSessions() {
+    const empty = { openSessionIds: [], ownSessionId: null };
+    try {
+        const reply = await chrome.runtime.sendMessage({ action: 'getOpenSessions' });
+        if (chrome.runtime.lastError) { throw new Error(chrome.runtime.lastError.message); }
+        return reply ?? empty;
+    } catch (error) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to read open sessions`, error);
+        return empty;
     }
 }
 

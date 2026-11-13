@@ -37,6 +37,42 @@ describe('sessions.js', () => {
         );
     });
 
+    describe('last-page compatibility (#63)', () => {
+        it.each([undefined, { domain: 'example.com', title: 'Page' }])('loads and restores sessions with lastPage %j', async lastPage => {
+            const record = { id: 'saved', title: 'Saved', messages: [{ role: 'user', content: 'Hello' }] };
+            if (lastPage) { record.lastPage = lastPage; }
+            await funcs.setAllSessions([record]);
+            const loaded = await funcs.getActiveSessionById('saved');
+            await funcs.setActiveSession(loaded);
+            expect(await funcs.getActiveSessionId()).toBe('saved');
+            expect((await funcs.getActiveSession()).lastPage).toEqual(lastPage);
+            if (!lastPage) { expect(await funcs.getActiveSession()).not.toHaveProperty('lastPage'); }
+        });
+
+        it('executes background metadata changes within the existing serial mutation queue', async () => {
+            const record = { id: 'queued', messages: [{ role: 'user', content: 'Hello' }] };
+            let release;
+            const gate = new Promise(resolve => { release = resolve; });
+            const firstMutation = vi.fn(async session => {
+                await gate;
+                session.lastPage = { domain: 'first.example', title: 'First' };
+            });
+            const secondMutation = vi.fn(session => {
+                session.lastPage = { domain: 'second.example', title: 'Second' };
+            });
+            const first = funcs.saveSession({ ...record }, firstMutation);
+            await vi.waitFor(() => expect(firstMutation).toHaveBeenCalledOnce());
+            const second = funcs.saveSession({ ...record }, secondMutation);
+            await Promise.resolve();
+            expect(secondMutation).not.toHaveBeenCalled();
+            release();
+            expect(await first).toBe(true);
+            expect(await second).toBe(true);
+            expect(secondMutation).toHaveBeenCalledOnce();
+            expect((await funcs.getAllSessions())[0].lastPage).toEqual({ domain: 'second.example', title: 'Second' });
+        });
+    });
+
     describe('createNewSession', () => {
         it('creates session with default title', async () => {
             const session = await funcs.createNewSession();
