@@ -113,7 +113,7 @@ async function initRibbon() {
     toolFunctions?.addEventListener('click', async e => onToolFunctionsBtnClick(e), false);
     ribbon?.querySelector('#systemIntructions')?.addEventListener('click', laiShowSystemInstructions, false);
     ribbon?.querySelector('#newSession')?.addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot), false);
-    ribbon?.querySelector('#sessionHistory')?.addEventListener('click', async e => await openCloseSessionHistoryMenu(e), false);
+    ribbon?.querySelector('#sessionHistory')?.addEventListener('click', async e => await sessionHistoryClicked(e), false);
     ribbon?.querySelector('#apiUrlList')?.addEventListener('change', async e => await selectMenuChanged(e));
     // ribbon?.querySelector('#modelList')?.addEventListener('change', async e => await modelChanged(e), false);
     ribbon?.querySelector('#hookList')?.addEventListener('change', async e => await selectMenuChanged(e), false);
@@ -157,6 +157,14 @@ async function initRibbon() {
     }
 
     shadowRoot?.getElementById('laiSessionHistoryMenu')?.querySelectorAll('img').forEach(el => laiSetImg(el));
+
+    const sessionListDialog = shadowRoot?.querySelector('#sessionListContainer');
+    sessionListDialog?.addEventListener('keydown', sessionListKeydown);
+    sessionListDialog?.querySelector('#sessionListClose')?.addEventListener('click', () => closeSessionListDialog());
+    sessionListDialog?.querySelector('#sessionListDeleteAll')?.addEventListener('click', sessionListDeleteAllClicked);
+    sessionListDialog?.querySelector('#sessionListDeleteAllConfirm')?.addEventListener('click', deleteAllHistorySessionsClicked);
+    sessionListDialog?.querySelector('#sessionListDeleteAllCancel')?.addEventListener('click', sessionListDeleteAllCancelClicked);
+    shadowRoot?.addEventListener('click', closeSessionListOnOutsideClick);
 
     const sysIntructInput = shadowRoot?.querySelector('#laiSysIntructInput');
     sysIntructInput.value = laiOptions.systemInstructions || '';
@@ -231,10 +239,6 @@ function closeRibbonMenuElement(el, shadowRoot = getShadowRoot()) {
         closeModelListMenu(el, shadowRoot);
         return;
     }
-    if (el.id === 'sessionHistory' || el.dataset?.menuId === 'sessionHistMenu') {
-        closeSessionHistoryMenu(shadowRoot?.querySelector('.lai-header'));
-        return;
-    }
     el?.click();
 }
 
@@ -242,15 +246,6 @@ function closeModelListMenu(container = null, shadowRoot = getShadowRoot()) {
     const modelContainer = container || shadowRoot?.querySelector('#modelNameContainer');
     shadowRoot?.querySelector('#availableModelList')?.classList.add('invisible');
     modelContainer?.classList.remove('open', 'js-menu-is-open');
-}
-
-function closeSessionHistoryMenu(headerSection = null) {
-    const shadowRoot = getShadowRoot();
-    const header = headerSection || shadowRoot?.querySelector('.lai-header');
-    const historyButton = header?.querySelector('#sessionHistory');
-    historyButton?.classList.remove('js-menu-is-open');
-    if (historyButton) { delete historyButton.dataset.menuId; }
-    header?.querySelector('#sessionHistMenu')?.remove();
 }
 
 
@@ -278,112 +273,239 @@ async function createNewSessionClicked(e, shadowRoot) {
     showMessage('New session created.', 'success');
 }
 
-async function openCloseSessionHistoryMenu(e) {
-    const el = e.target;
+async function sessionHistoryClicked(e) {
     e.preventDefault();
     e.stopPropagation();
     await closeAllDropDownRibbonMenus(e);
+    await popSessionList();
+}
+
+/**
+ * Builds and shows the sessions dialog (#64): every saved session ordered by last
+ * use, its state relative to open tabs, and row actions for load, rename and delete.
+ */
+async function popSessionList(el = null) {
+    if (el?.value) { el.value = el.value.replace('/session', ''); }
 
     const shadowRoot = getShadowRoot();
-    const headerSection = shadowRoot.querySelector('.lai-header');
-    const sessionList = headerSection.querySelector('#sessionHistMenu');
-    if (sessionList && !sessionList.classList.contains('invisible')) { // only close it
-        closeSessionHistoryMenu(headerSection);
+    if (!shadowRoot) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sessions dialog: shadow root not found.`);
+        showMessage('The sessions dialog is not available.', 'error');
+        return;
+    }
+    const dialog = shadowRoot.querySelector('#sessionListContainer');
+    if (!dialog) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sessions dialog: #sessionListContainer not found.`);
+        showMessage('The sessions dialog is not available.', 'error');
         return;
     }
 
-    const allSessions = await getAllSessions();
-    if (allSessions.length < 1) {
+    let openSessions = { openSessionIds: [], ownSessionId: null };
+    try {
+        openSessions = await fetchOpenSessions();
+    } catch (error) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sessions dialog: failed to read the open sessions.`, error);
+    }
+    const { openSessionIds, ownSessionId } = openSessions ?? {};
+    const sessions = (await getAllSessions() ?? [])
+        .filter(session => session?.id)
+        .sort((a, b) => (b.lastAccessedAt ?? b.createdAt ?? 0) - (a.lastAccessedAt ?? a.createdAt ?? 0));
+
+    hideSessionListDeleteAllConfirm(dialog);
+    buildSessionListRows(dialog, sessions, ownSessionId, openSessionIds);
+
+    dialog.classList.remove('invisible');
+    dialog.focus();
+}
+
+function buildSessionListRows(dialog, sessions, ownSessionId, openSessionIds) {
+    const block = dialog.querySelector('.session-list-block');
+    block.replaceWith(block.cloneNode(false));
+    const freshBlock = dialog.querySelector('.session-list-block');
+    freshBlock.addEventListener('click', e => sessionListBlockClicked(e));
+
+    if (sessions.length < 1) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sessions dialog: no saved sessions found.`);
         showMessage('No stored sessions found.');
+        showSessionListEmptyState(dialog);
         return;
     }
 
-    el.classList.add('js-menu-is-open');
-    el.dataset.menuId = 'sessionHistMenu';
-    headerSection.querySelector('#sessionHistMenu')?.remove(); // if hidden remove it
-    const template = shadowRoot.getElementById('histMenuTemplate').content.cloneNode(true);
-    const sessionHistMenu = template.children[0];
-    sessionHistMenu.id = "sessionHistMenu";
-    sessionHistMenu.classList.add('hist-top-menu', 'invisible');
+    const openIds = new Set(openSessionIds ?? []);
+    for (const session of sessions) {
+        freshBlock.appendChild(buildSessionListRow(session, ownSessionId, openIds));
+    }
+}
 
-    headerSection.appendChild(sessionHistMenu);
+function showSessionListEmptyState(dialog) {
+    const block = dialog?.querySelector('.session-list-block');
+    if (block) {
+        block.replaceChildren();
+        const empty = document.createElement('div');
+        empty.className = 'session-list-empty';
+        empty.textContent = 'There are no saved sessions.';
+        block.appendChild(empty);
+    }
+}
 
-    const menuItemContent = allSessions
-        .filter(a => a && a.title)
-        .map(a => ({ id: a.id, title: a.title }));
-    if (allSessions.length > 0 && menuItemContent.length < 1) {
-        showMessage(`${allSessions.length} sessions found but failed to list them!`);
+function buildSessionListRow(session, ownSessionId, openIds) {
+    const title = session?.title || 'Noname';
+    const state = session.id === ownSessionId ? 'current' : (openIds.has(session.id) ? 'open' : 'closed');
+
+    const row = document.createElement('div');
+    row.className = 'session-list-item';
+    row.dataset.sessionId = session.id;
+    row.dataset.title = title;
+    if (state === 'closed') { row.classList.add('session-list-item-closed'); }
+
+    const firstLine = document.createElement('div');
+    firstLine.className = 'session-list-item-first';
+    firstLine.appendChild(buildSessionListTitleButton(title));
+
+    const stateTag = document.createElement('span');
+    stateTag.className = 'session-list-item-state';
+    stateTag.textContent = state;
+    firstLine.appendChild(stateTag);
+
+    const lastPage = document.createElement('div');
+    lastPage.className = 'session-list-item-last-page';
+    lastPage.textContent = session.lastPage?.domain
+        ? `${session.lastPage.domain} — ${session.lastPage.title ?? ''}`
+        : '';
+
+    const actions = document.createElement('div');
+    actions.className = 'session-list-item-actions';
+    actions.appendChild(buildSessionListActionButton('rename', `Rename session ${title}`, 'img/edit-pen.svg'));
+    actions.appendChild(buildSessionListActionButton('load', `Load session ${title}`, 'img/execute.svg'));
+    actions.appendChild(buildSessionListActionButton('delete', `Delete session ${title}`, 'img/remove.svg'));
+
+    row.appendChild(firstLine);
+    row.appendChild(lastPage);
+    row.appendChild(actions);
+    return row;
+}
+
+function buildSessionListTitleButton(title) {
+    const titleButton = document.createElement('button');
+    titleButton.type = 'button';
+    titleButton.className = 'session-list-item-title';
+    titleButton.dataset.action = 'load';
+    titleButton.textContent = title;
+    titleButton.title = title;
+    titleButton.setAttribute('aria-label', `Load session ${title}`);
+    return titleButton;
+}
+
+function buildSessionListActionButton(action, accessibleName, iconPath) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.action = action;
+    button.title = accessibleName;
+    button.setAttribute('aria-label', accessibleName);
+    const img = document.createElement('img');
+    img.src = chrome.runtime.getURL(iconPath);
+    img.alt = '';
+    button.appendChild(img);
+    return button;
+}
+
+async function sessionListBlockClicked(e) {
+    const path = e.composedPath?.() || [];
+    const button = path.find(node => node?.tagName === 'BUTTON' && node?.dataset?.action);
+    const row = path.find(node => node?.classList?.contains('session-list-item'));
+
+    if (button && row) {
+        e.stopPropagation();
+        switch (button.dataset.action) {
+            case 'load':
+                await loadSessionFromSessionList(row);
+                break;
+            case 'rename':
+                await startSessionRename(row, row.dataset.sessionId);
+                break;
+            case 'delete':
+                await deleteSessionFromSessionList(row);
+                break;
+        }
+    }
+}
+
+async function loadSessionFromSessionList(row) {
+    const sessionId = row.dataset.sessionId;
+    const session = (await getAllSessions() ?? []).find(s => s?.id === sessionId);
+    if (!session || (session.messages ?? []).length < 1) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sessions dialog: session "${sessionId}" could not be loaded.`, session);
+        showMessage(`Session "${row.dataset.title}" could not be loaded.`, 'error');
         return;
     }
-    else if (menuItemContent.length < 1) {
-        showMessage('No stored sessions found.');
+
+    await restoreHistorySessionClicked(null, sessionId);
+    closeSessionListDialog();
+}
+
+async function deleteSessionFromSessionList(row) {
+    const sessionId = row.dataset.sessionId;
+    const title = row.dataset.title || '';
+    const wasActiveSession = !!sessionId && (await getActiveSessionId()) === sessionId;
+    try {
+        await deleteSessionById(sessionId);
+        if (wasActiveSession) { await reportTabBinding({ sessionId: null }); }
+        row.remove();
+        const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
+        if (!dialog?.querySelector('.session-list-item')) { showSessionListEmptyState(dialog); }
+        updateStatusBar(`Deleted session "${title}"`);
+        setTimeout(() => resetStatusbar(), 1500);
+    } catch (error) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
+        showMessage(`Failed to delete session: ${error.message}`, 'error');
+    }
+}
+
+function sessionListDeleteAllClicked(e) {
+    e.stopPropagation();
+    const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
+    if (!dialog) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sessions dialog: #sessionListContainer not found.`);
+        showMessage('The sessions dialog is not available.', 'error');
         return;
     }
+    dialog.querySelector('.session-list-ribbon:not(.session-list-confirm)')?.classList.add('invisible');
+    dialog.querySelector('.session-list-confirm')?.classList.remove('invisible');
+    dialog.querySelector('#sessionListDeleteAllConfirm')?.focus();
+}
 
-    menuItemContent.push({ "title": "---" });
-    menuItemContent.push({ "title": "Delete all sessions" });
-    const histDelBtn = buildElements([{
-        "span": {
-            "class": "hist-btn", "data-type": "delete", "title": "Delete",
-            "children": [{ "img": { "src": chrome.runtime.getURL('img/remove-all.svg') } }]
-        }
-    }]);
-    const scrollable = buildElements([{ "div": { "class": "scrollable" } }]);
-    const histBootom = buildElements([{ "div": { "class": "fixed-bottom" } }]);
+function sessionListDeleteAllCancelClicked(e) {
+    e?.stopPropagation?.();
+    hideSessionListDeleteAllConfirm(getShadowRoot()?.querySelector('#sessionListContainer'));
+}
 
-    for (let i = 0, l = menuItemContent.length; i < l; i++) {
-        const userEl = menuItemContent[i];
-        let menuItem = document.createElement(userEl.title === '---' ? 'hr' : 'div');
-        if (userEl.title !== '---') {
-            menuItem.className = 'menu-item';
-            menuItem.title = userEl?.title || 'Noname';
-            const titleSpan = document.createElement('span');
-            titleSpan.className = 'menu-item-title';
-            titleSpan.textContent = `${(userEl?.title?.substring(0, 35)) || 'Noname'}${userEl?.title?.length > 35 ? '...' : ''}`;
-            menuItem.appendChild(titleSpan);
-            if (i === l - 1) {
-                menuItem.addEventListener('click', async (e) => deleteAllHistorySessionsClicked(e), false);
-            } else {
-                titleSpan.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    const shadowRoot = getShadowRoot();
-                    const headerSection = shadowRoot.querySelector('.lai-header');
-                    const btn = headerSection.querySelector('.js-menu-is-open');
-                    btn?.classList.remove('js-menu-is-open');
-                    delete btn?.dataset.menuId;
-                    headerSection.querySelector('#sessionHistMenu')?.remove();
-                    await restoreHistorySessionClicked(null, userEl.id);
-                }, false);
-            }
-        }
+function hideSessionListDeleteAllConfirm(dialog) {
+    dialog?.querySelector('.session-list-ribbon:not(.session-list-confirm)')?.classList.remove('invisible');
+    dialog?.querySelector('.session-list-confirm')?.classList.add('invisible');
+}
 
-        if (i < l - 2) {
-            const renameBtn = buildElements([{
-                "span": {
-                    "class": "hist-btn hist-rename-btn", "data-type": "rename", "title": "Rename",
-                    "children": [{ "img": { "src": chrome.runtime.getURL('img/edit-pen.svg') } }]
-                }
-            }]);
-            renameBtn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                e.stopImmediatePropagation();
-                await startSessionRename(menuItem, userEl.id);
-            }, false);
-            menuItem.appendChild(renameBtn);
-            const delBtn = histDelBtn.cloneNode(true);
-            delBtn.setAttribute('data-sessionId', userEl.id);
-            delBtn.addEventListener('click', async (e) => deleteHistoryMenuItemClicked(e), false);
-            menuItem.appendChild(delBtn);
-            scrollable.appendChild(menuItem)
-        } else {
-            histBootom.appendChild(menuItem);
-        }
+function sessionListKeydown(e) {
+    if (e?.key === 'Escape') {
+        e.stopPropagation();
+        closeSessionListDialog();
     }
+}
 
-    sessionHistMenu.appendChild(scrollable);
-    sessionHistMenu.appendChild(histBootom);
-    sessionHistMenu.classList.remove('invisible');
-    sessionHistMenu.style.cssText = `top: ${e.clientY + 10}px;; left: ${e.clientX - (sessionHistMenu.offsetWidth / 4)}px;`;
+function closeSessionListOnOutsideClick(e) {
+    const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
+    const path = e.composedPath?.() || [];
+    const isDialogOrTrigger = path.some(node => node?.id === 'sessionListContainer' || node?.id === 'sessionHistory');
+    if (dialog && !dialog.classList.contains('invisible') && !isDialogOrTrigger) {
+        closeSessionListDialog(dialog);
+    }
+}
+
+function closeSessionListDialog(dialog = null) {
+    const resolved = dialog || getShadowRoot()?.querySelector('#sessionListContainer');
+    if (resolved) {
+        hideSessionListDeleteAllConfirm(resolved);
+        resolved.classList.add('invisible');
+    }
 }
 
 async function selectMenuChanged(e) {
@@ -889,40 +1011,39 @@ async function renderSessionHistoryMessages(session) {
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
 }
 
-async function startSessionRename(menuItem, sessionId) {
-    const titleSpan = menuItem.querySelector('.menu-item-title');
-    if (!titleSpan) { return; }
-    const currentTitle = menuItem.title || titleSpan.textContent;
+async function startSessionRename(row, sessionId) {
+    const titleButton = row?.querySelector('.session-list-item-title');
+    if (!titleButton) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sessions dialog: title element not found for session "${sessionId}".`);
+        showMessage('The session title could not be found.', 'error');
+        return;
+    }
+    const currentTitle = row.dataset.title || titleButton.textContent;
 
     const input = document.createElement('input');
     input.type = 'text';
     input.value = currentTitle;
-    input.className = 'menu-item-rename-input';
+    input.className = 'session-list-rename-input';
+    input.setAttribute('aria-label', `Rename session ${currentTitle}`);
 
     let committed = false;
     async function commit() {
         if (committed) { return; }
         committed = true;
         const newTitle = input.value.trim();
-        const span = document.createElement('span');
-        span.className = 'menu-item-title';
+        const button = buildSessionListTitleButton(newTitle || titleButton.textContent);
         if (newTitle && newTitle !== currentTitle) {
             await renameSession(sessionId, newTitle);
-            span.textContent = `${newTitle.substring(0, 35)}${newTitle.length > 35 ? '...' : ''}`;
-            menuItem.title = newTitle;
-        } else {
-            span.textContent = titleSpan.textContent;
+            row.dataset.title = newTitle;
+            setSessionRowAccessibleNames(row, newTitle);
         }
-        input.replaceWith(span);
+        input.replaceWith(button);
     }
 
     function cancel() {
         if (committed) { return; }
         committed = true;
-        const span = document.createElement('span');
-        span.className = 'menu-item-title';
-        span.textContent = titleSpan.textContent;
-        input.replaceWith(span);
+        input.replaceWith(buildSessionListTitleButton(titleButton.textContent));
     }
 
     input.addEventListener('keydown', async (e) => {
@@ -931,45 +1052,31 @@ async function startSessionRename(menuItem, sessionId) {
     });
     input.addEventListener('blur', commit);
 
-    titleSpan.replaceWith(input);
+    titleButton.replaceWith(input);
     input.focus();
     input.select();
 }
 
-async function deleteHistoryMenuItemClicked(e) {
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    const btn = e.currentTarget;
-    const sessionId = btn.getAttribute('data-sessionId');
-    const menuItem = btn.closest('div.menu-item');
-    const title = menuItem?.querySelector('.menu-item-title')?.textContent?.trim() || '';
-    const wasActiveSession = !!sessionId && (await getActiveSessionId()) === sessionId;
-    try {
-        await deleteSessionById(sessionId);
-        if (wasActiveSession) { await reportTabBinding({ sessionId: null }); }
-        if (menuItem) { menuItem.remove(); }
-        if (!btn.closest('#sessionHistMenu')?.querySelector('.scrollable .menu-item')) {
-            closeSessionHistoryMenu();
-        }
-        updateStatusBar(`Deleted session "${title}"`);
-        setTimeout(() => resetStatusbar(), 1500);
-    } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
-        showMessage(`Failed to delete session: ${error.message}`, 'error');
-    }
+function setSessionRowAccessibleNames(row, title) {
+    row.querySelector('.session-list-item-title')?.setAttribute('aria-label', `Load session ${title}`);
+    row.querySelector('[data-action="rename"]')?.setAttribute('aria-label', `Rename session ${title}`);
+    row.querySelector('[data-action="load"]:not(.session-list-item-title)')?.setAttribute('aria-label', `Load session ${title}`);
+    row.querySelector('[data-action="delete"]')?.setAttribute('aria-label', `Delete session ${title}`);
 }
 
 async function deleteAllHistorySessionsClicked(e) {
     e.stopPropagation();
     e.stopImmediatePropagation();
-    const el = e.target;
+    const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
     try {
         await recycleAllSessions();
+        showMessage('All sessions deleted.');
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
+        showMessage(`Failed to delete all sessions: ${error.message}`, 'error');
     }
-    closeSessionHistoryMenu(el.closest('.lai-header'));
-    showMessage('All sessions deleted.');
+    hideSessionListDeleteAllConfirm(dialog);
+    showSessionListEmptyState(dialog);
 }
 
 function modifiersClicked(e) {

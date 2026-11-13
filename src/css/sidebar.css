@@ -99,48 +99,127 @@ local-ai *,
     resize: none;
 }
 
-/* history menu */
-.hist-top-menu {
-    position: fixed;
+/* session list dialog */
+.session-list {
+    background-color: #eee;
+    border: 1px solid #bbb;
+    border-radius: 3px;
     display: flex;
     flex-direction: column;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    height: 50%;
+    padding: 3px;
+    overflow: auto;
+}
+
+.session-list:focus {
+    outline: none;
+}
+
+.session-list-ribbon {
+    display: flex;
+    flex-direction: row;
     justify-content: space-between;
-    background-color: #fff;
-    border: 1px solid #ccc;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    width: 350px;
-    max-height: 50vh;
-    z-index: 100;
+    align-items: center;
+    padding: 4px 3px;
 }
 
-.hist-top-menu>.scrollable {
-    overflow-y: auto;
-    max-height: 50vh;
-    flex: 1;
-}
-
-.hist-top-menu>.fixed-bottom {
-    border-top: 1px solid #eee;
-    background: #fff;
-}
-
-.menu-item {
-    position: relative;
-    padding: 10px;
+.session-list-ribbon button {
     cursor: pointer;
-    border-bottom: 1px solid #eee;
 }
 
-.menu-item:last-child {
-    border-bottom: none;
+.session-list-confirm {
+    justify-content: center;
+    gap: 10px;
 }
 
-.menu-item:hover {
-    background-color: #f6f6f6;
+.session-list-block {
+    flex: 1;
+    overflow-y: auto;
+    border-top: 1px solid #ccc;
+    padding: 3px 0;
 }
 
-.menu-item-rename-input {
-    width: calc(100% - 65px);
+.session-list-item {
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid #888;
+}
+
+.session-list-item-closed {
+    opacity: 0.55;
+}
+
+.session-list-item-first {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.session-list-item-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    font-size: 16px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+.session-list-item-state {
+    font-size: 0.8em;
+    color: #555;
+    white-space: nowrap;
+}
+
+.session-list-item-last-page {
+    font-size: 0.8em;
+    color: #555;
+    min-height: 1.2em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-list-item-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 5px;
+}
+
+.session-list-item-actions button {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+}
+
+.session-list-item-actions img {
+    width: 18px;
+    height: auto;
+}
+
+.session-list-item-actions button:hover img {
+    background-color: #ccc;
+}
+
+.session-list-empty {
+    padding: 20px;
+    text-align: center;
+    color: #555;
+}
+
+.session-list-rename-input {
+    width: 100%;
     font: inherit;
     padding: 0 2px;
     border: 1px solid #aaa;
