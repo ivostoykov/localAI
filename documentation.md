@@ -111,6 +111,8 @@ Each tab's panel has its own session. A prompt sent from one tab does not includ
 
 Sessions can be managed also from the [Options](#options) page.
 
+When a session shared by two tabs is continued in one of them, the other tab's panel catches up as soon as that tab is shown or focused again: the new turns are added under an `Added from another tab` marker. The marker is not saved and disappears after a reload or a history restore.
+
 ### Modifiers
 
 These options control how the AI gives answers. For example, the temperature changes how creative or random the answers are. A low number means more serious and focused replies; a higher one makes them more varied. The seed makes the answers repeatable—using the same seed gives the same result. Other settings help guide how long or detailed the reply should be, or how much it avoids repeating itself.

@@ -436,6 +436,8 @@ describe('ribbon.js model list', () => {
     });
 });
 describe('ribbon.js session restore', () => {
+    const isRenderableSessionMessageCode = ribbonCode.match(/function isRenderableSessionMessage\([\s\S]*?\n}\n/)[0];
+    const renderSessionHistoryMessageCode = ribbonCode.match(/async function renderSessionHistoryMessage\([\s\S]*?\n}\n/)[0];
     const renderSessionHistoryMessagesCode = ribbonCode.match(/async function renderSessionHistoryMessages\([\s\S]*?\n}\n/)[0];
     const restoreCode = ribbonCode.match(/async function restoreHistorySessionClicked\([\s\S]*?\n}\n/)[0];
     const laiMainCode = fs.readFileSync(path.join(__dirname, '../src/lai-main.js'), 'utf-8');
@@ -475,7 +477,7 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked, getMarkdownSource } = new Function('deps',
-            `with (deps) { ${markdownSourceCode}\n${renderUserPromptCardCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
+            `with (deps) { ${markdownSourceCode}\n${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1');
@@ -506,7 +508,7 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked } = new Function('deps',
-            `with (deps) { ${renderUserPromptCardCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
+            `with (deps) { ${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1', { silent: true });
@@ -696,6 +698,8 @@ describe('ribbon.js restored user prompts (#41)', () => {
     const utilsCode = fs.readFileSync(path.join(__dirname, '../src/jslib/utils.js'), 'utf-8');
     const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
     const solomdCode = fs.readFileSync(path.join(__dirname, '../src/jslib/solomd2html.js'), 'utf-8');
+    const isRenderableSessionMessageCode = ribbonCode.match(/function isRenderableSessionMessage\([\s\S]*?\n}\n/)[0];
+    const renderSessionHistoryMessageCode = ribbonCode.match(/async function renderSessionHistoryMessage\([\s\S]*?\n}\n/)[0];
     const renderSessionHistoryMessagesCode = ribbonCode.match(/async function renderSessionHistoryMessages\([\s\S]*?\n}\n/)[0];
 
     const loadParser = () => new Function(
@@ -706,10 +710,10 @@ describe('ribbon.js restored user prompts (#41)', () => {
         'navigator',
         solomdCode + '; return parseAndRender;'
     )(global.document, global.window.DocumentFragment, global.window.CustomEvent, global.window.Node, global.navigator);
-
     const executeRestore = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
         tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\nlet aiUserCommands = [];\n' +
-        laiMainCode + '\n' + renderSessionHistoryMessagesCode +
+        isRenderableSessionMessageCode + '\n' + renderSessionHistoryMessageCode + '\n' + renderSessionHistoryMessagesCode + '\n' +
+        laiMainCode +
         '; return { renderUserPromptCard, editUserInput, renderSessionHistoryMessages };'
     );
 

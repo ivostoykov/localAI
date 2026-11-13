@@ -237,6 +237,18 @@ local-ai *,
     margin-bottom: 0;
 }
 
+.lai-session-catch-up-separator {
+    align-self: center;
+    max-width: 90%;
+    padding: 2px 1rem;
+    border: 1px dashed gray;
+    border-radius: 7px;
+    background-color: #e4e4e4;
+    font-size: 0.9em;
+    color: #555;
+    text-align: center;
+}
+
 .lai-aborted-text {
     color: #bf6b6b;
 }
