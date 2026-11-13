@@ -47,7 +47,7 @@ global.chrome = {
 const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 
 // Extract the functions we want to test
-const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight };';
+const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight, checkCommandHandler };';
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
     tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + laiMainCode + laiMainExports
 );
@@ -1590,6 +1590,41 @@ describe('sidebar session catch-up on focus (#61)', () => {
         const shown = cards();
         expect(await findElementHistoryIndex(shown[2].querySelector('.lai-input-text'))).toBe(2);
         expect(await findElementHistoryIndex(shown[3].querySelector('.lai-input-text'))).toBe(3);
+    });
+});
+
+describe('/session command (#64)', () => {
+    let checkCommandHandler;
+    let popSessionList;
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        popSessionList = vi.fn(async () => undefined);
+        global.popSessionList = popSessionList;
+        global.popUserCommandList = vi.fn();
+        global.updateStatusBar = vi.fn();
+        global.getActiveModel = vi.fn(() => 'test-model');
+        document.body.innerHTML = '<div id="laiSuggestionBox" class="invisible"></div>';
+
+        ({ checkCommandHandler } = executeLaiMainCode(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, undefined));
+    });
+
+    it('opens the sessions dialog and reports the command as handled', async () => {
+        const userInput = { value: '/session' };
+
+        expect(await checkCommandHandler(userInput)).toBe(true);
+
+        expect(popSessionList).toHaveBeenCalledWith(userInput);
+    });
+
+    it('does not treat the input as a command without a slash word', async () => {
+        const userInput = { value: 'just a question' };
+
+        expect(await checkCommandHandler(userInput)).toBe(false);
+
+        expect(popSessionList).not.toHaveBeenCalled();
     });
 });
 
