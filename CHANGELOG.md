@@ -1,6 +1,15 @@
 # Local AI - Changelog
 
-## [1.29.100] - 2026-11-13 - latest
+## [1.29.101] - 2026-11-13 - latest
+
+### Sessions
+
+- The session history menu is replaced by a sessions dialog, opened from the header history button or with the new `/session` command (#64)
+- Sessions are listed by last use, newest first, each with its state (`current`, `open` in another tab, or `closed`) and the domain and title of its last page
+- Each row has `rename`, `load` and `delete`; clicking the title loads the session
+- `delete all` now asks for confirmation
+
+## [1.29.100] - 2026-11-13
 
 ### Sessions
 
