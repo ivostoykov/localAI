@@ -308,8 +308,6 @@ async function init() {
         await cleanupOrphanedSessions();
         await refreshModelCatalogueCache();
         await validateModelInfoCache();
-        // Added v1.29.60 — remove orphaned activeModel key left by pre-v1.29 builds. Remove this block in v1.30.
-        await chrome.storage.local.remove('activeModel');
     } catch (e) {
         console.error(`>>> ${manifest?.name ?? ''} - Failed to initialise memory system:`, e);
     }
