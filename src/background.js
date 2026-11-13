@@ -752,7 +752,7 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, na
                         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No valid tab for internal tool execution`);
                     }
                 }
-                data = await execInternalTool(toolCall, validatedTabId, { navigationSession, sessionId });
+                data = await execInternalTool(toolCall, validatedTabId, { navigationSession, sessionId, tabState });
                 break;
             case 'function':
                 res = await fetchExtResponse(funcUrl, {

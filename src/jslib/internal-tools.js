@@ -60,6 +60,76 @@ async function getLastSessionPages(count = 1, tabId, sessionId = null) {
             : "No pages stored in this session yet";
 }
 
+async function listSessionTabs(tabId, context = {}) {
+    const { sessionId, tabState } = context;
+    if (typeof sessionId !== 'string' || !sessionId.trim()) { return 'No active session yet.'; }
+    try {
+        const bindings = await tabState.listBySession(sessionId);
+        const tabs = await Promise.all(bindings
+            .filter(binding => binding.sessionId === sessionId && binding.tabId !== tabId)
+            .map(async binding => {
+                try {
+                    const tab = await chrome.tabs.get(binding.tabId);
+                    return {
+                        tab_reference: binding.tabId,
+                        title: tab.title || 'Title unavailable',
+                        url: tab.url || 'URL unavailable',
+                        ...(tab.discarded ? { note: 'Tab is discarded.' } : {})
+                    };
+                } catch {
+                    return null;
+                }
+            }));
+        const openTabs = tabs.filter(Boolean);
+        return openTabs.length ? JSON.stringify(openTabs, null, 2) : 'No other open tabs share this session.';
+    } catch {
+        return 'Session tabs are unavailable.';
+    }
+}
+
+async function readSessionTabPage(reference, tabId, context = {}) {
+    const { sessionId, tabState } = context;
+    if (typeof sessionId !== 'string' || !sessionId.trim()) { return 'No active session yet.'; }
+    if ((typeof reference !== 'number' && typeof reference !== 'string')
+        || (typeof reference === 'string' && !/^\d+$/.test(reference.trim()))) {
+        return 'Invalid tab reference. Call list_session_tabs first.';
+    }
+    const targetTabId = Number(reference);
+    if (!Number.isSafeInteger(targetTabId) || targetTabId < 1) {
+        return 'Invalid tab reference. Call list_session_tabs first.';
+    }
+    if (targetTabId === tabId) { return 'Use get_current_tab_page_content for the requesting tab.'; }
+
+    let timeout;
+    try {
+        const binding = await tabState.get(targetTabId);
+        if (binding?.sessionId !== sessionId) { return 'Tab is not available in this session.'; }
+        let tab;
+        try {
+            tab = await chrome.tabs.get(targetTabId);
+        } catch {
+            return 'Tab is closed.';
+        }
+        if (tab.discarded) { return 'Tab is discarded.'; }
+        const response = await Promise.race([
+            chrome.tabs.sendMessage(targetTabId, {
+                action: 'callContentExtractor',
+                functionName: 'getEnhancedPageContent',
+                argument: null
+            }),
+            new Promise(resolve => { timeout = setTimeout(() => resolve(null), 10000); })
+        ]);
+        if (response?.error || typeof response?.result !== 'string' || !response.result.trim()) {
+            return 'Tab is unreachable.';
+        }
+        return `Tab: ${(tab.title || 'Title unavailable').replace(/[\r\n]+/g, ' ')} — ${(tab.url || 'URL unavailable').replace(/[\r\n]+/g, ' ')}\n${response.result}`;
+    } catch {
+        return 'Tab is unreachable.';
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 async function clearOldPageContext(sessionId = null) {
     if (!sessionId) { return "No active session yet."; }
 
@@ -199,6 +269,12 @@ async function execInternalTool(call = {}, tabId = null, context = {}) {
         case "get_current_tab_page_content":
             return await callContentScriptExtractor(tabId, 'getEnhancedPageContent', null);
 
+        case "list_session_tabs":
+            return await listSessionTabs(tabId, context);
+
+        case "read_session_tab_page":
+            return await readSessionTabPage(call?.function?.arguments?.tab_reference, tabId, context);
+
         case "get_all_session_pages":
             return await getAllSessionPages(tabId, context?.sessionId);
 
@@ -282,6 +358,41 @@ async function callContentScriptExtractor(tabId, functionName, argument = null) 
  * IMMUTABLE: These cannot be modified by users via options page
  */
 const INTERNAL_TOOL_DEFINITIONS = [
+    {
+        "function": {
+            "description": "Use when the user refers to a page open in another tab of this conversation. Only tabs sharing this conversation's session are reachable. Call this list tool first, then pass a returned tab_reference to read_session_tab_page. Lists other currently open tabs with their title, URL and discarded status; does not retrieve stored session page history.",
+            "name": "list_session_tabs",
+            "parameters": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "function",
+        "usage_cost": 1
+    },
+    {
+        "function": {
+            "description": "Use when the user refers to a page open in another tab of this conversation. Only tabs sharing this conversation's session are reachable. Call list_session_tabs first and use its tab_reference. Extracts that tab's page content at call time, without replacing the requesting tab's stored page context. Closed, discarded or unreachable tabs return status text; no tab is reopened. Does not retrieve stored session page history.",
+            "name": "read_session_tab_page",
+            "parameters": {
+                "properties": {
+                    "tab_reference": {
+                        "description": "Browser tab reference returned by list_session_tabs.",
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "tab_reference"
+                ],
+                "type": "object"
+            }
+        },
+        "strict": true,
+        "type": "function",
+        "usage_cost": 1
+    },
     {
         "function": {
             "description": "Retrieves the last N pages from the current session, where N is specified by the count parameter. Returns an array of the most recent page objects with URL, title, content, and timestamp. Useful for comparing recent pages or when the user references 'the last few pages'.",
