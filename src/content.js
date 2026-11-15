@@ -197,27 +197,28 @@ if ('navigation' in window) {
     window.addEventListener("replacestate", triggerUpdate);
 }
 
+function frameElementSelectionClicked(event) {
+  if (isElementSelectionActive) {
+    getSelectedClickedElement(event);
+  }
+}
+
 function attachElementSelectionListenersToFrames() {
   const frames = document.querySelectorAll('iframe, frame');
   frames.forEach((frame) => {
-    frame.addEventListener('load', () => {
+    const attach = (requireReady = false) => {
       try {
         const doc = frame?.contentWindow?.document;
-        if(!doc || !doc.addEventListener){  return;  }
-
+        if (!doc?.addEventListener || (requireReady && doc.readyState === 'loading')) { return; }
         doc.addEventListener('mouseover', highlightElementOverDecoration, true);
         doc.addEventListener('mouseout', clearElementOverDecoration, true);
-
-        doc.addEventListener('click', function (event) {
-          if (isElementSelectionActive) {
-            getSelectedClickedElement(event);
-          }
-        }, true);
-
+        doc.addEventListener('click', frameElementSelectionClicked, true);
       } catch (e) {
         console.warn('Access denied to frame!', e);
       }
-    });
+    };
+    frame.addEventListener('load', () => attach());
+    attach(true);
   });
 }
 
