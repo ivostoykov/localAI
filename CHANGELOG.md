@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.30.3] - 2026-11-15 - latest
+## [1.30.4] - 2026-11-15 - latest
+
+### Fixes
+
+- Text selected on a page and sent through the context menu keeps its line breaks in "Insert Selected into Prompt", "Send Selected" and "Explain"; previously it arrived as a single line (#74)
+- Runs of blank lines in the selection are reduced to one and repeated spaces inside a line are collapsed
+
+## [1.30.3] - 2026-11-15
 
 ### Fixes
 

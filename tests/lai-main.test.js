@@ -24,6 +24,11 @@ const ribbonCode = fs.readFileSync(
     path.join(__dirname, '../src/jslib/ribbon.js'),
     'utf-8'
 );
+const contentCleanerCode = fs.readFileSync(
+    path.join(__dirname, '../src/jslib/content-cleaner.js'),
+    'utf-8'
+);
+
 // Setup DOM environment
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.document = dom.window.document;
@@ -47,9 +52,9 @@ global.chrome = {
 const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 
 // Extract the functions we want to test
-const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight, checkCommandHandler };';
+const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight, checkCommandHandler, getSelectionText };';
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-    tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + laiMainCode + laiMainExports
+    tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId, getActiveStreamRequestId, isMessagePersistable;
@@ -1798,5 +1803,163 @@ describe('user prompt Markdown rendering (#41)', () => {
         const withoutSource = document.createElement('span');
         withoutSource.textContent = 'rendered text';
         expect(getUserPromptSource(withoutSource)).toBe('rendered text');
+    });
+});
+
+describe('context-menu selection line breaks (#74)', () => {
+    let getSelectionText, messageProcessor, chromeWithUrls;
+    let originalGetSelection;
+
+    const setLiveSelection = (text) => {
+        dom.window.getSelection = () => ({ toString: () => text });
+    };
+
+    beforeEach(() => {
+        originalGetSelection = dom.window.getSelection;
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getSideBar = vi.fn(() => null);
+        global.addAttachment = vi.fn(async () => { });
+        global.updateStatusBar = vi.fn();
+        global.getEnhancedPageContent = vi.fn(async () => 'page content');
+        chromeWithUrls = {
+            runtime: {
+                sendMessage: vi.fn(),
+                onMessage: { addListener: vi.fn() },
+                getURL: vi.fn(() => 'img/attachment.svg')
+            }
+        };
+
+        document.body.innerHTML = '<div id="sideBar" class="active"></div><div id="attachContainer"></div><textarea id="laiUserInput"></textarea>';
+
+        const exports = executeLaiMainCode(global.document, dom.window, global.manifest, chromeWithUrls, global.getLineNumber, global.isMessagePersistable);
+        getSelectionText = exports.getSelectionText;
+        messageProcessor = exports.messageProcessor;
+    });
+
+    afterEach(() => {
+        dom.window.getSelection = originalGetSelection;
+        document.body.innerHTML = '';
+    });
+
+    describe('getSelectionText', () => {
+        it('prefers the live page selection over the background selectionText', () => {
+            setLiveSelection('Sample CCAT Verbal Question\n\nChoose one answer');
+            expect(getSelectionText({ selection: 'Sample CCAT Verbal Question Choose one answer' })).toBe('Sample CCAT Verbal Question\n\nChoose one answer');
+        });
+
+        it('falls back to the background selectionText when the live selection is empty', () => {
+            setLiveSelection('');
+            expect(getSelectionText({ selection: 'fallback\nwith line break' })).toBe('fallback\nwith line break');
+        });
+
+        it('falls back when the live selection holds only white space', () => {
+            setLiveSelection(' \n\t ');
+            expect(getSelectionText({ selection: 'fallback text' })).toBe('fallback text');
+        });
+
+        it('cleans the returned text through cleanSelection', () => {
+            setLiveSelection('  keeps\tline breaks\n\n\nand one blank line  ');
+            expect(getSelectionText({ selection: '' })).toBe('keeps line breaks\n\nand one blank line');
+        });
+
+        it('returns an empty string when both sources are empty', () => {
+            setLiveSelection('');
+            expect(getSelectionText({})).toBe('');
+        });
+    });
+
+    describe('Send Selected (activePageSelection)', () => {
+        it('stores the attachment with the live selection line breaks', async () => {
+            setLiveSelection('Question line\nAnswer one\nAnswer two');
+            await messageProcessor({ action: 'activePageSelection', selection: 'Question line Answer one Answer two' });
+
+            expect(global.addAttachment).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'snippet',
+                content: 'Question line\nAnswer one\nAnswer two',
+                filename: 'Selected Text'
+            }));
+        });
+
+        it('uses the background selectionText when no live selection exists', async () => {
+            setLiveSelection('');
+            await messageProcessor({ action: 'activePageSelection', selection: 'textarea\nselection' });
+
+            expect(global.addAttachment).toHaveBeenCalledWith(expect.objectContaining({
+                content: 'textarea\nselection'
+            }));
+        });
+
+        it('does not attach anything when both selections are empty', async () => {
+            setLiveSelection('');
+            await messageProcessor({ action: 'activePageSelection', selection: '' });
+
+            expect(global.addAttachment).not.toHaveBeenCalled();
+            expect(global.showMessage).toHaveBeenCalledWith('Element picked up successfully.', 'info');
+        });
+    });
+
+    describe('Insert Selected into Prompt (inserSelectedInPrompt)', () => {
+        it('appends the live selection with its line breaks on a new line', async () => {
+            const prompt = document.getElementById('laiUserInput');
+            prompt.value = 'existing prompt';
+            setLiveSelection('inserted line one\ninserted line two');
+
+            await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'inserted line one inserted line two' });
+
+            expect(prompt.value).toBe('existing prompt\ninserted line one\ninserted line two');
+        });
+
+        it('appends without a leading line break to an empty prompt', async () => {
+            const prompt = document.getElementById('laiUserInput');
+            setLiveSelection('first line\nsecond line');
+
+            await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'first line second line' });
+
+            expect(prompt.value).toBe('first line\nsecond line');
+        });
+
+        it('inserts the live selection even when the background selectionText is empty', async () => {
+            const prompt = document.getElementById('laiUserInput');
+            setLiveSelection('picked from the page');
+
+            await messageProcessor({ action: 'inserSelectedInPrompt', selection: '' });
+
+            expect(prompt.value).toBe('picked from the page');
+        });
+    });
+
+    describe('Explain Selected (explainSelection)', () => {
+        it('receives the selection with its line breaks', async () => {
+            global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
+            const prompt = document.getElementById('laiUserInput');
+            setLiveSelection('abbreviated snippet\nsecond line');
+
+            await messageProcessor({ action: 'explainSelection', selection: 'abbreviated snippet second line' });
+
+            expect(prompt.value).toBe('Focusing on abbreviations or non common content, explain briefly the meaning of the next snippet:\n- abbreviated snippet\nsecond line');
+        });
+
+        it('uses the background selectionText when no live selection exists', async () => {
+            global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
+            const prompt = document.getElementById('laiUserInput');
+            setLiveSelection('');
+
+            await messageProcessor({ action: 'explainSelection', selection: 'iframe\nselection' });
+
+            expect(prompt.value).toContain('- iframe\nselection');
+        });
+
+        it('does not open a prompt when both selections are empty', async () => {
+            global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
+            const prompt = document.getElementById('laiUserInput');
+            setLiveSelection('');
+
+            await messageProcessor({ action: 'explainSelection', selection: '' });
+
+            expect(prompt.value).toBe('');
+            expect(global.showMessage).toHaveBeenCalledWith('Nothing selected to explain!', 'warning');
+        });
     });
 });
