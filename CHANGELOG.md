@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.30.7] - 2026-11-15 - latest
+## [1.30.8] - 2026-11-15 - latest
+
+### Fixes
+
+- Clicking an attachment icon deletes it on the first click; pressing on the icon no longer takes focus from the prompt, so the input area does not shrink under the pointer (#77)
+- Attachment icons can be reached with Tab and deleted with Enter or Space; screen readers announce them as "Delete attachment"
+
+## [1.30.7] - 2026-11-15
 
 ### Fixes
 
