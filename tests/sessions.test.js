@@ -558,3 +558,37 @@ describe('sessions.js', () => {
         });
     });
 });
+
+describe('attachment deletion persistence (#76)', () => {
+    let api;
+    beforeEach(async () => {
+        await fakeBrowser.storage.local.clear();
+        const files = fs.readFileSync(path.join(__dirname, '../src/jslib/files.js'), 'utf8');
+        api = new Function('chrome', 'manifest', 'getLineNumber', 'allSessionsStorageKey', 'activeSessionIdKey', 'storageUserCommandsKey', 'storageOptionKey', 'activePageStorageKey', 'aiUserCommands', 'showMessage', sessionsCode + '\n' + files + '; return { setAllSessions, getAllSessions, setActiveSessionId, deleteAttachment, saveSession, getSessionForRequest };')(
+            fakeBrowser, global.manifest, global.getLineNumber, global.allSessionsStorageKey, global.activeSessionIdKey, global.storageUserCommandsKey, global.storageOptionKey, global.activePageStorageKey, [], vi.fn());
+    });
+    it.each([
+        [[], [{ id: 'a' }], []],
+        [[], [{ id: 'a' }, { id: 'b' }], [{ id: 'b' }]],
+        [[{ role: 'user', content: 'hello' }], [{ id: 'a' }], []]
+    ])('persists deletion with messages %j and attachments %j', async (messages, attachments, expected) => {
+        await api.setAllSessions([{ id: 'session', messages, attachments }]);
+        await api.setActiveSessionId('session');
+        expect(await api.deleteAttachment('a')).toBe(true);
+        expect((await api.getAllSessions())[0].attachments).toEqual(expected);
+        expect((await api.getSessionForRequest('session')).attachments).toEqual(expected);
+        expect(await api.deleteAttachment('a')).toBe(true);
+    });
+    it('does not create a new empty record even when empty updates are allowed', async () => {
+        expect(await api.saveSession({ id: 'new', messages: [], attachments: [] }, null, { allowEmptyUpdate: true })).toBe(false);
+        expect(await api.getAllSessions()).toEqual([]);
+    });
+    it('returns false when storage fails', async () => {
+        await api.setAllSessions([{ id: 'session', messages: [], attachments: [{ id: 'a' }] }]);
+        await api.setActiveSessionId('session');
+        const spy = vi.spyOn(fakeBrowser.storage.local, 'set').mockRejectedValueOnce(new Error('failed'));
+        expect(await api.deleteAttachment('a')).toBe(false);
+        spy.mockRestore();
+        expect((await api.getAllSessions())[0].attachments).toEqual([{ id: 'a' }]);
+    });
+});

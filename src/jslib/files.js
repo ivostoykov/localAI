@@ -29,17 +29,27 @@ async function getAttachments() {
 
 async function deleteAttachment(id) {
     try {
-        if (!id) { return; }
-
-        const activeSession = await getActiveSession();
-        if (!activeSession?.attachments) { return; }
-
-        const updated = activeSession.attachments.filter(att => att.id !== id);
-        activeSession.attachments = updated;
-        await setActiveSession(activeSession);
+        if (!id) {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing attachment id`);
+            return false;
+        }
+        const sessionId = await getActiveSessionId();
+        if (!sessionId) {
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No active session for attachment deletion`);
+            return false;
+        }
+        const result = await chrome.storage.local.get([allSessionsStorageKey]);
+        const sessions = result[allSessionsStorageKey] ?? [];
+        const activeSession = sessions.find(session => session?.id === sessionId);
+        if (!activeSession?.attachments?.some(att => att.id === id)) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Attachment ${id} is absent from storage`);
+            return true;
+        }
+        const updatedSession = { ...activeSession, attachments: activeSession.attachments.filter(att => att.id !== id) };
+        return await setActiveSession(updatedSession, { allowEmptyUpdate: true });
     } catch (err) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error occured while deleting attachment id ${id}: ${err.message}`, err);
-        showMessage(err.message, 'error');
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error occurred while deleting attachment id ${id}: ${err.message}`, err);
+        return false;
     }
 }
 

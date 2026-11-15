@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.6] - 2026-11-15 - latest
+## [1.30.7] - 2026-11-15 - latest
+
+### Fixes
+
+- Deleted attachments stay removed when a session has no messages, and the empty attachment ribbon closes. (#76)
+
+## [1.30.6] - 2026-11-15
 
 ### Changes
 

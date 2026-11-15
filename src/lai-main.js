@@ -445,12 +445,17 @@ async function attachmentImgClicked(e) {
     if (!attachmentId) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Attachment Id not found`);
         console.error(el);
+        showMessage('Unable to delete the attachment.', 'error');
         return;
     }
 
-    await deleteAttachment(attachmentId);
-    await attachmentDeleted();
+    if (!await deleteAttachment(attachmentId)) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to delete attachment ${attachmentId}`);
+        showMessage('Unable to delete the attachment.', 'error');
+        return;
+    }
     el.remove();
+    await attachmentDeleted();
 }
 
 function createAttachmentImage(theAttachment) {
@@ -467,12 +472,21 @@ function createAttachmentImage(theAttachment) {
 }
 
 async function attachmentDeleted() {
-    let attachments = await getAttachments()
-    if (attachments.length > 0) { return; }
-
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-    shadowRoot.querySelector('#attachContainer')?.classList.remove('active');
+    if (!shadowRoot) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cannot update attachment ribbon: shadow root missing`);
+        return;
+    }
+    const container = shadowRoot.querySelector('#attachContainer');
+    if (!container) {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Cannot update attachment ribbon: container missing`);
+        return;
+    }
+    if (container.querySelector('img.attached')) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Attachment icons remain`);
+        return;
+    }
+    container.classList.remove('active');
 }
 
 function clearAttachments() {
