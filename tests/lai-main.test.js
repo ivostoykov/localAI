@@ -29,7 +29,7 @@ const contentCleanerCode = fs.readFileSync(
     'utf-8'
 );
 
- // Setup DOM environment
+// Setup DOM environment
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.document = dom.window.document;
 global.window = dom.window;
