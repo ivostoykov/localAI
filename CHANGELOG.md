@@ -1,6 +1,17 @@
 # Local AI - Changelog
 
-## [1.30.5] - 2026-11-15 - latest
+## [1.30.6] - 2026-11-15 - latest
+
+### Changes
+
+- "Insert Selected into Prompt" wraps the selection in a fenced `text` block on its own line, so the quoted page text stays separate from your own words and keeps its layout; the cursor is placed below the block (#75)
+
+### Fixes
+
+- Code blocks close only on a fence of the same kind and at least the same length as the one that opened them, so a block quoting a shorter fence renders as one block
+- Lines starting with backticks inside a code block are no longer split by extra blank lines
+
+## [1.30.5] - 2026-11-15
 
 ### Fixes
 
