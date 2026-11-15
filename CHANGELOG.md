@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.4] - 2026-11-15 - latest
+## [1.30.5] - 2026-11-15 - latest
+
+### Fixes
+
+- Selection highlights now clear reliably, including inside same-origin frames. (#73)
+
+## [1.30.4] - 2026-11-15
 
 ### Fixes
 
