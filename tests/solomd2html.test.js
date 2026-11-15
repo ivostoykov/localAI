@@ -85,3 +85,71 @@ describe('solomd2html table rendering', () => {
         expect(table.querySelector('tbody em').textContent).toBe('Not available');
     });
 });
+
+describe('solomd2html fence rendering (#75)', () => {
+    it('renders a four-backtick text fence containing a mid-line triple-backtick run as one code block', async () => {
+        const dom = new JSDOM('<!DOCTYPE html><html><body><div id="root"></div></body></html>');
+        const parseAndRender = loadParser(dom.window);
+        const root = dom.window.document.getElementById('root');
+
+        await parseAndRender('````text\nhas ``` inside\nmore\n````\n', root, { streamReply: false });
+
+        expect(root.querySelectorAll('.code-block')).toHaveLength(1);
+        expect(root.querySelector('.code-block .code-ribbon').textContent).toContain('text');
+        expect(root.querySelector('.code-block code').textContent).toBe('has ``` inside\nmore');
+    });
+});
+
+describe('solomd2html fence closing rules (#75)', () => {
+    const render = async (markdown) => {
+        const dom = new JSDOM('<!DOCTYPE html><html><body><div id="root"></div></body></html>');
+        const parseAndRender = loadParser(dom.window);
+        const root = dom.window.document.getElementById('root');
+        await parseAndRender(markdown, root, { streamReply: false });
+        return root;
+    };
+
+    it('keeps a line-initial triple-backtick line inside a four-backtick fence as one code block', async () => {
+        const root = await render('````text\nbefore\n```js\nconst a = 1\n````\n');
+
+        expect(root.querySelectorAll('.code-block')).toHaveLength(1);
+        expect(root.querySelector('.code-block code').textContent).toBe('before\n```js\nconst a = 1');
+    });
+
+    it('closes a four-backtick fence with a four-backtick line', async () => {
+        const root = await render('````text\ncontent\n````\n');
+
+        expect(root.querySelectorAll('.code-block')).toHaveLength(1);
+        expect(root.querySelector('.code-block code').textContent).toBe('content');
+    });
+
+    it('does not close a four-backtick fence with a shorter backtick run', async () => {
+        const root = await render('````text\nbefore\n```\nafter\n````\n');
+
+        expect(root.querySelectorAll('.code-block')).toHaveLength(1);
+        expect(root.querySelector('.code-block code').textContent).toBe('before\n```\nafter');
+    });
+
+    it('still closes a three-backtick fence on a three-backtick line', async () => {
+        const root = await render('```text\nbefore\n```\n');
+
+        expect(root.querySelectorAll('.code-block')).toHaveLength(1);
+        expect(root.querySelector('.code-block code').textContent).toBe('before');
+    });
+
+    it('does not close a fence on a closing line carrying trailing text', async () => {
+        const root = await render('```text\nbefore\n``` tail\nafter\n```\n');
+
+        expect(root.querySelectorAll('.code-block')).toHaveLength(1);
+        expect(root.querySelector('.code-block code').textContent).toBe('before\n``` tail\nafter');
+    });
+
+    it('renders a fence that directly follows text as a code block without a blank line', async () => {
+        const root = await render('text before\n```js\nconst a = 1\n```\ntext after');
+
+        expect(root.querySelectorAll('.code-block')).toHaveLength(1);
+        expect(root.querySelector('.code-block code').textContent).toBe('const a = 1');
+        expect(root.querySelectorAll('p')).toHaveLength(2);
+        expect(root.querySelector('p').textContent).toBe('text before');
+    });
+});

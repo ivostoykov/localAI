@@ -1740,6 +1740,12 @@ function getSelectionText(response) {
     return cleanSelection(liveSelection || response?.selection || '');
 }
 
+function wrapInTextFence(text) {
+    const longestBacktickRun = (text.match(/`+/g) ?? []).reduce((longest, run) => Math.max(longest, run.length), 0);
+    const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1));
+    return `${fence}text\n${text}\n${fence}\n`;
+}
+
 function onRuntimeMessage(response, sender, sendResponse) {
     // Handle messages that don't require shadowRoot first
     if (response && response?.action === 'ping') {
@@ -1878,8 +1884,12 @@ async function messageProcessor(response, sender) {
             }
             const isSidebarActive = getSideBar()?.classList.contains('active');
             if (!isSidebarActive) { await laiSwapSidebarWithButton(); }
-            const promptVal = shadowRoot?.getElementById('laiUserInput')?.value;
-            shadowRoot.getElementById('laiUserInput').value += `${promptVal.length > 0 ? "\n" : ""}${insertedSelection}`;
+            const insertPromptInput = shadowRoot.getElementById('laiUserInput');
+            const promptVal = insertPromptInput.value;
+            if (promptVal.length > 0 && !promptVal.endsWith('\n')) { insertPromptInput.value += '\n'; }
+            insertPromptInput.value += wrapInTextFence(insertedSelection);
+            insertPromptInput.selectionStart = insertPromptInput.selectionEnd = insertPromptInput.value.length;
+            insertPromptInput.focus();
             break;
         case "activePageContent":
             const pageContent = await cleanPageContent();

@@ -213,7 +213,8 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
 
         if (isFenced) {
             lines.shift();
-            if (/^([`']{3,})\s*$/.test(lastLine)) {
+            const closingFence = lastLine.trim().match(/^([`']{3,})\s*$/);
+            if (closingFence && closingFence[1][0] === fenceMatch[1][0] && closingFence[1].length >= fenceMatch[1].length) {
                 lines.pop();
             }
         }
@@ -497,11 +498,13 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         if (currentType === 'indented') return !(trimmed.startsWith('    ') || trimmed.startsWith('\t'));
         if (currentType === 'blockquote') return !/^\s{0,3}>/.test(trimmed);
         if (currentType === 'html') return /<\/.+?>/.test(trimmed);
-        if (currentType === 'general') return trimmed === '';
+        if (currentType === 'general') return trimmed === '' || newType === 'fence';
         if (currentType === 'fence') {
-            const isFenceOpened = currentBlock.content.length > 1 && (/^\s*([`']{3,})/).test(currentBlock.content?.[0]);
+            const openingFence = currentBlock.content?.[0]?.match(/^\s*([`']{3,})/)?.[1];
+            const isFenceOpened = currentBlock.content.length > 1 && Boolean(openingFence);
             const isSameBlockType = currentType === newType;
-            const isFenceTerminator = isFenceOpened && (/^\s*([`']{3,})/).test(trimmed);
+            const closingFence = trimmed.match(/^([`']{3,})\s*$/);
+            const isFenceTerminator = isFenceOpened && Boolean(closingFence) && closingFence[1][0] === openingFence[0] && closingFence[1].length >= openingFence.length;
             return isFenceOpened && isSameBlockType && isFenceTerminator;
         }
         if (currentType === 'think') {  return /^\s*<\/think>\s*$/.test(trimmed) || newType !== 'think';  }
@@ -532,7 +535,6 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
 
     function normaliseMd(text) {
         return separateTablesFromText(text
-            .replace(/([^\n])\n([`']{3,}.*?\n)([^\n])/g, '$1\n\n$2\n$3')
             .replace(/([^\n])\n(#{1,6}\s)/g, '$1\n\n$2')
             .replace(/([^\n])\n(>)/g, '$1\n\n$2')
             .replace(/([^\n])\n(<[a-zA-Z])/g, '$1\n\n$2'));

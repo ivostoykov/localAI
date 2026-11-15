@@ -1901,23 +1901,23 @@ describe('context-menu selection line breaks (#74)', () => {
     });
 
     describe('Insert Selected into Prompt (inserSelectedInPrompt)', () => {
-        it('appends the live selection with its line breaks on a new line', async () => {
+        it('inserts the live selection rather than the background selectionText', async () => {
             const prompt = document.getElementById('laiUserInput');
             prompt.value = 'existing prompt';
             setLiveSelection('inserted line one\ninserted line two');
 
             await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'inserted line one inserted line two' });
 
-            expect(prompt.value).toBe('existing prompt\ninserted line one\ninserted line two');
+            expect(prompt.value).toBe('existing prompt\n```text\ninserted line one\ninserted line two\n```\n');
         });
 
-        it('appends without a leading line break to an empty prompt', async () => {
+        it('uses the live selection for an empty prompt', async () => {
             const prompt = document.getElementById('laiUserInput');
             setLiveSelection('first line\nsecond line');
 
             await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'first line second line' });
 
-            expect(prompt.value).toBe('first line\nsecond line');
+            expect(prompt.value).toBe('```text\nfirst line\nsecond line\n```\n');
         });
 
         it('inserts the live selection even when the background selectionText is empty', async () => {
@@ -1926,7 +1926,7 @@ describe('context-menu selection line breaks (#74)', () => {
 
             await messageProcessor({ action: 'inserSelectedInPrompt', selection: '' });
 
-            expect(prompt.value).toBe('picked from the page');
+            expect(prompt.value).toBe('```text\npicked from the page\n```\n');
         });
     });
 
@@ -1961,5 +1961,89 @@ describe('context-menu selection line breaks (#74)', () => {
             expect(prompt.value).toBe('');
             expect(global.showMessage).toHaveBeenCalledWith('Nothing selected to explain!', 'warning');
         });
+    });
+});
+
+describe('fenced insertion into the prompt (#75)', () => {
+    let messageProcessor, chromeWithUrls;
+    let originalGetSelection;
+    let prompt;
+
+    const setLiveSelection = (text) => {
+        global.window.getSelection = () => ({ toString: () => text });
+    };
+
+    beforeEach(() => {
+        originalGetSelection = global.window.getSelection;
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getSideBar = vi.fn(() => null);
+        global.addAttachment = vi.fn(async () => { });
+        global.updateStatusBar = vi.fn();
+        global.getEnhancedPageContent = vi.fn(async () => 'page content');
+        chromeWithUrls = {
+            runtime: {
+                sendMessage: vi.fn(),
+                onMessage: { addListener: vi.fn() },
+                getURL: vi.fn(() => 'img/attachment.svg')
+            }
+        };
+
+        document.body.innerHTML = '<div id="sideBar" class="active"></div><div id="attachContainer"></div><textarea id="laiUserInput"></textarea>';
+        prompt = document.getElementById('laiUserInput');
+        global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
+
+        const exports = executeLaiMainCode(global.document, global.window, global.manifest, chromeWithUrls, global.getLineNumber, global.isMessagePersistable);
+        messageProcessor = exports.messageProcessor;
+    });
+
+    afterEach(() => {
+        global.window.getSelection = originalGetSelection;
+        document.body.innerHTML = '';
+    });
+
+    it('wraps a multi-line selection inserted into an empty prompt in a fenced text block', async () => {
+        setLiveSelection('Question line\nAnswer one\nAnswer two');
+
+        await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'Question line Answer one Answer two' });
+
+        expect(prompt.value).toBe('```text\nQuestion line\nAnswer one\nAnswer two\n```\n');
+    });
+
+    it('places the caret at the end and keeps the focus on the input', async () => {
+        setLiveSelection('some selection');
+
+        await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'some selection' });
+
+        expect(prompt.selectionStart).toBe(prompt.value.length);
+        expect(prompt.selectionEnd).toBe(prompt.value.length);
+        expect(document.activeElement).toBe(prompt);
+    });
+
+    it('puts the block on a new line after existing prompt text', async () => {
+        prompt.value = 'existing prompt';
+        setLiveSelection('line one\nline two');
+
+        await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'line one line two' });
+
+        expect(prompt.value).toBe('existing prompt\n```text\nline one\nline two\n```\n');
+    });
+
+    it('does not add a blank line when the prompt already ends with a newline', async () => {
+        prompt.value = 'existing prompt\n';
+        setLiveSelection('line one');
+
+        await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'line one' });
+
+        expect(prompt.value).toBe('existing prompt\n```text\nline one\n```\n');
+    });
+
+    it('uses a four-backtick fence for a selection containing three backticks', async () => {
+        setLiveSelection('has ``` inside\nmore');
+
+        await messageProcessor({ action: 'inserSelectedInPrompt', selection: 'has ``` inside more' });
+
+        expect(prompt.value).toBe('````text\nhas ``` inside\nmore\n````\n');
     });
 });
