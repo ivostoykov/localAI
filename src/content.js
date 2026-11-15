@@ -54,69 +54,92 @@ function getActiveModel() {
 
 chrome.runtime.onMessage.addListener(onRuntimeMessage);
 
+let startRetry = null;
+let startInProgress = null;
+let documentSetupComplete = false;
+
 document.addEventListener('DOMContentLoaded', async (e) => await start());
 
 async function start() {
+  if (getShadowRoot()) { return; }
+  if (startInProgress) { return startInProgress; }
   if (document.readyState !== 'complete') {
-    setTimeout(start, 1000);
-  } else {
-    await allDOMContentLoaded();
+    if (startRetry === null) {
+      startRetry = setTimeout(() => {
+        startRetry = null;
+        start();
+      }, 1000);
+    }
+    return;
+  }
+  if (startRetry !== null) {
+    clearTimeout(startRetry);
+    startRetry = null;
+  }
+  startInProgress = allDOMContentLoaded();
+  try {
+    await startInProgress;
+  } finally {
+    startInProgress = null;
   }
 }
 
 async function allDOMContentLoaded(e) {
   Array.from(document.getElementsByTagName('local-ai'))?.forEach(el => el?.remove());
 
-  await updateTabPageContentStorage();
-  attachElementSelectionListenersToFrames();
+  if (!documentSetupComplete) {
+    documentSetupComplete = true;
+    await updateTabPageContentStorage();
+    attachElementSelectionListenersToFrames();
 
-  document.addEventListener('click', async function (event) {
-    closeQuickPromptListMenu(event);
-    if (isElementSelectionActive) {
-      getSelectedClickedElement(event);
-    }
-
-    await closeAllDropDownRibbonMenus(event);
-    const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
-    if (path.find(el => el?.id === 'localAI')) { return; }
-    if(event?.target?.id === 'localAI') { return; }
-
-    const sideBar = getSideBar();
-    if (!sideBar?.classList.contains('active')) { return; }
-
-    const options = await getOptions()
-    if (!options.closeOnClickOut || isPinned()) { return; }
-    await laiSwapSidebarWithButton(true);
-  }, true);
-
-  document.addEventListener('keydown', async function (e) {
-    if (isElementSelectionActive) {
-      if (e.key === "Escape") {
-        isElementSelectionActive = false;
-        clearAllElementDecorations();
-        return;
+    document.addEventListener('click', async function (event) {
+      closeQuickPromptListMenu(event);
+      if (isElementSelectionActive) {
+        getSelectedClickedElement(event);
       }
-    }
 
-    if (e.key !== "Escape") { return; }
-    const laiOptions = await getOptions()
-    if (!laiOptions.closeOnClickOut) { return; }
+      await closeAllDropDownRibbonMenus(event);
+      const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
+      if (path.find(el => el?.id === 'localAI')) { return; }
+      if(event?.target?.id === 'localAI') { return; }
 
-    const sideBar = getSideBar();
-    if (!sideBar?.classList.contains('active')) { return; }
+      const sideBar = getSideBar();
+      if (!sideBar?.classList.contains('active')) { return; }
 
-    await laiSwapSidebarWithButton(true);
-  }, true);
+      const options = await getOptions()
+      if (!options.closeOnClickOut || isPinned()) { return; }
+      await laiSwapSidebarWithButton(true);
+    }, true);
 
-  document.addEventListener('mouseover', function (event) {
-    if (!isElementSelectionActive) { return; }
-    const el = event.target
-    const currentBorder = el.style.border;
-    el.setAttribute('data-original-border', currentBorder);
-    el.style.border = "5px double lime";
-  }, true);
+    document.addEventListener('keydown', async function (e) {
+      if (isElementSelectionActive) {
+        if (e.key === "Escape") {
+          isElementSelectionActive = false;
+          clearAllElementDecorations();
+          return;
+        }
+      }
 
-  document.addEventListener('mouseout', clearElementOverDecoration, true);
+      if (e.key !== "Escape") { return; }
+      const laiOptions = await getOptions()
+      if (!laiOptions.closeOnClickOut) { return; }
+
+      const sideBar = getSideBar();
+      if (!sideBar?.classList.contains('active')) { return; }
+
+      await laiSwapSidebarWithButton(true);
+    }, true);
+
+    document.addEventListener('mouseover', function (event) {
+      if (!isElementSelectionActive) { return; }
+      const el = event.target
+      const currentBorder = el.style.border;
+      el.setAttribute('data-original-border', currentBorder);
+      el.style.border = "5px double lime";
+    }, true);
+
+    document.addEventListener('mouseout', clearElementOverDecoration, true);
+  }
 
   try {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Starting page data initialization`);
