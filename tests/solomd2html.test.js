@@ -85,3 +85,17 @@ describe('solomd2html table rendering', () => {
         expect(table.querySelector('tbody em').textContent).toBe('Not available');
     });
 });
+
+describe('solomd2html fence rendering (#75)', () => {
+    it('renders a four-backtick text fence containing a mid-line triple-backtick run as one code block', async () => {
+        const dom = new JSDOM('<!DOCTYPE html><html><body><div id="root"></div></body></html>');
+        const parseAndRender = loadParser(dom.window);
+        const root = dom.window.document.getElementById('root');
+
+        await parseAndRender('````text\nhas ``` inside\nmore\n````\n', root, { streamReply: false });
+
+        expect(root.querySelectorAll('.code-block')).toHaveLength(1);
+        expect(root.querySelector('.code-block .code-ribbon').textContent).toContain('text');
+        expect(root.querySelector('.code-block code').textContent).toBe('has ``` inside\nmore');
+    });
+});
