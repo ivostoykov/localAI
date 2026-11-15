@@ -52,7 +52,7 @@ global.chrome = {
 const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\([\s\S]*?\n}\n/)[0];
 
 // Extract the functions we want to test
-const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight, checkCommandHandler, getSelectionText };';
+const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight, checkCommandHandler, getSelectionText, showAttachment, userInputFocused, userInputBlurred };';
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
     tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + laiMainExports
 );
@@ -2069,5 +2069,92 @@ describe('attachment deletion UI (#76)', () => {
         expect(root.querySelector('img')).toBe(icon);
         expect(root.querySelector('#attachContainer').classList.contains('active')).toBe(true);
         expect(showMessage).toHaveBeenCalledWith(expect.any(String), 'error');
+    });
+});
+
+describe('attachment icon interaction (#77)', () => {
+    let showAttachment, userInputFocused, userInputBlurred;
+    let container, prompt, area;
+
+    const addAttachmentIcon = (id = 'attach-1', content = 'job description text file') => {
+        showAttachment({ id, type: 'snippet', content, filename: 'Selected Text' });
+        return container.querySelector('img.attached');
+    };
+
+    beforeEach(() => {
+        global.getLineNumber = () => 'test:1';
+        global.showMessage = vi.fn();
+        global.getShadowRoot = vi.fn(() => document);
+        global.getSideBar = vi.fn(() => null);
+        global.deleteAttachment = vi.fn(async () => true);
+        global.getAttachments = vi.fn(async () => []);
+        const chromeWithUrls = {
+            runtime: {
+                sendMessage: vi.fn(),
+                onMessage: { addListener: vi.fn() },
+                getURL: vi.fn(() => 'img/attachment.svg')
+            }
+        };
+
+        document.body.innerHTML = '<div class="lai-user-area"><textarea id="laiUserInput"></textarea></div><div id="attachContainer" class="attachment-container active"></div>';
+        area = document.querySelector('.lai-user-area');
+        prompt = document.getElementById('laiUserInput');
+        container = document.getElementById('attachContainer');
+
+        ({ showAttachment, userInputFocused, userInputBlurred } = executeLaiMainCode(global.document, global.window, global.manifest, chromeWithUrls, global.getLineNumber, global.isMessagePersistable));
+    });
+
+    afterEach(() => {
+        document.body.innerHTML = '';
+    });
+
+    it('default-prevents mousedown on the icon so the input keeps focus', () => {
+        const icon = addAttachmentIcon();
+        prompt.focus();
+
+        const mousedown = new window.MouseEvent('mousedown', { cancelable: true, bubbles: true });
+        icon.dispatchEvent(mousedown);
+
+        expect(mousedown.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(prompt);
+    });
+
+    it('marks the icon as a labelled, focusable button', () => {
+        const icon = addAttachmentIcon();
+
+        expect(icon.getAttribute('role')).toBe('button');
+        expect(icon.getAttribute('tabindex')).toBe('0');
+        expect(icon.getAttribute('aria-label')).toBe(`Delete attachment: ${icon.getAttribute('title')}`);
+    });
+
+    it('deletes the attachment once on Enter', async () => {
+        const icon = addAttachmentIcon('attach-enter');
+
+        icon.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', cancelable: true, bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(global.deleteAttachment).toHaveBeenCalledTimes(1);
+        expect(global.deleteAttachment).toHaveBeenCalledWith('attach-enter');
+        expect(icon.isConnected).toBe(false);
+        expect(container.classList.contains('active')).toBe(false);
+    });
+
+    it('deletes the attachment once on Space', async () => {
+        const icon = addAttachmentIcon('attach-space');
+
+        icon.dispatchEvent(new window.KeyboardEvent('keydown', { key: ' ', cancelable: true, bubbles: true }));
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(global.deleteAttachment).toHaveBeenCalledTimes(1);
+        expect(global.deleteAttachment).toHaveBeenCalledWith('attach-space');
+        expect(icon.isConnected).toBe(false);
+    });
+
+    it('keeps toggling the focused class on ordinary input focus and blur', async () => {
+        await userInputFocused({ composedPath: () => [prompt, area] });
+        expect(area.classList.contains('focused')).toBe(true);
+
+        userInputBlurred({ composedPath: () => [prompt, area] });
+        expect(area.classList.contains('focused')).toBe(false);
     });
 });

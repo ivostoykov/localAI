@@ -434,7 +434,13 @@ function showAttachment(theAttachment) {
     const img = createAttachmentImage(theAttachment);
     if (img) {
         attachmentContainer.appendChild(img);
+        img.addEventListener('mousedown', e => e.preventDefault());
         img.addEventListener('click', async e => await attachmentImgClicked(e), { capture: true });
+        img.addEventListener('keydown', async e => {
+            if (e.key !== 'Enter' && e.key !== ' ') { return; }
+            e.preventDefault();
+            await attachmentImgClicked(e);
+        });
     }
 }
 
@@ -465,6 +471,9 @@ function createAttachmentImage(theAttachment) {
     img.style.cursor = `url('${chrome.runtime.getURL('img/del.svg')}'), auto`;
     img.setAttribute('alt', 'Attachment');
     img.setAttribute('title', theAttachment?.title || `${theAttachment?.content?.split(/\s+/)?.slice(0, 5).join(' ')}...` || 'Noname');
+    img.setAttribute('role', 'button');
+    img.setAttribute('tabindex', '0');
+    img.setAttribute('aria-label', `Delete attachment: ${img.getAttribute('title')}`);
     img.setAttribute('data-index', theAttachment?.id);
     img.classList.add('attached');
 
