@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.2] - 2026-11-13 - latest
+## [1.30.3] - 2026-11-15 - latest
+
+### Fixes
+
+- Fixed repeated page start-up causing selection highlights to remain on elements. (#72)
+
+## [1.30.2] - 2026-11-13
 
 ### Maintenance
 
