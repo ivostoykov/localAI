@@ -48,6 +48,6 @@ function cleanFileContent(content, mimeType) {
 function cleanSelection(text) {
     if (!text) { return ''; }
 
-    return text.trim().replace(/\n\s*\n/g, '\n\n').replace(/[^\S\n]+/g, ' ');
+    return text.replace(/\r\n?/g, '\n').trim().replace(/\n\s*\n/g, '\n\n').replace(/[^\S\n]+/g, ' ');
 }
 

@@ -1735,6 +1735,11 @@ function getParseAndRenderOptions(rootEl) {
     return { abortSignal: controller.signal };
 }
 
+function getSelectionText(response) {
+    const liveSelection = (window.getSelection()?.toString() ?? '').trim();
+    return cleanSelection(liveSelection || response?.selection || '');
+}
+
 function onRuntimeMessage(response, sender, sendResponse) {
     // Handle messages that don't require shadowRoot first
     if (response && response?.action === 'ping') {
@@ -1845,13 +1850,13 @@ async function messageProcessor(response, sender) {
             await laiSwapSidebarWithButton(true);
             break;
         case "activePageSelection":
-            if (!response.selection) {
+            const cleanedSelection = getSelectionText(response);
+            if (!cleanedSelection) {
                 showMessage('Element picked up successfully.', 'info')
                 console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
                 break;
             }
 
-            const cleanedSelection = cleanSelection(response.selection);
             let newActivePageSelectionAttachment = {
                 id: crypto.randomUUID(),
                 type: "snippet",
@@ -1865,7 +1870,8 @@ async function messageProcessor(response, sender) {
             updateStatusBar('Selected content added to the context.');
             break;
         case "inserSelectedInPrompt":
-            if (!response.selection) {
+            const insertedSelection = getSelectionText(response);
+            if (!insertedSelection) {
                 showMessage('Element picked up successfully.', 'info')
                 console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
                 break;
@@ -1873,7 +1879,7 @@ async function messageProcessor(response, sender) {
             const isSidebarActive = getSideBar()?.classList.contains('active');
             if (!isSidebarActive) { await laiSwapSidebarWithButton(); }
             const promptVal = shadowRoot?.getElementById('laiUserInput')?.value;
-            shadowRoot.getElementById('laiUserInput').value += `${promptVal.length > 0 ? "\n" : ""}${response.selection}`;
+            shadowRoot.getElementById('laiUserInput').value += `${promptVal.length > 0 ? "\n" : ""}${insertedSelection}`;
             break;
         case "activePageContent":
             const pageContent = await cleanPageContent();
@@ -2027,7 +2033,11 @@ async function ask2ExplainSelection(response) {
     const userInput = shadowRoot.getElementById('laiUserInput');
     if (!userInput) { return; }
 
-    const selection = response.selection.replace(/\s{1,}/g, ' ').replace(/\n{1,}/g, '\n');
+    const selection = getSelectionText(response);
+    if (!selection) {
+        showMessage('Nothing selected to explain!', 'warning');
+        return;
+    }
     const cleanPageText = await getEnhancedPageContent()
     const theAttachment = {
       id: crypto.randomUUID(),
