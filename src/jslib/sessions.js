@@ -238,29 +238,31 @@ async function setActiveSessionId(sessionId) {
     }
 }
 
-async function setActiveSession(session) {
-    if (await saveSession(session)) { await setActiveSessionId(session.id); }
+async function setActiveSession(session, options = {}) {
+    const saved = await saveSession(session, null, options);
+    if (saved) { await setActiveSessionId(session.id); }
+    return saved;
 }
 
 /**
  * Writes only the given session into the latest catalogue (replacing or appending its record);
  * other sessions, including empty ones that belong to other tabs, are left untouched.
  */
-async function saveSession(session, beforeSave = null) {
+async function saveSession(session, beforeSave = null, options = {}) {
     if (!session?.id) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: session object is missing a valid id!`, session);
         return false;
     }
 
-    if ((session?.messages?.length ?? 0) + (session?.attachments?.length ?? 0) === 0)  {
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping save of empty session ${session?.id}`);
-        return false;
-    }
-
     return queueSessionMutation(async () => {
         try {
-            const sessions = await getAllSessions();
+            const sessions = [...await getAllSessions()];
             const idx = sessions.findIndex(s => s?.id === session.id);
+            if ((session?.messages?.length ?? 0) + (session?.attachments?.length ?? 0) === 0 &&
+                (!options.allowEmptyUpdate || idx < 0)) {
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Skipping save of empty session ${session.id}`);
+                return false;
+            }
 
             if (beforeSave) { await beforeSave(session); }
             session.lastAccessedAt = Date.now();

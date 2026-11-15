@@ -2047,3 +2047,27 @@ describe('fenced insertion into the prompt (#75)', () => {
         expect(prompt.value).toBe('````text\nhas ``` inside\nmore\n````\n');
     });
 });
+
+describe('attachment deletion UI (#76)', () => {
+    function setup(result) {
+        const root = document.createElement('div');
+        root.innerHTML = '<div id="attachContainer" class="active"><img data-index="a" class="attached"></div>';
+        const code = ['attachmentImgClicked', 'attachmentDeleted'].map(name => laiMainCode.match(new RegExp(`async function ${name}\\([\\s\\S]*?\\n}\\n`))[0]).join('\n');
+        const showMessage = vi.fn();
+        const run = new Function('getShadowRoot', 'deleteAttachment', 'showMessage', 'manifest', 'getLineNumber', `${code}\nreturn attachmentImgClicked;`)(() => root, vi.fn(async () => result), showMessage, global.manifest, global.getLineNumber);
+        return { root, showMessage, run };
+    }
+    it('hides the ribbon after the last icon is removed', async () => {
+        const { root, run } = setup(true); const icon = root.querySelector('img');
+        await run({ target: icon, preventDefault() {} });
+        expect(root.querySelector('img')).toBeNull();
+        expect(root.querySelector('#attachContainer').classList.contains('active')).toBe(false);
+    });
+    it('keeps the icon and shows an error when deletion fails', async () => {
+        const { root, showMessage, run } = setup(false); const icon = root.querySelector('img');
+        await run({ target: icon, preventDefault() {} });
+        expect(root.querySelector('img')).toBe(icon);
+        expect(root.querySelector('#attachContainer').classList.contains('active')).toBe(true);
+        expect(showMessage).toHaveBeenCalledWith(expect.any(String), 'error');
+    });
+});
