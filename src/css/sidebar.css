@@ -670,6 +670,11 @@ local-ai *,
     transform: rotate(15deg);
 }
 
+.attached:focus-visible {
+    outline: 2px solid #005fcc;
+    outline-offset: 2px;
+}
+
 /* General */
 .invisible {
     display: none !important;
