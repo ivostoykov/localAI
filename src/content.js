@@ -22,6 +22,7 @@ var aiUserCommands = [];
 var userCmdItemBtns = { 'edit': null, 'execute': null, 'paste': null, 'delete': null };
 var userScrolled = false;
 var isElementSelectionActive = false;
+const highlightedElements = new Map();
 var lastRegisteredErrorMessage = [];
 lastRegisteredErrorMessage.lastLength = 0;
 var availableCommandsPlaceholders = ['@{{page}}', '@{{dump}}', '@{{now}}', '@{{today}}', '@{{time}}', '@{{debug}}', '@{{nodebug}}', '@{{help}}', '@{{?}}'];
@@ -130,13 +131,7 @@ async function allDOMContentLoaded(e) {
       await laiSwapSidebarWithButton(true);
     }, true);
 
-    document.addEventListener('mouseover', function (event) {
-      if (!isElementSelectionActive) { return; }
-      const el = event.target
-      const currentBorder = el.style.border;
-      el.setAttribute('data-original-border', currentBorder);
-      el.style.border = "5px double lime";
-    }, true);
+    document.addEventListener('mouseover', highlightElementOverDecoration, true);
 
     document.addEventListener('mouseout', clearElementOverDecoration, true);
   }
@@ -202,39 +197,28 @@ if ('navigation' in window) {
     window.addEventListener("replacestate", triggerUpdate);
 }
 
+function frameElementSelectionClicked(event) {
+  if (isElementSelectionActive) {
+    getSelectedClickedElement(event);
+  }
+}
+
 function attachElementSelectionListenersToFrames() {
   const frames = document.querySelectorAll('iframe, frame');
   frames.forEach((frame) => {
-    frame.addEventListener('load', () => {
+    const attach = (requireReady = false) => {
       try {
         const doc = frame?.contentWindow?.document;
-        if(!doc || !doc.addEventListener){  return;  }
-
-        doc.addEventListener('mouseover', function (event) {
-          if (!isElementSelectionActive) return;
-          const el = event.target;
-          const currentBorder = el.style.border;
-          el.setAttribute('data-original-border', currentBorder);
-          el.style.border = "5px double lime";
-        }, true);
-
-        doc.addEventListener('mouseout', function (event) {
-          if (!isElementSelectionActive) return;
-          const el = event.target;
-          const original = el.getAttribute('data-original-border') || '';
-          el.style.border = original;
-        }, true);
-
-        doc.addEventListener('click', function (event) {
-          if (isElementSelectionActive) {
-            getSelectedClickedElement(event);
-          }
-        }, true);
-
+        if (!doc?.addEventListener || (requireReady && doc.readyState === 'loading')) { return; }
+        doc.addEventListener('mouseover', highlightElementOverDecoration, true);
+        doc.addEventListener('mouseout', clearElementOverDecoration, true);
+        doc.addEventListener('click', frameElementSelectionClicked, true);
       } catch (e) {
         console.warn('Access denied to frame!', e);
       }
-    });
+    };
+    frame.addEventListener('load', () => attach());
+    attach(true);
   });
 }
 
@@ -613,19 +597,45 @@ function parseSiteSpecificSelectors(siteSpecificRules, hostname) {
   return [];
 }
 
-function clearElementOverDecoration(e) {
-  let el = e.target;
-  const currentBorder = el.getAttribute('data-original-border') || '';
-  el.style.border = currentBorder;
+function highlightElementOverDecoration(e) {
+  if (!isElementSelectionActive) { return; }
+  const el = e.target;
+  if (!el?.style || !el.setAttribute || highlightedElements.has(el)) { return; }
+  const original = el.style.border;
+  highlightedElements.set(el, original);
+  el.setAttribute('data-original-border', original);
+  el.style.border = "5px double lime";
+}
+
+function restoreElementDecoration(el) {
+  if (!el?.style || !el.getAttribute) { return; }
+  const original = highlightedElements.has(el)
+    ? highlightedElements.get(el)
+    : el.getAttribute('data-original-border');
+  if (original === null) { return; }
+  el.style.border = original;
+  if (!original) { el.style.removeProperty('border'); }
   el.removeAttribute('data-original-border');
+  highlightedElements.delete(el);
+}
+
+function clearElementOverDecoration(e) {
+  if (!isElementSelectionActive) { return; }
+  restoreElementDecoration(e.target);
 }
 
 function clearAllElementDecorations() {
-  document.querySelectorAll('[data-original-border]').forEach(el => {
-    const original = el.getAttribute('data-original-border') || '';
-    el.style.border = original;
-    el.removeAttribute('data-original-border');
-  });
+  for (const el of highlightedElements.keys()) { restoreElementDecoration(el); }
+  const clearDocument = doc => {
+    doc.querySelectorAll('[data-original-border]').forEach(restoreElementDecoration);
+    doc.querySelectorAll('iframe, frame').forEach(frame => {
+      try {
+        if (frame.contentDocument) { clearDocument(frame.contentDocument); }
+      } catch (e) { /* Cross-origin frames are inaccessible. */ }
+    });
+  };
+  clearDocument(document);
+  highlightedElements.clear();
 }
 
 async function getSelectedClickedElement(event) {

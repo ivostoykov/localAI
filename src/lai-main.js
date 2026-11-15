@@ -1900,6 +1900,7 @@ async function messageProcessor(response, sender) {
             break;
         case "toggleSelectElement":
             isElementSelectionActive = response.selection;
+            if (!isElementSelectionActive) { clearAllElementDecorations(); }
             break;
         case "showMessage":
             if (response.message) { showMessage(response.message, response.messageType); }

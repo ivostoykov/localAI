@@ -13,7 +13,7 @@ function setup(ready = 'complete') {
   Object.defineProperty(document, 'readyState', { configurable: true, value: ready });
   const listeners = vi.spyOn(document, 'addEventListener');
   const build = vi.fn(() => { const host = document.createElement('local-ai'); host.id = 'localAI'; host.attachShadow({ mode: 'open' }); document.documentElement.appendChild(host); });
-  const deps = { document, window, history: window.history, Event: window.Event, getShadowRoot: () => document.getElementById('localAI')?.shadowRoot, attachElementSelectionListenersToFrames: vi.fn(), clearElementOverDecoration: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), restoreTabSessionOnStartup: build, manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout };
+  const deps = { document, window, history: window.history, Event: window.Event, getShadowRoot: () => document.getElementById('localAI')?.shadowRoot, attachElementSelectionListenersToFrames: vi.fn(), clearElementOverDecoration: vi.fn(), highlightElementOverDecoration: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), restoreTabSessionOnStartup: build, manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout };
   const start = new Function('deps', `with (deps) { ${startup}\n${storage}\nreturn start; }`)(deps);
   return { window, document, listeners, build, start };
 }
