@@ -308,6 +308,7 @@
 .lai-ribbon img {
     width: auto;
     height: clamp(14px, 5.2cqi, 22px);
+    cursor: pointer;
 }
 
 .lai-cog-menu-button {
