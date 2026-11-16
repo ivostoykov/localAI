@@ -5,6 +5,7 @@ import { JSDOM } from 'jsdom';
 const code = fs.readFileSync('src/content.js', 'utf8');
 const startup = code.slice(code.indexOf('let startRetry'), code.indexOf('\nasync function restoreTabSessionOnStartup'));
 const storage = code.match(/async function updateTabPageContentStorage\(\) \{[\s\S]*?\n\}/)[0];
+const contextMenuHandler = code.match(/function rememberContextMenuImageTarget\(event\) \{[\s\S]*?\n\}/)[0];
 
 function setup(ready = 'complete') {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://example.com' });
@@ -14,11 +15,11 @@ function setup(ready = 'complete') {
   const listeners = vi.spyOn(document, 'addEventListener');
   const build = vi.fn(() => { const host = document.createElement('local-ai'); host.id = 'localAI'; host.attachShadow({ mode: 'open' }); document.documentElement.appendChild(host); });
   const deps = { document, window, history: window.history, Event: window.Event, getShadowRoot: () => document.getElementById('localAI')?.shadowRoot, attachElementSelectionListenersToFrames: vi.fn(), clearElementOverDecoration: vi.fn(), highlightElementOverDecoration: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), restoreTabSessionOnStartup: build, manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout };
-  const start = new Function('deps', `with (deps) { ${startup}\n${storage}\nreturn start; }`)(deps);
+  const start = new Function('deps', `with (deps) { ${contextMenuHandler}\n${startup}\n${storage}\nreturn start; }`)(deps);
   return { window, document, listeners, build, start };
 }
 
-const count = spy => ['click', 'keydown', 'mouseover', 'mouseout'].map(type => spy.mock.calls.filter(call => call[0] === type).length);
+const count = spy => ['click', 'keydown', 'mouseover', 'mouseout', 'contextmenu'].map(type => spy.mock.calls.filter(call => call[0] === type).length);
 
 describe('content start-up', () => {
   it('ignores repeated DOMContentLoaded and start while the UI exists', async () => {
@@ -54,5 +55,14 @@ describe('content start-up', () => {
       await start();
       expect(vi.getTimerCount()).toBe(1);
     } finally { vi.useRealTimers(); }
+  });
+
+  it('registers the capture-phase context menu listener once', async () => {
+    const { listeners, start } = setup();
+    await start();
+    await start();
+    const registrations = listeners.mock.calls.filter(call => call[0] === 'contextmenu');
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0][2]).toBe(true);
   });
 });

@@ -1809,6 +1809,26 @@ async function messageProcessor(response, sender) {
         return { result: await handleContentExtractorCall(response) };
     }
 
+    if (response?.action === 'getContextMenuImageBounds') {
+        return getContextMenuImageBounds();
+    }
+    if (response?.action === 'scrollContextMenuImageIntoView') {
+        return scrollContextMenuImageIntoView();
+    }
+    if (response?.action === 'hideLocalAIForImageCapture') {
+        return hideLocalAIForImageCapture(response.rect);
+    }
+    if (response?.action === 'restoreLocalAIAfterImageCapture') {
+        return restoreLocalAIAfterImageCapture();
+    }
+    if (response?.action === 'waitForImageCaptureFrame') {
+        return new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    if (response?.action === 'attachCroppedContextMenuImage') {
+        await attachCroppedContextMenuImage(response.base64);
+        return { result: true };
+    }
+
     if (response?.action?.startsWith('stream') && response.requestId !== activeStreamRequestId) {
         if (!ignoredForeignRequestIds.has(response.requestId)) {
             ignoredForeignRequestIds.add(response.requestId);

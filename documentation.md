@@ -157,6 +157,8 @@ On each web page (where the tab has a valid `http` location), there is a `Local 
 
 - **Entire Page**: Sends the entire visible content of the page to the AI as context for the prompt.
 
+- **Attach Image**: Right-click an image and choose **Attach Image** to attach a PNG screenshot of its visible area. Only the viewport at on-screen resolution is captured; iframe images and portions outside the viewport are not supported.
+
 - **Options**: Opens the options page to configure the [AI settings](#options).
 
 # System instructions
