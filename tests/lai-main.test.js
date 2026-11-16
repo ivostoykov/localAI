@@ -2158,3 +2158,60 @@ describe('attachment icon interaction (#77)', () => {
         expect(area.classList.contains('focused')).toBe(false);
     });
 });
+
+describe('watermark links (#87)', () => {
+    const rateLinkFirefoxUrlCode = laiMainCode.match(/const rateLinkFirefoxUrl = '[^']*';/)[0];
+    const rateLinkChromiumUrlCode = laiMainCode.match(/const rateLinkChromiumUrl = '[^']*';/)[0];
+    const starLinkUrlCode = laiMainCode.match(/const starLinkUrl = '[^']*';/)[0];
+    const setWatermarkLinkHrefsCode = laiMainCode.match(/function setWatermarkLinkHrefs\([\s\S]*?\n}\n/)[0];
+    const loadWatermarkLinks = () => new Function(`${rateLinkFirefoxUrlCode}
+${rateLinkChromiumUrlCode}
+${starLinkUrlCode}
+${setWatermarkLinkHrefsCode}
+return { setWatermarkLinkHrefs };`)();
+
+    const buildShadowRoot = () => {
+        const root = document.createElement('div');
+        root.innerHTML = `
+            <a id="laiRateLink" target="_blank" rel="noopener noreferrer"></a>
+            <a id="laiStarLink" target="_blank" rel="noopener noreferrer"></a>`;
+        return root;
+    };
+
+    it('links the add-on page for a gecko manifest', () => {
+        const { setWatermarkLinkHrefs } = loadWatermarkLinks();
+        const root = buildShadowRoot();
+
+        setWatermarkLinkHrefs(root, { browser_specific_settings: { gecko: { id: '{a1b2c3d4-e5f6-7890-abcd-ef1234567890}' } } });
+
+        expect(root.querySelector('#laiRateLink').getAttribute('href')).toBe('https://addons.mozilla.org/en-GB/firefox/addon/local-ai-helper/');
+        expect(root.querySelector('#laiStarLink').getAttribute('href')).toBe('https://github.com/ivostoykov/localAI/');
+    });
+
+    it('links the Chrome Web Store page for a chromium manifest', () => {
+        const { setWatermarkLinkHrefs } = loadWatermarkLinks();
+        const root = buildShadowRoot();
+
+        setWatermarkLinkHrefs(root, { name: 'Local AI helper' });
+
+        expect(root.querySelector('#laiRateLink').getAttribute('href')).toBe('https://chromewebstore.google.com/detail/local-ai-helper/mplpnjanhjddepeecpmjbglbiccdhnfp');
+        expect(root.querySelector('#laiStarLink').getAttribute('href')).toBe('https://github.com/ivostoykov/localAI/');
+    });
+
+    it('opens both anchors from sidebar.html in a new tab without a referrer', () => {
+        const sidebarHtml = fs.readFileSync(path.join(__dirname, '../src/sidebar.html'), 'utf-8');
+        for (const id of ['laiRateLink', 'laiStarLink']) {
+            const anchor = sidebarHtml.match(new RegExp(`<a id="${id}"[^>]*>`));
+            expect(anchor).not.toBeNull();
+            expect(anchor[0]).toContain('target="_blank"');
+            expect(anchor[0]).toContain('rel="noopener noreferrer"');
+        }
+        expect(sidebarHtml).toContain('⭐ Rate this extension');
+        expect(sidebarHtml).toContain('★ Star on GitHub');
+    });
+
+    it('places the links before the chat list so messages cover them', () => {
+        const sidebarHtml = fs.readFileSync(path.join(__dirname, '../src/sidebar.html'), 'utf-8');
+        expect(sidebarHtml.indexOf('lai-watermark-links')).toBeLessThan(sidebarHtml.indexOf('id="laiChatMessageList"'));
+    });
+});

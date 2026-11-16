@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.10] - 2026-11-16 - latest
+## [1.30.11] - 2026-11-16 - latest
+
+### Changes
+
+- The empty chat shows "Rate this extension" and "Star on GitHub" links below the version; the rating link opens the add-on page for your browser (Firefox Add-ons or the Chrome Web Store) (#87)
+
+## [1.30.10] - 2026-11-16
 
 ### Fixes
 
