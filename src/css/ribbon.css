@@ -34,8 +34,8 @@
 
 .rib-section.left {
     justify-content: flex-start;
-    padding-left: 16px;
-    gap: 15px;
+    padding-left: clamp(8px, 3.78cqi, 16px);
+    gap: clamp(7px, 3.54cqi, 15px);
 }
 
 .rib-cog-menu-container {
@@ -75,7 +75,7 @@
 }
 
 .rib-section.right {
-    padding-right: 16px;
+    padding-right: clamp(8px, 3.78cqi, 16px);
     justify-content: flex-end;
 }
 
@@ -301,14 +301,13 @@
 .lai-ribbon-pin-button,
 .ai-wrench-button-img {
     position: relative;
-    padding: 0 1rem;
+    padding: 0 clamp(8px, 3.78cqi, 16px);
     cursor: pointer;
 }
 
 .lai-ribbon img {
     width: auto;
-    height: 22px;
-    cursor: pointer;
+    height: clamp(14px, 5.2cqi, 22px);
 }
 
 .lai-cog-menu-button {
