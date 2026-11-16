@@ -21,6 +21,7 @@ local-ai *,
 
 /* main container */
 .lai-fixed-parent {
+    container-type: inline-size;
     position: fixed;
     top: 0;
     right: -100%;
