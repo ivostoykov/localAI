@@ -318,7 +318,7 @@ async function execInternalTool(call = {}, tabId = null, context = {}) {
             return await callContentScriptExtractor(tabId, 'getMainContentOnly', null);
 
         case "search_web":
-            return await searchWeb(call?.function?.arguments?.query);
+            return await searchWeb(call?.function?.arguments?.query, tabId);
 
         case "browse_url":
             return await browseUrl(context?.navigationSession, call?.function?.arguments?.url);

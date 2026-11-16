@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.9] - 2026-11-16 - latest
+## [1.30.10] - 2026-11-16 - latest
+
+### Fixes
+
+- Web searches now use a separate background tab per run and close it after results are prepared; captcha or consent pages stay open and trigger a warning in the originating tab (#85)
+
+## [1.30.9] - 2026-11-16
 
 ### Fixes
 
