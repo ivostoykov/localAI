@@ -254,19 +254,19 @@ local-ai *,
 }
 
 .lai-watermark-links {
-    position: absolute;
-    top: calc(50% + 3em);
-    left: 0;
-    right: 0;
+    flex: none;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     gap: 0.25rem 1rem;
-    pointer-events: none;
+    padding: 0.35rem 0 0.1rem;
+}
+
+.lai-fixed-parent:has(#laiChatMessageList > *) .lai-watermark-links {
+    display: none;
 }
 
 .lai-watermark-links a {
-    pointer-events: auto;
     color: #999;
     font-size: 0.9em;
     font-weight: bold;
