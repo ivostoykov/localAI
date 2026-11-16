@@ -27,6 +27,7 @@ Chrome_changes/
 .continue/
 .project-map/
 .agents/
+scripts/
 
 # Test and dependencies
 node_modules/
