@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.8] - 2026-11-15 - latest
+## [1.30.9] - 2026-11-16 - latest
+
+### Fixes
+
+- Confirming "delete all" in the sessions dialog now closes the dialog once every session is deleted; if deletion fails, the dialog stays open and shows the error (#86)
+
+## [1.30.8] - 2026-11-15
 
 ### Fixes
 
