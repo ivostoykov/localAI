@@ -281,6 +281,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
                 await chrome.tabs.sendMessage(tab?.id, { action: "toggleSelectElement", selection: true });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
                 break;
+            case "attachImage":
+                await attachContextMenuImage(tab);
+                break;
             case "openOptions":
                 chrome.tabs.create({ url: chrome.runtime.getURL('options.html') });
                 break;
@@ -360,6 +363,13 @@ async function composeContextMenu() {
     });
 
     await chrome.contextMenus.create({
+        id: "attachImage",
+        title: "Attach Image",
+        parentId: "sendToLocalAi",
+        contexts: ["image"]
+    });
+
+    await chrome.contextMenus.create({
         id: "separatorBeforeOptions",
         type: "separator",
         parentId: "sendToLocalAi",
@@ -372,6 +382,78 @@ async function composeContextMenu() {
         parentId: "sendToLocalAi",
         contexts: ["all"]
     });
+}
+
+async function attachContextMenuImage(tab) {
+    const notifyFailure = async (message) => {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${message}`);
+        await showUIMessage(message, 'error', tab);
+    };
+    if (!tab?.id || !Number.isInteger(tab.windowId)) {
+        await notifyFailure('Could not attach image: the browser tab is unavailable.');
+        return;
+    }
+
+    let bounds;
+    try {
+        bounds = await chrome.tabs.sendMessage(tab.id, { action: 'getContextMenuImageBounds' });
+        if (!bounds?.rect) {
+            await notifyFailure('Could not attach image: right-click the image again and retry.');
+            return;
+        }
+        if (bounds.rect.x < 0 || bounds.rect.y < 0 || bounds.rect.right > bounds.viewportWidth || bounds.rect.bottom > bounds.viewportHeight) {
+            await chrome.tabs.sendMessage(tab.id, { action: 'scrollContextMenuImageIntoView' });
+            bounds = await chrome.tabs.sendMessage(tab.id, { action: 'getContextMenuImageBounds' });
+        }
+        if (!bounds?.rect || !bounds.viewportWidth || !bounds.rect.width || !bounds.rect.height) {
+            await notifyFailure('Could not attach image: the image has no visible size.');
+            return;
+        }
+
+        let hidden = false;
+        let imageBitmap;
+        try {
+            const overlap = await chrome.tabs.sendMessage(tab.id, { action: 'hideLocalAIForImageCapture', rect: bounds.rect });
+            hidden = overlap?.hidden === true;
+            if (hidden) { await chrome.tabs.sendMessage(tab.id, { action: 'waitForImageCaptureFrame' }); }
+            const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+            imageBitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
+            const scale = imageBitmap.width / bounds.viewportWidth;
+            const left = Math.max(0, Math.floor(bounds.rect.x * scale));
+            const top = Math.max(0, Math.floor(bounds.rect.y * scale));
+            const right = Math.min(imageBitmap.width, Math.ceil(bounds.rect.right * scale));
+            const bottom = Math.min(imageBitmap.height, Math.ceil(bounds.rect.bottom * scale));
+            const width = right - left;
+            const height = bottom - top;
+            if (width <= 0 || height <= 0) {
+                await notifyFailure('Could not attach image: the visible image area is empty.');
+                return;
+            }
+            const canvas = new OffscreenCanvas(width, height);
+            const context = canvas.getContext('2d');
+            context.drawImage(imageBitmap, left, top, width, height, 0, 0, width, height);
+            const cropped = await canvas.convertToBlob({ type: 'image/png' });
+            const bytes = new Uint8Array(await cropped.arrayBuffer());
+            let binary = '';
+            for (let i = 0; i < bytes.length; i += 0x8000) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+            }
+            await chrome.tabs.sendMessage(tab.id, { action: 'attachCroppedContextMenuImage', base64: btoa(binary) });
+        } catch (err) {
+            await notifyFailure(`Could not capture image: ${err.message}`);
+        } finally {
+            imageBitmap?.close();
+            if (hidden) {
+                try {
+                    await chrome.tabs.sendMessage(tab.id, { action: 'restoreLocalAIAfterImageCapture' });
+                } catch (err) {
+                    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not restore Local AI UI:`, err);
+                }
+            }
+        }
+    } catch (err) {
+        await notifyFailure(`Could not attach image. The page may not allow extension access: ${err.message}`);
+    }
 }
 
 // Ollama returns several json object in a single response which invalidates the JSON

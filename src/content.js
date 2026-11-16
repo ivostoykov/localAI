@@ -58,6 +58,7 @@ chrome.runtime.onMessage.addListener(onRuntimeMessage);
 let startRetry = null;
 let startInProgress = null;
 let documentSetupComplete = false;
+let contextMenuImageTarget = null;
 
 document.addEventListener('DOMContentLoaded', async (e) => await start());
 
@@ -90,6 +91,7 @@ async function allDOMContentLoaded(e) {
 
   if (!documentSetupComplete) {
     documentSetupComplete = true;
+    document.addEventListener('contextmenu', rememberContextMenuImageTarget, true);
     await updateTabPageContentStorage();
     attachElementSelectionListenersToFrames();
 
@@ -157,6 +159,57 @@ async function allDOMContentLoaded(e) {
   } catch (error) {
     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error loading one or more styles: ${error.message}`, error);
   }
+}
+
+function rememberContextMenuImageTarget(event) {
+  const target = event.composedPath?.()[0];
+  contextMenuImageTarget = target instanceof HTMLImageElement ? target : null;
+}
+
+function getContextMenuImageBounds() {
+  if (!contextMenuImageTarget?.isConnected) { return null; }
+  const rect = contextMenuImageTarget.getBoundingClientRect();
+  return {
+    rect: { x: rect.left, y: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height },
+    devicePixelRatio: window.devicePixelRatio,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight
+  };
+}
+
+function scrollContextMenuImageIntoView() {
+  if (!contextMenuImageTarget?.isConnected) { return false; }
+  contextMenuImageTarget.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  return true;
+}
+
+function hideLocalAIForImageCapture(rect) {
+  const host = getRootElement();
+  if (!host) { return { hidden: false }; }
+  const hostRect = host.getBoundingClientRect();
+  const overlaps = hostRect.left < rect.right && hostRect.right > rect.x && hostRect.top < rect.bottom && hostRect.bottom > rect.y;
+  if (!overlaps) { return { hidden: false }; }
+  host.dataset.contextCaptureDisplay = host.style.display;
+  host.style.display = 'none';
+  return { hidden: true };
+}
+
+function restoreLocalAIAfterImageCapture() {
+  const host = getRootElement();
+  if (!host || !Object.hasOwn(host.dataset, 'contextCaptureDisplay')) { return false; }
+  host.style.display = host.dataset.contextCaptureDisplay;
+  delete host.dataset.contextCaptureDisplay;
+  return true;
+}
+
+async function attachCroppedContextMenuImage(base64) {
+  if (!base64) { throw new Error('Captured image data is empty.'); }
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
+  const file = new File([bytes], `image-${Date.now()}.png`, { type: 'image/png' });
+  await handleImageFile(file);
+  showMessage('Image attached successfully.', 'info');
 }
 
 async function restoreTabSessionOnStartup() {
