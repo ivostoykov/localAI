@@ -255,7 +255,7 @@ local-ai *,
 
 .lai-watermark-links {
     position: absolute;
-    top: calc(50% + 2em);
+    top: calc(50% + 3em);
     left: 0;
     right: 0;
     display: flex;
