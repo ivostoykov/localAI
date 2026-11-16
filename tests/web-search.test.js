@@ -212,6 +212,10 @@ describe('web-search.js', () => {
     });
 
     describe('searchWeb', () => {
+        beforeEach(() => {
+            vi.spyOn(chrome.tabs, 'remove');
+        });
+
         it.each([37, 2000, 2456])('reports truncation only for summaries above the cap (%s characters)', async length => {
             vi.spyOn(chrome.tabs, 'create').mockResolvedValue({ id: 42 });
             vi.spyOn(chrome.tabs, 'update').mockImplementation(async tabId => {
@@ -227,6 +231,64 @@ describe('web-search.js', () => {
                 ? `${content.slice(0, 2000)}\n[TRUNCATED: first 2000 of ${length} characters shown]`
                 : content;
             expect(output).toBe(`# Web Search: "test"\nEngine: DuckDuckGo\n\n## https://example.com/article\n\n${summary}`);
+            expect(chrome.tabs.remove).toHaveBeenCalledWith(42);
+        });
+
+        it('closes a new tab after a no-results search', async () => {
+            vi.spyOn(chrome.tabs, 'create').mockResolvedValue({ id: 43 });
+            vi.spyOn(chrome.tabs, 'update').mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId });
+            });
+            vi.spyOn(chrome.scripting, 'executeScript')
+                .mockResolvedValueOnce([{ result: 'Search results' }])
+                .mockResolvedValueOnce([{ result: [] }]);
+            expect(await searchWeb('empty')).toContain('No results found');
+            expect(chrome.tabs.remove).toHaveBeenCalledWith(43);
+        });
+
+        it('closes a new tab after a load failure', async () => {
+            vi.spyOn(chrome.tabs, 'create').mockResolvedValue({ id: 44 });
+            vi.spyOn(chrome.tabs, 'update').mockRejectedValue(new Error('navigation failed'));
+            expect(await searchWeb('failure')).toContain('could not load results page');
+            expect(chrome.tabs.remove).toHaveBeenCalledWith(44);
+        });
+
+        it('keeps captcha tabs open and warns the originating tab', async () => {
+            vi.spyOn(chrome.tabs, 'create').mockResolvedValue({ id: 45 });
+            vi.spyOn(chrome.tabs, 'update').mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId });
+            });
+            vi.spyOn(chrome.scripting, 'executeScript').mockResolvedValue([{ result: 'captcha' }]);
+            vi.spyOn(chrome.tabs, 'sendMessage').mockResolvedValue(undefined);
+            expect(await searchWeb('blocked', 9)).toContain('captcha or consent');
+            expect(chrome.tabs.remove).not.toHaveBeenCalled();
+            expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(9, expect.objectContaining({
+                action: 'showMessage', messageType: 'warning'
+            }));
+        });
+
+        it('swallows a tab close failure', async () => {
+            vi.spyOn(chrome.tabs, 'create').mockResolvedValue({ id: 46 });
+            vi.spyOn(chrome.tabs, 'update').mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId });
+            });
+            vi.spyOn(chrome.scripting, 'executeScript')
+                .mockResolvedValueOnce([{ result: 'Search results' }])
+                .mockResolvedValueOnce([{ result: [] }]);
+            vi.spyOn(chrome.tabs, 'remove').mockRejectedValue(new Error('already closed'));
+            await expect(searchWeb('test')).resolves.toContain('No results found');
+        });
+
+        it('uses separate tabs for concurrent searches', async () => {
+            let nextId = 50;
+            vi.spyOn(chrome.tabs, 'create').mockImplementation(async () => ({ id: nextId++ }));
+            vi.spyOn(chrome.tabs, 'update').mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId });
+            });
+            vi.spyOn(chrome.scripting, 'executeScript').mockResolvedValue([{ result: 'captcha' }]);
+            await Promise.all([searchWeb('one'), searchWeb('two')]);
+            expect(chrome.tabs.create).toHaveBeenCalledTimes(2);
+            expect(chrome.tabs.create.mock.results.map(r => r.value)).toHaveLength(2);
         });
 
         it('returns early for an empty query', async () => {

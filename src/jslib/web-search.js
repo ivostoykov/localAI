@@ -1,28 +1,13 @@
 /**
  * Web Search Module
- * Orchestrates browser-session web search using a reusable background tab.
+ * Orchestrates browser-session web search using a temporary background tab.
  * Runs in the background service worker context.
  */
 
-const SEARCH_TAB_KEY = 'searchTabId';
 const SEARCH_SUMMARY_MAX_CHARS = 2000;
 
-async function getOrCreateSearchTab() {
-    const stored = await chrome.storage.session.get(SEARCH_TAB_KEY);
-    const storedId = stored[SEARCH_TAB_KEY];
-
-    if (storedId) {
-        try {
-            await chrome.tabs.get(storedId);
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Reusing search tab`, storedId);
-            return storedId;
-        } catch {
-            // Tab no longer exists — fall through to create a new one
-        }
-    }
-
+async function createSearchTab() {
     const tab = await chrome.tabs.create({ active: false, url: 'about:blank' });
-    await chrome.storage.session.set({ [SEARCH_TAB_KEY]: tab.id });
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Created search tab`, tab.id);
     return tab.id;
 }
@@ -127,7 +112,7 @@ async function fetchPageSummary(searchTabId, url) {
     }
 }
 
-async function searchWeb(query) {
+async function searchWeb(query, originatingTabId) {
     if (!query?.trim()) {
         return 'No search query provided.';
     }
@@ -140,47 +125,78 @@ async function searchWeb(query) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - searchWeb:`, { query, engine, maxResults });
 
     let searchTabId;
+    let keepSearchTab = false;
     try {
-        searchTabId = await getOrCreateSearchTab();
+        searchTabId = await createSearchTab();
     } catch (err) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not create search tab:`, err);
         return `Search failed: could not create search tab. ${err.message}`;
     }
 
-    const serpUrl = getSearchUrl(engine, query);
     try {
-        const loadPromise = waitForTabLoad(searchTabId);
-        await chrome.tabs.update(searchTabId, { url: serpUrl });
-        await loadPromise;
+        const serpUrl = getSearchUrl(engine, query);
+        try {
+            const loadPromise = waitForTabLoad(searchTabId);
+            await chrome.tabs.update(searchTabId, { url: serpUrl });
+            await loadPromise;
+        } catch (err) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not load results page:`, err);
+            return `Search failed: could not load results page. ${err.message}`;
+        }
+
+        if (await isCaptchaOrConsentPage(searchTabId)) {
+            keepSearchTab = true;
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Search stopped at captcha or consent page`, searchTabId);
+            if (originatingTabId) {
+                try {
+                    await chrome.tabs.sendMessage(originatingTabId, {
+                        action: 'showMessage',
+                        message: 'The search engine is showing a captcha or consent page in a background tab. Resolve it there, then retry the search.',
+                        messageType: 'warning'
+                    });
+                } catch (err) {
+                    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not notify originating tab:`, err);
+                }
+            }
+            return 'Search blocked: the search engine is showing a captcha or consent page. Please open the search tab and resolve it manually, then try again.';
+        }
+
+        const resultUrls = await extractSerpUrls(searchTabId, engine, maxResults);
+        if (resultUrls.length === 0) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No search results found`);
+            return `No results found for: "${query}". The search engine page may have changed its layout or the query returned no matches.`;
+        }
+
+        const summaries = [];
+        for (const url of resultUrls) {
+            const { content } = await fetchPageSummary(searchTabId, url);
+            if (content?.trim()) {
+                const summary = content.length > SEARCH_SUMMARY_MAX_CHARS
+                    ? `${content.slice(0, SEARCH_SUMMARY_MAX_CHARS)}\n[TRUNCATED: first ${SEARCH_SUMMARY_MAX_CHARS} of ${content.length} characters shown]`
+                    : content;
+                summaries.push(`## ${url}\n\n${summary}`);
+            }
+        }
+
+        if (summaries.length === 0) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No page content extracted`);
+            const urlList = resultUrls.map(u => `- ${u}`).join('\n');
+            return `Found ${resultUrls.length} result(s) for "${query}" but could not extract content from any of them.\n\nURLs found:\n${urlList}`;
+        }
+
+        const engineName = getEngineConfig(engine).name;
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - searchWeb complete:`, { engine: engineName, summaries: summaries.length });
+        return `# Web Search: "${query}"\nEngine: ${engineName}\n\n${summaries.join('\n\n---\n\n')}`;
     } catch (err) {
-        return `Search failed: could not load results page. ${err.message}`;
-    }
-
-    if (await isCaptchaOrConsentPage(searchTabId)) {
-        return `Search blocked: the search engine is showing a captcha or consent page. Please open the search tab and resolve it manually, then try again.`;
-    }
-
-    const resultUrls = await extractSerpUrls(searchTabId, engine, maxResults);
-    if (resultUrls.length === 0) {
-        return `No results found for: "${query}". The search engine page may have changed its layout or the query returned no matches.`;
-    }
-
-    const summaries = [];
-    for (const url of resultUrls) {
-        const { content } = await fetchPageSummary(searchTabId, url);
-        if (content?.trim()) {
-            const summary = content.length > SEARCH_SUMMARY_MAX_CHARS
-                ? `${content.slice(0, SEARCH_SUMMARY_MAX_CHARS)}\n[TRUNCATED: first ${SEARCH_SUMMARY_MAX_CHARS} of ${content.length} characters shown]`
-                : content;
-            summaries.push(`## ${url}\n\n${summary}`);
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Search failed unexpectedly:`, err);
+        return `Search failed: ${err.message}`;
+    } finally {
+        if (!keepSearchTab) {
+            try {
+                await chrome.tabs.remove(searchTabId);
+            } catch (err) {
+                console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not close search tab:`, err);
+            }
         }
     }
-
-    if (summaries.length === 0) {
-        const urlList = resultUrls.map(u => `- ${u}`).join('\n');
-        return `Found ${resultUrls.length} result(s) for "${query}" but could not extract content from any of them.\n\nURLs found:\n${urlList}`;
-    }
-
-    const engineName = getEngineConfig(engine).name;
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - searchWeb complete:`, { engine: engineName, summaries: summaries.length });
-    return `# Web Search: "${query}"\nEngine: ${engineName}\n\n${summaries.join('\n\n---\n\n')}`;
 }
