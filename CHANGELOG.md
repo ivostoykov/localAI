@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.13] - 2026-11-16 - latest
+## [1.30.14] - 2026-11-16 - latest
+
+### Fixes
+
+- The header icons and their spacing now shrink with the panel width instead of crowding together; from about 440px wide the header looks as before (#93)
+
+## [1.30.13] - 2026-11-16
 
 ### Fixes
 
