@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Iterable
@@ -688,7 +689,9 @@ def cmd_update(args: argparse.Namespace) -> int:
     for consumer in sorted(reachable, key=lambda item: str(item.get("consumer_id", ""))):
         target = Path(str(consumer["path"])).resolve()
         if target == source_root:
-            print(f"- {consumer['consumer_id']}: source distribution; already current")
+            actions: list[Action] = []
+            install_memory_skill(source_root, target, actions)
+            print(f"- {consumer['consumer_id']}: source distribution skill refreshed")
             continue
         actions = init_project(source_root=source_root, target_root=target, force_singletons=False, update_agents=False)
         updated += 1
@@ -957,6 +960,81 @@ def get_distribution_root() -> Path:
     return root
 
 
+SKILL_SOURCE = ".aimem-spec/skills/aimem"
+SKILL_TARGETS = (".agents/skills/aimem", ".claude/skills/aimem")
+SKILL_MANIFEST = ".aimem/skill-installations.json"
+
+
+def skill_tree_hash(path: Path) -> str:
+    """Fingerprint names, contents and empty directories; never follow symlinks."""
+    digest = hashlib.sha256()
+    for item in sorted(path.rglob("*")):
+        if item.is_symlink():
+            raise ValueError(f"{item}: symlinks in managed skills are unsupported")
+        relative = item.relative_to(path).as_posix()
+        kind = "directory" if item.is_dir() else "file"
+        digest.update(json.dumps([kind, relative]).encode())
+        if item.is_file():
+            digest.update(hashlib.sha256(item.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def install_memory_skill(source_root: Path, target_root: Path, actions: list[Action]) -> None:
+    source = source_root / SKILL_SOURCE
+    if not (source / "SKILL.md").is_file():
+        raise ValueError(f"{source}: missing aimem skill")
+    desired = skill_tree_hash(source)
+    manifest_path = target_root / SKILL_MANIFEST
+    try:
+        manifest = json.loads(manifest_path.read_text())
+        if not isinstance(manifest, dict):
+            manifest = {}
+    except (FileNotFoundError, ValueError):
+        manifest = {}
+    for relative in SKILL_TARGETS:
+        target = target_root / relative
+        for component in (target, *target.parents):
+            if component == target_root:
+                break
+            if component.is_symlink() and (
+                component == target or not component.resolve().is_relative_to(target_root.resolve())
+            ):
+                raise ValueError(f"{component}: refusing a skill symlink or parent link outside the project")
+        if target.exists() and not target.is_dir():
+            raise ValueError(f"{target}: skill path is not a directory")
+        actual = skill_tree_hash(target) if target.exists() else None
+        if actual == desired:
+            actions.append(Action("skip", relative, "aimem skill already current"))
+        else:
+            storage = target_root / ".aimem-backups" / "skills"
+            storage.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix=".stage-", dir=storage) as temporary:
+                stage = Path(temporary) / "aimem"
+                shutil.copytree(source, stage)
+                previous = Path(temporary) / "previous"
+                if actual is not None and manifest.get(relative) != actual:
+                    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+                    backup = storage / f"{stamp}-{relative.split('/')[0].lstrip('.')}-aimem"
+                    shutil.copytree(target, backup)
+                    actions.append(Action("backup-skill", str(backup), "modified aimem skill backed up"))
+                    print(f"{target_root.name}: modified aimem skill backed up to {backup}")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    target.rename(previous)
+                try:
+                    stage.rename(target)
+                except OSError:
+                    if previous.exists():
+                        previous.rename(target)
+                    raise
+            actions.append(Action("update-skill", relative, "aimem skill installed or updated"))
+        manifest[relative] = desired
+        content = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+        if not manifest_path.exists() or manifest_path.read_text() != content:
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            manifest_path.write_text(content)
+
+
 def init_project(
     source_root: Path,
     target_root: Path,
@@ -972,6 +1050,7 @@ def init_project(
         ensure_text_file(directory / ".gitkeep", "", actions)
     ensure_directory(target_root / ".aimem" / "capabilities", actions)
 
+    install_memory_skill(source_root, target_root, actions)
     copy_tree_files(source_root / ".aimem-spec", target_root / ".aimem-spec", actions)
 
     scripts_dir = target_root / "scripts"
