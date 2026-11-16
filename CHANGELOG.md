@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.12] - 2026-11-16 - latest
+## [1.30.13] - 2026-11-16 - latest
+
+### Fixes
+
+- The "Rate this extension" and "Star on GitHub" links now sit in a strip directly under the header while the chat is empty, so the prompt area no longer covers them; they disappear once the chat has messages (#87)
+
+## [1.30.12] - 2026-11-16
 
 ### Features
 
