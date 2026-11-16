@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.11] - 2026-11-16 - latest
+## [1.30.12] - 2026-11-16 - latest
+
+### Features
+
+- New context-menu item **Local AI → Attach Image**: right-click an image to attach a screenshot of what you see. Only the visible part of the page is captured, at screen resolution; images inside frames are not supported (#84)
+
+## [1.30.11] - 2026-11-16
 
 ### Changes
 
