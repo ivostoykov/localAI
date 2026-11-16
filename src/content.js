@@ -208,8 +208,9 @@ async function attachCroppedContextMenuImage(base64) {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
   const file = new File([bytes], `image-${Date.now()}.png`, { type: 'image/png' });
+  const isSidebarActive = getSideBar()?.classList.contains('active');
+  if (!isSidebarActive) { await laiSwapSidebarWithButton(); }
   await handleImageFile(file);
-  showMessage('Image attached successfully.', 'info');
 }
 
 async function restoreTabSessionOnStartup() {

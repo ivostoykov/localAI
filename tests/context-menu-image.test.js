@@ -112,18 +112,22 @@ describe('content side image capture helpers', () => {
         });
     });
 
-    it('converts the cropped PNG base64 into a File handled by the existing image path', async () => {
+    it.each([false, true])('opens a closed panel before attachment without toggling an open panel (%s)', async isActive => {
         const code = fs.readFileSync('src/content.js', 'utf8');
         const attach = code.match(/async function attachCroppedContextMenuImage\(base64\) \{[\s\S]*?\n\}/)[0];
         const handleImageFile = vi.fn(async () => undefined);
         const showMessage = vi.fn();
-        const funcs = new Function('deps', `with (deps) { ${attach}\n return attachCroppedContextMenuImage; }`)({ atob, Uint8Array, File, Date, handleImageFile, showMessage });
+        const laiSwapSidebarWithButton = vi.fn();
+        const getSideBar = () => ({ classList: { contains: () => isActive } });
+        const funcs = new Function('deps', `with (deps) { ${attach}\n return attachCroppedContextMenuImage; }`)({ atob, Uint8Array, File, Date, handleImageFile, showMessage, getSideBar, laiSwapSidebarWithButton });
         await funcs('AQI=');
         const file = handleImageFile.mock.calls[0][0];
         expect(file).toBeInstanceOf(File);
         expect(file.type).toBe('image/png');
         expect(file.name).toMatch(/^image-\d+\.png$/);
         expect(file.size).toBe(2);
-        expect(showMessage).toHaveBeenCalledWith('Image attached successfully.', 'info');
+        expect(laiSwapSidebarWithButton).toHaveBeenCalledTimes(isActive ? 0 : 1);
+        if (!isActive) { expect(laiSwapSidebarWithButton.mock.invocationCallOrder[0]).toBeLessThan(handleImageFile.mock.invocationCallOrder[0]); }
+        expect(showMessage).not.toHaveBeenCalled();
     });
 });
