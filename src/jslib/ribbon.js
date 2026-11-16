@@ -1070,13 +1070,13 @@ async function deleteAllHistorySessionsClicked(e) {
     const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
     try {
         await recycleAllSessions();
-        showSessionListEmptyState(dialog);
         showMessage('All sessions deleted.');
+        closeSessionListDialog(dialog);
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
         showMessage(`Failed to delete all sessions: ${error.message}`, 'error');
+        hideSessionListDeleteAllConfirm(dialog);
     }
-    hideSessionListDeleteAllConfirm(dialog);
 }
 
 function modifiersClicked(e) {

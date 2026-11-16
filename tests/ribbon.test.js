@@ -608,7 +608,7 @@ return { sessionHistoryClicked, popSessionList, sessionListBlockClicked, loadSes
         expect(rows()).toHaveLength(1);
     });
 
-    it('deletes all sessions on confirmation and shows the empty state with the dialog open', async () => {
+    it('deletes all sessions on confirmation and closes the dialog', async () => {
         sessions = [{ id: 'session-1', title: 'One' }];
         await openDialog();
         exports.sessionListDeleteAllClicked({ stopPropagation: vi.fn() });
@@ -620,8 +620,24 @@ return { sessionHistoryClicked, popSessionList, sessionListBlockClicked, loadSes
         });
 
         expect(recycleAllSessions).toHaveBeenCalled();
-        expect(rows()).toHaveLength(0);
-        expect(doc.querySelector('.session-list-empty')).not.toBeNull();
+        expect(showMessage).toHaveBeenCalledWith('All sessions deleted.');
+        expect(dialog().querySelector('.session-list-confirm').classList.contains('invisible')).toBe(true);
+        expect(dialog().classList.contains('invisible')).toBe(true);
+    });
+
+    it('keeps the dialog open with the confirm strip hidden when deleting all sessions fails', async () => {
+        sessions = [{ id: 'session-1', title: 'One' }];
+        deps.recycleAllSessions = vi.fn(async () => { throw new Error('storage offline'); });
+        await openDialog();
+        exports.sessionListDeleteAllClicked({ stopPropagation: vi.fn() });
+
+        await exports.deleteAllHistorySessionsClicked({
+            stopPropagation: vi.fn(),
+            stopImmediatePropagation: vi.fn(),
+            target: dialog().querySelector('#sessionListDeleteAllConfirm')
+        });
+
+        expect(showMessage).toHaveBeenCalledWith('Failed to delete all sessions: storage offline', 'error');
         expect(dialog().querySelector('.session-list-confirm').classList.contains('invisible')).toBe(true);
         expect(dialog().classList.contains('invisible')).toBe(false);
     });
