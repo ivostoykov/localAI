@@ -5,6 +5,15 @@ let activeStreamSeq = 0;
 let streamResyncInFlight = false;
 let sessionCatchUpInFlight = false;
 const ignoredForeignRequestIds = new Set();
+const rateLinkFirefoxUrl = 'https://addons.mozilla.org/en-GB/firefox/addon/local-ai-helper/';
+const rateLinkChromiumUrl = 'https://chromewebstore.google.com/detail/local-ai-helper/mplpnjanhjddepeecpmjbglbiccdhnfp';
+const starLinkUrl = 'https://github.com/ivostoykov/localAI/';
+
+function setWatermarkLinkHrefs(shadowRoot, runtimeManifest) {
+    const isFirefox = !!runtimeManifest?.browser_specific_settings?.gecko;
+    shadowRoot.querySelector('#laiRateLink')?.setAttribute('href', isFirefox ? rateLinkFirefoxUrl : rateLinkChromiumUrl);
+    shadowRoot.querySelector('#laiStarLink')?.setAttribute('href', starLinkUrl);
+}
 
 function initRibbonWithRetry(deadline) {
     if (deadline < Date.now()) {
@@ -96,6 +105,7 @@ async function initSidebar(deadline) {
 
     const laiChatMessageList = shadowRoot.getElementById('laiChatMessageList');
     laiChatMessageList.dataset.watermark = `${manifest?.name ?? ''} - ${manifest.version}`;
+    setWatermarkLinkHrefs(shadowRoot, manifest);
     laiChatMessageList.addEventListener('click', hidePopups, false);
     laiChatMessageList.addEventListener('scroll', (e) => {
         if (laiChatMessageList.dataset.scrollType === 'auto') {

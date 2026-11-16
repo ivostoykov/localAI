@@ -253,6 +253,37 @@ local-ai *,
     text-align: center;
 }
 
+.lai-watermark-links {
+    position: absolute;
+    top: calc(50% + 2em);
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem 1rem;
+    pointer-events: none;
+}
+
+.lai-watermark-links a {
+    pointer-events: auto;
+    color: #999;
+    font-size: 0.9em;
+    font-weight: bold;
+    text-decoration: underline;
+    white-space: nowrap;
+}
+
+.lai-watermark-links a:hover,
+.lai-watermark-links a:focus {
+    color: #555;
+}
+
+.lai-watermark-links a:focus-visible {
+    outline: 2px solid #666;
+    outline-offset: 2px;
+}
+
 .lai-chat-history {
     width: 90%;
     border: 1px solid gray;
