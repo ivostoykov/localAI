@@ -622,6 +622,97 @@ Third line of thinking`;
         });
     });
 
+
+    describe('answer-only clipboard (#95)', () => {
+        let writeText;
+        let element;
+        let event;
+
+        beforeEach(() => {
+            document.body.innerHTML = '<div class="lai-ai-input"><span class="lai-input-text"></span><button class="lai-chat-item-button"></button></div><div id="laiCopyHint"></div>';
+            element = document.querySelector('.lai-input-text');
+            event = { target: document.querySelector('button'), clientX: 0, clientY: 0 };
+            writeText = vi.fn(async () => undefined);
+            Object.defineProperty(global.navigator, 'clipboard', { value: { writeText }, configurable: true });
+            const visibleText = node => {
+                if (node.nodeType === window.Node.TEXT_NODE) return node.textContent;
+                if (node.style?.display === 'none') return '';
+                return Array.from(node.childNodes, visibleText).join('');
+            };
+            Object.defineProperty(element, 'innerText', { get: () => visibleText(element), configurable: true });
+        });
+
+        it.each([true, false])('excludes reasoning with open=%s and restores all inline displays', async open => {
+            element.innerHTML = `<details class="think-block" ${open ? 'open' : ''}><summary>Thought</summary>Secret</details><p>Answer</p><details class="think-block" style="display: block !important"><summary>Thought</summary>More reasoning</details>`;
+            const blocks = [...element.querySelectorAll('.think-block')];
+            await copyChatElementContent(event, 'ai');
+            expect(writeText).toHaveBeenCalledWith('Answer');
+            expect(blocks.map(block => block.style.display)).toEqual(['', 'block']);
+            expect(blocks[1].style.getPropertyPriority('display')).toBe('important');
+            expect(blocks[0].open).toBe(open);
+        });
+
+        it('preserves line breaks and code without reasoning', async () => {
+            element.innerHTML = '<p>Answer\nsecond line</p>\n<pre><code>const x = 1;\nrun(x);</code></pre>';
+            await copyChatElementContent(event, 'ai');
+            expect(writeText).toHaveBeenCalledWith('Answer\nsecond line\nconst x = 1;\nrun(x);');
+        });
+
+        it('copies a restored answer rendered from saved Markdown', async () => {
+            const solomdCode = fs.readFileSync(path.join(__dirname, '../src/jslib/solomd2html.js'), 'utf-8');
+            const parseAndRender = new Function('document', 'DocumentFragment', 'CustomEvent', 'Node', 'navigator', solomdCode + '; return parseAndRender;')(
+                document, window.DocumentFragment, window.CustomEvent, window.Node, global.navigator
+            );
+            const markdown = '<think>\nPrivate reasoning\n</think>\n\n**Saved answer**';
+            await parseAndRender(markdown, element, { streamReply: false });
+            setMarkdownSource(element, markdown);
+            expect(element.querySelector('.think-block')).not.toBeNull();
+            await copyChatElementContent(event, 'ai');
+            expect(writeText.mock.calls[0][0].trim()).toBe('Saved answer');
+            expect(element.querySelector('.think-block').style.display).toBe('');
+            expect(getMarkdownSource(element)).toBe(markdown);
+        });
+
+        it('restores displays even if reading innerText throws', async () => {
+            element.innerHTML = '<details class="think-block" style="display: block">Reasoning</details>';
+            Object.defineProperty(element, 'innerText', { get: () => { throw new Error('layout failed'); }, configurable: true });
+            await expect(copyChatElementContent(event, 'ai')).rejects.toThrow('layout failed');
+            expect(element.firstElementChild.style.display).toBe('block');
+            expect(writeText).not.toHaveBeenCalled();
+        });
+
+        it('leaves user copy unchanged, including reasoning-shaped markup', async () => {
+            element.parentElement.className = 'lai-user-input';
+            element.innerHTML = '<details class="think-block"><summary>Thought</summary>User text</details>\nPrompt';
+            await copyChatElementContent(event, 'user');
+            expect(writeText).toHaveBeenCalledWith('ThoughtUser text\nPrompt');
+        });
+
+        it.each(['copy', 'copy-md'])('warns without writing for reasoning-only %s', async action => {
+            element.innerHTML = '<details class="think-block"><summary>Thought</summary>Private reasoning</details>  ';
+            setMarkdownSource(element, '<think>Private reasoning</think>  ');
+            const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+            try {
+                await (action === 'copy' ? copyChatElementContent : copyChatElementContentAsMarkdown)(event, 'ai');
+                expect(writeText).not.toHaveBeenCalled();
+                expect(global.showMessage).toHaveBeenCalledWith('Nothing to copy: this response contains only reasoning.', 'warning');
+                expect(debug).toHaveBeenCalledWith(expect.stringMatching(/^>>> Local AI helper - \[test:1\] - Nothing to copy/));
+            } finally {
+                debug.mockRestore();
+            }
+        });
+
+        it.each([
+            ['<THINK>First\nreason</THINK>## Answer\n\n```js\nrun();\n```<think>Second reason</think>', '## Answer\n\n```js\nrun();\n```'],
+            ['## Answer\n\n**Keep this**\n<think>Unfinished\nreasoning', '## Answer\n\n**Keep this**']
+        ])('strips inline reasoning from Markdown without changing the stored source', async (source, answer) => {
+            setMarkdownSource(element, source);
+            await copyChatElementContentAsMarkdown(event, 'ai');
+            expect(writeText).toHaveBeenCalledWith(answer);
+            expect(getMarkdownSource(element)).toBe(source);
+        });
+    });
+
     describe('reply action accessibility', () => {
         beforeEach(() => {
             global.chrome.runtime.id = 'test-extension';
@@ -636,11 +727,14 @@ Third line of thinking`;
             const userButtons = document.querySelectorAll('.lai-user-input button[type="button"]');
             const aiButtons = document.querySelectorAll('.lai-ai-input button[type="button"]');
 
-            expect(userButtons).toHaveLength(6);
-            expect(aiButtons).toHaveLength(5);
+            expect(userButtons).toHaveLength(5);
+            expect(aiButtons).toHaveLength(4);
             expect([...userButtons, ...aiButtons].every(button => button.getAttribute('aria-label'))).toBe(true);
             expect([...userButtons, ...aiButtons].every(button => button.querySelector('img[alt=""]'))).toBe(true);
             expect(document.querySelector('.lai-ai-input [data-type="copy-md"]')).not.toBeNull();
+            expect(document.querySelector('[data-type="insert"]')).toBeNull();
+            expect([...aiButtons].map(button => button.dataset.type)).toEqual(['copy', 'copy-md', 'increase', 'decrease']);
+            expect([...userButtons].map(button => button.dataset.type)).toEqual(['copy', 'increase', 'decrease', 'edit', 'add']);
         });
 
         it('reveals the toolbar when an action receives focus and hides it after focus leaves the card', async () => {
