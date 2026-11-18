@@ -1,6 +1,16 @@
 # Local AI - Changelog
 
-## [1.30.14] - 2026-11-16 - latest
+## [1.30.15] - 2026-11-18 - latest
+
+### Changes
+
+- Removed the "Insert in page" button from chat messages; use Copy and paste instead (#95)
+
+### Fixes
+
+- Copy and Copy as Markdown on an AI reply now copy the answer only, without the Thought block or its reasoning; a reply with only reasoning shows a warning instead of copying (#95)
+
+## [1.30.14] - 2026-11-16
 
 ### Fixes
 
