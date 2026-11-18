@@ -745,12 +745,6 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
         },
         {
             "button": {
-                "type": "button", "class": "lai-chat-item-button", "data-type": "insert", "aria-label": "Insert in page", "title": "Insert in page",
-                "children": [{ "img": { "src": chrome.runtime.getURL('img/insert.svg'), "alt": "" } }]
-            }
-        },
-        {
-            "button": {
                 "type": "button", "class": "lai-chat-item-button", "data-type": "increase", "aria-label": "Increase font", "title": "Increase font",
                 "children": [{ "img": { "src": chrome.runtime.getURL('img/fontup.svg'), "alt": "" } }]
             }
@@ -866,9 +860,6 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
                 case 'edit':
                     await editUserInput(e, type);
                     break;
-                case 'insert':
-                    insertIntoDocument(e, type)
-                    break;
                 case "increase":
                 case "decrease":
                     adjustFontSize(e.target.closest('.lai-chat-history'), action === 'increase' ? 1 : -1);
@@ -892,55 +883,6 @@ async function renderUserPromptCard(text, index = -1) {
     await parseAndRender(text, el, { streamReply: false });
     setMarkdownSource(el, text);
     return el;
-}
-
-function insertIntoDocument(e, type) {
-    const txt = e.target.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
-    showMessage('Copied. Click on the target to paste.');
-
-    const insertIntoDocumentClickListener = event => {
-        click2insert(event, txt, () => document.removeEventListener('click', insertIntoDocumentClickListener));
-    };
-
-    document.addEventListener('click', insertIntoDocumentClickListener);
-}
-
-function click2insert(e, textEl, callback) {
-    const shadowRoot = getShadowRoot();
-    if (!document.hasFocus() || document.visibilityState !== 'visible') {
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page is not active.`);
-        return;
-    }
-
-    if (shadowRoot && (e.target.shadowRoot === shadowRoot || shadowRoot.contains(e.target))) {
-        if (typeof (callback) === 'function') {
-            setTimeout(callback, 60000);
-        }
-        return;
-    }
-
-    try {
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            e.target.value += textEl.innerText;
-        } else if (e.target.isContentEditable) {
-            const lines = textEl.innerText.split('\n');
-            lines.forEach((line, index) => {
-                const p = document.createElement('p');
-                if (!line) {
-                    p.appendChild(document.createElement('br'));
-                } else {
-                    p.textContent = line;
-                }
-                e.target.appendChild(p);
-            });
-        }
-    } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error: ${error.message}`, error);
-    } finally {
-        if (typeof (callback) === 'function') {
-            callback();
-        }
-    }
 }
 
 function laiShowCopyHint(e, anchor = e.target?.closest('.lai-chat-item-button')) {
@@ -999,7 +941,25 @@ async function copyChatElementContent(e, type) {
     const evt = e;
     const button = e.target?.closest('.lai-chat-item-button');
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
-    const textContent = element.innerText || '';
+    let textContent;
+    if (type === 'ai') {
+        const blocks = Array.from(element.querySelectorAll('.think-block'), block => ({
+            block, display: block.style.display, priority: block.style.getPropertyPriority('display')
+        }));
+        try {
+            blocks.forEach(({ block }) => { block.style.display = 'none'; });
+            textContent = element.innerText || '';
+        } finally {
+            blocks.forEach(({ block, display, priority }) => { block.style.setProperty('display', display, priority); });
+        }
+        if (!textContent.trim()) {
+            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Nothing to copy: this response contains only reasoning.`);
+            showMessage('Nothing to copy: this response contains only reasoning.', 'warning');
+            return;
+        }
+    } else {
+        textContent = element.innerText || '';
+    }
 
     try {
         await navigator.clipboard.writeText(textContent);
@@ -1046,9 +1006,16 @@ function getMarkdownSource(element) {
 async function copyChatElementContentAsMarkdown(e, type) {
     const button = e.target?.closest('.lai-chat-item-button');
     const element = e.target?.closest(`.lai-${type}-input`)?.querySelector('.lai-input-text');
-    const markdown = getMarkdownSource(element);
+    let markdown = getMarkdownSource(element);
     if (!markdown.trim()) {
         showMessage('Markdown source is not available for this response.', 'warning');
+        return;
+    }
+
+    markdown = markdown.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+    if (!markdown) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Nothing to copy: this response contains only reasoning.`);
+        showMessage('Nothing to copy: this response contains only reasoning.', 'warning');
         return;
     }
 
