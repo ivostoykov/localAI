@@ -10,6 +10,13 @@ const backgroundCode = fs.readFileSync(
 );
 
 const fetchDataActionCode = backgroundCode.match(/async function fetchDataAction\([\s\S]*?\n}\n/)[0];
+const memorySource = fs.readFileSync(path.join(__dirname, '../src/background-memory.js'), 'utf-8');
+const roleBoundaryCode = [
+    memorySource.match(/const REFERENCE_MATERIAL_NOTICE = .*;\n/)[0],
+    memorySource.match(/function formatReferenceMaterial\([\s\S]*?\n}\n/)[0],
+    ...['selectSystemInstructions', 'enforceSystemRoleBoundary', 'normaliseModelReplyMessage']
+        .map(name => backgroundCode.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n}\\n`))[0])
+].join('\n');
 const onRemovedListenerCode = backgroundCode.match(/chrome\.tabs\.onRemoved\.addListener\(async \(tabId\) => \{[\s\S]*?\n\}\);\n/)[0];
 
 const requestHelpersCode = [backgroundCode.match(/const MAX_REJECTED_TOOL_ROUNDS = \d+;/)[0], ...['registerRequestController', 'unregisterRequestController', 'throwIfRequestCancelled', 'sendStreamAbort', 'createStreamRequestId', 'sendStreamError', 'wasTerminalMessageDelivered', 'getOfferedToolNames', 'getToolCallRejection', 'getRejectedToolCallMessage', 'buildExternalToolUrl']
@@ -17,7 +24,7 @@ const requestHelpersCode = [backgroundCode.match(/const MAX_REJECTED_TOOL_ROUNDS
     .join('\n');
 
 // The background script relies on globals; `with` scopes the stubs for the extracted code only.
-const loadFetchDataAction = new Function('deps', `with (deps) { ${requestHelpersCode}\n${fetchDataActionCode}; return fetchDataAction; }`);
+const loadFetchDataAction = new Function('deps', `with (deps) { ${requestHelpersCode}\n${roleBoundaryCode}\n${fetchDataActionCode}; return fetchDataAction; }`);
 const registerOnRemoved = new Function('deps', `with (deps) { ${onRemovedListenerCode} }`);
 
 const toolCall = (url) => ({ function: { name: 'browse_url', arguments: { url } } });
@@ -252,7 +259,8 @@ describe('background.js navigation lifecycle', () => {
         await fetchDataAction(request(), sender);
 
         const lastMessages = sentBodies[2].messages;
-        expect(lastMessages.filter(m => m.role === 'user')).toHaveLength(1);
+        expect(lastMessages.filter(m => m.role === 'user' && !m.content.startsWith('[REFERENCE MATERIAL]'))).toHaveLength(1);
+        expect(lastMessages.filter(m => m.content?.includes('[CURRENT TIME]:'))).toHaveLength(1);
         expect(lastMessages.filter(m => m.role === 'tool').map(m => m.tool_name)).toEqual(['browse_url', 'browse_url', 'browse_url']);
     });
 
