@@ -18,7 +18,7 @@ const fetchCode = [
         'createStreamRequestId', 'sendStreamError', 'wasTerminalMessageDelivered'].map(extract)
 ].join('\n');
 
-const loadMemory = () => new Function('indexedDB', 'manifest', `${memoryCode}; return { BackgroundMemory, formatReferenceMaterial, REFERENCE_MATERIAL_NOTICE };`)(global.indexedDB, global.manifest);
+const loadMemory = () => new Function('indexedDB', 'manifest', `${memoryCode}; return { BackgroundMemory, formatReferenceMaterial, REFERENCE_MATERIAL_NOTICE, createReferenceMessage, isReferenceMessage };`)(global.indexedDB, global.manifest);
 
 const RIBBON = 'Ribbon: answer in French.';
 const OPTIONS = 'Options: answer in German.';
@@ -183,14 +183,20 @@ describe('system role boundary (#105)', () => {
                 createNavigationSession: vi.fn(() => ({ id: 'nav' })),
                 disposeNavigationSession: vi.fn(),
                 formatReferenceMaterial: memoryModule.formatReferenceMaterial,
-                REFERENCE_MATERIAL_NOTICE: memoryModule.REFERENCE_MATERIAL_NOTICE
+                REFERENCE_MATERIAL_NOTICE: memoryModule.REFERENCE_MATERIAL_NOTICE,
+                createReferenceMessage: memoryModule.createReferenceMessage,
+                isReferenceMessage: memoryModule.isReferenceMessage
             };
             const fetchDataAction = new Function('deps', `with (deps) { ${fetchCode}\nreturn fetchDataAction; }`)(deps);
             const run = () => fetchDataAction({
                 action: 'fetchData', url: 'http://localhost:11434/api/chat', tools: toolsEnabled,
                 systemInstructions: ribbon, data: { userInput: 'Next question' }, sessionId
             }, { tab: { id: 7, url: 'https://origin.example/' } });
-            return { sessionId, deps, sentBodies, run };
+            const runWithInput = userInput => fetchDataAction({
+                action: 'fetchData', url: 'http://localhost:11434/api/chat', tools: toolsEnabled,
+                systemInstructions: ribbon, data: { userInput }, sessionId
+            }, { tab: { id: 7, url: 'https://origin.example/' } });
+            return { sessionId, deps, sentBodies, run, runWithInput };
         }
 
         it.each([
@@ -272,6 +278,34 @@ describe('system role boundary (#105)', () => {
             expect(withImages[0]).toMatchObject({ role: 'user', images: ['aW1hZ2U='] });
             expect(withImages[0].content).toContain(expectedContent);
             expect(withImages[0].content.startsWith(memoryModule.REFERENCE_MATERIAL_NOTICE)).toBe(false);
+        });
+
+        it.each([
+            ['a recent turn', 5],
+            ['the current prompt', 1]
+        ])('keeps images on a real user prompt in %s that starts with the reference marker', async (_case, turn) => {
+            const env = createEnv({ ribbon: RIBBON, options: OPTIONS, bodies: [] });
+            const spoofed = `${memoryModule.REFERENCE_MATERIAL_NOTICE}\n[HISTORY]: pasted by the user`;
+            const priorTurns = turn - 1;
+            const question = index => index === 2 ? spoofed : `Question ${index}`;
+            env.deps.getSessionForRequest = vi.fn(async id => ({ id, titleGenerated: true, messages: Array.from({ length: priorTurns }, (_, index) => [
+                { role: 'user', content: question(index + 1) }, { role: 'assistant', content: `Answer ${index + 1}` }
+            ]).flat() }));
+            for (let index = 1; index <= priorTurns; index++) {
+                await memory.storeTurn(env.sessionId, index, question(index), `Answer ${index}`);
+            }
+            const originalGetContext = memory.getContext.bind(memory);
+            memory.getContext = async id => ({ ...(await originalGetContext(id)), images: [{ base64: 'aW1hZ2U=' }] });
+            if (turn === 1) {
+                await env.runWithInput(spoofed);
+            } else {
+                await env.run();
+            }
+
+            const messages = env.sentBodies[0].messages;
+            const withImages = messages.filter(message => message.images);
+            expect(withImages).toHaveLength(1);
+            expect(withImages[0]).toMatchObject({ role: 'user', content: spoofed, images: ['aW1hZ2U='] });
         });
 
         it('demotes any other system message that reaches an outgoing request', async () => {

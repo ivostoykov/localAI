@@ -1343,8 +1343,8 @@ async function fetchDataAction(request, sender) {
 
             if (base64Images.length > 0) {
                 // Add images to the first user message (Ollama format)
-                // Reference blocks were system messages before #105; skipping them keeps images on the same message as before.
-                const firstUserMessage = optimisedMessages.find(msg => msg.role === 'user' && !msg.content?.startsWith(REFERENCE_MATERIAL_NOTICE));
+                // Generated reference blocks were system messages before #105; skipping them by provenance keeps images on the same message as before.
+                const firstUserMessage = optimisedMessages.find(msg => msg.role === 'user' && !isReferenceMessage(msg));
                 if (firstUserMessage) {
                     firstUserMessage.images = base64Images;
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Added ${base64Images.length} image(s).`);
@@ -1357,7 +1357,7 @@ async function fetchDataAction(request, sender) {
         await throwIfRequestCancelled(controller, tabId);
         // Current time is reference data below the instructions, added once per request and never persisted.
         const timeContextIndex = optimisedMessages[0]?.role === 'system' ? 1 : 0;
-        optimisedMessages.splice(timeContextIndex, 0, { role: 'user', content: formatReferenceMaterial('CURRENT TIME', new Date().toISOString()) });
+        optimisedMessages.splice(timeContextIndex, 0, createReferenceMessage('CURRENT TIME', new Date().toISOString()));
         request.data.messages = optimisedMessages;
         activeSession.messages = [
             ...getVisibleSessionMessages(activeSession.messages),

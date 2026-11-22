@@ -18,6 +18,9 @@ const memorySource = fs.readFileSync(path.join(__dirname, '../src/background-mem
 const roleBoundaryCode = [
     memorySource.match(/const REFERENCE_MATERIAL_NOTICE = .*;\n/)[0],
     memorySource.match(/function formatReferenceMaterial\([\s\S]*?\n}\n/)[0],
+    memorySource.match(/const REFERENCE_MESSAGES = new WeakSet\(\);\n/)[0],
+    memorySource.match(/function createReferenceMessage\([\s\S]*?\n}\n/)[0],
+    memorySource.match(/function isReferenceMessage\([\s\S]*?\n}\n/)[0],
     ...['selectSystemInstructions', 'enforceSystemRoleBoundary', 'normaliseModelReplyMessage']
         .map(name => backgroundCode.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n}\\n`))[0])
 ].join('\n');
