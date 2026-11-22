@@ -434,6 +434,25 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         const hold = (html) => `${token}${held.push(html) - 1}${token}`;
         const anchor = (href, label) =>
             `<a href="${href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        // Model output is untrusted: only explicit http, https and mailto destinations become anchors.
+        // The check runs on the value the browser will see after decoding the attribute.
+        const unescapeAttribute = (value) => value
+            .replace(/&#39;/g, "'")
+            .replace(/&quot;/g, '"')
+            .replace(/&gt;/g, '>')
+            .replace(/&lt;/g, '<')
+            .replace(/&amp;/g, '&');
+        const allowedProtocols = new Set(['http:', 'https:', 'mailto:']);
+        const isAllowedHref = (href) => {
+            if (href.includes(token)) { return false; }
+            const value = unescapeAttribute(href);
+            if (!/^(?:https?:\/\/|mailto:)\S/i.test(value) || !URL.canParse(value)) { return false; }
+            return allowedProtocols.has(new URL(value).protocol);
+        };
+        const link = (source, url, label) => {
+            const href = url.trim();
+            return isAllowedHref(href) ? hold(anchor(href, label)) : hold(source);
+        };
         const emphasise = (text) => text
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/__(.*?)__/g, '<strong>$1</strong>')
@@ -444,10 +463,11 @@ async function parseAndRender(markdownText, rootEl, options = {}) {
         let text = escaped.replace(/`([^`]+)`/g, (_, code) => hold(`<code>${code}</code>`));
 
         text = text
-            .replace(/&lt;(https?:\/\/[^&]+?)&gt;/g, (_, url) => hold(anchor(url, url)))
-            .replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (_, label, url) => hold(anchor(url, emphasise(label))))
-            .replace(/\[(https?:\/\/[^\]]+?)\]/g, (_, url) => hold(anchor(url, url)))
-            .replace(/(?<!\])\b(https?:\/\/[^\s&\u0000]+)/g, (url) => hold(anchor(url, url)));
+            // Angle and bracketed tokens with any scheme are consumed whole, so a URL nested in an unsupported one stays text.
+            .replace(/&lt;([a-z][a-z0-9+.\-]*:(?:(?!&lt;|&gt;)[^\s\u0000])+)&gt;/gi, (source, url) => link(source, url, url))
+            .replace(/\[([^\]]+?)\]\(([^)]+?)\)/g, (source, label, url) => link(source, url, emphasise(label)))
+            .replace(/\[([a-z][a-z0-9+.\-]*:[^\]\s\u0000]+)\]/gi, (source, url) => link(source, url, url))
+            .replace(/(?<=^|[\s(*_~\u0000]|&quot;|&#39;)(https?:\/\/(?:[^\s&\u0000]|&amp;)+)/gi, (url) => link(url, url, url));
 
         text = emphasise(text);
 

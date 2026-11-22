@@ -57,12 +57,11 @@ describe('renderInline link handling', () => {
         expect(anchors[0].getAttribute('rel')).toBe('noopener noreferrer');
     });
 
-    it('keeps a relative Markdown link intact', async () => {
+    it('renders a relative Markdown link as plain text (#99)', async () => {
         const { root } = await render('See [docs](/docs/a) now.');
 
-        const anchor = root.querySelector('a');
-        expect(anchor.getAttribute('href')).toBe('/docs/a');
-        expect(anchor.textContent).toBe('docs');
+        expect(root.querySelector('a')).toBeNull();
+        expect(root.textContent).toBe('See [docs](/docs/a) now.');
     });
 
     it('keeps an angle autolink intact', async () => {
@@ -180,5 +179,114 @@ describe('renderInline link handling', () => {
         expect(anchors[0].getAttribute('href')).toBe('https://example.com/a');
         expect(anchors[0].textContent).toBe('a link');
         expect(root.textContent).toBe('Stream a link done.');
+    });
+});
+
+describe('renderInline link scheme allow-list (#99)', () => {
+    const expectInert = (root, source) => {
+        expect(root.querySelector('a')).toBeNull();
+        expect(root.querySelector('[href]')).toBeNull();
+        expect(root.querySelector('script, iframe, object, embed')).toBeNull();
+        expect(root.textContent).toContain(source);
+    };
+
+    it.each([
+        '[x](javascript:x)',
+        '[x](JaVaScRiPt:x)',
+        '[x](  javascript:x)',
+        '[x](\tjavascript:x)',
+        '[x](&#106;avascript:x)',
+        '[x](&#x6A;avascript:x)',
+        '[x](java&#x09;script:x)',
+        '[x](javascript&colon;x)',
+        '[x](data:text/html;base64,PHNjcmlwdD4=)',
+        '[x](DATA:text/html,x)',
+        '[x](vbscript:x)',
+        '[x](file:///etc/passwd)',
+        '[x](//example.com/a)',
+        '[x](https:example.com)',
+        '[javascript:x]',
+        '[data:text/html,x]',
+        '<javascript:x>',
+        '<data:text/html,x>'
+    ])('renders %j as inert plain text', async source => {
+        const { root } = await render(`Before ${source} after`);
+        expectInert(root, source);
+    });
+
+    it('keeps formatting outside a blocked link and does not link a URL inside it', async () => {
+        const { root } = await render('**bold** [x](data:text/html,https://example.com/a) *em* `code`');
+
+        expect(root.querySelector('a')).toBeNull();
+        expect(root.querySelector('strong').textContent).toBe('bold');
+        expect(root.querySelector('em').textContent).toBe('em');
+        expect(root.querySelector('code').textContent).toBe('code');
+        expect(root.textContent).toContain('[x](data:text/html,https://example.com/a)');
+    });
+
+    it.each([
+        ['[a](HTTPS://Example.com/A)', 'HTTPS://Example.com/A', 'a'],
+        ['[a](http://example.com/a)', 'http://example.com/a', 'a'],
+        ['[a]( https://example.com/a )', 'https://example.com/a', 'a'],
+        ['[a](https://example.com/?x=1&y=2)', 'https://example.com/?x=1&y=2', 'a'],
+        ['[mail](mailto:someone@example.com)', 'mailto:someone@example.com', 'mail'],
+        ['<HTTP://example.com/b>', 'HTTP://example.com/b', 'HTTP://example.com/b'],
+        ['<mailto:someone@example.com>', 'mailto:someone@example.com', 'mailto:someone@example.com'],
+        ['[https://example.com/c]', 'https://example.com/c', 'https://example.com/c'],
+        ['[MAILTO:someone@example.com]', 'MAILTO:someone@example.com', 'MAILTO:someone@example.com'],
+        ['HTTPS://example.com/d', 'HTTPS://example.com/d', 'HTTPS://example.com/d']
+    ])('links the allowed destination in %j', async (source, href, text) => {
+        const { root } = await render(`See ${source} now.`);
+
+        const anchors = root.querySelectorAll('a');
+        expect(anchors).toHaveLength(1);
+        expect(anchors[0].getAttribute('href')).toBe(href);
+        expect(anchors[0].textContent).toBe(text);
+        expect(anchors[0].getAttribute('target')).toBe('_blank');
+        expect(anchors[0].getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it.each([
+        '[custom:open?next=https://example.test]',
+        '<custom:open?next=https://example.test>',
+        'custom:open?next=https://example.test',
+        '[javascript:void(0)?u=https://example.test]',
+        '<data:text/html,https://example.test>'
+    ])('keeps the unsupported outer URL %j entirely plain text', async source => {
+        const { root } = await render(`Open ${source} now.`);
+        expectInert(root, source);
+        expect(root.textContent).toBe(`Open ${source} now.`);
+    });
+
+    it.each([
+        ['<https://example.com/p?a=1&b=2&c=3>', 'https://example.com/p?a=1&b=2&c=3'],
+        ['https://example.com/p?a=1&b=2&c=3', 'https://example.com/p?a=1&b=2&c=3'],
+        ['[https://example.com/p?a=1&b=2]', 'https://example.com/p?a=1&b=2']
+    ])('keeps the whole ampersand query in %j', async (source, href) => {
+        const { root } = await render(`See ${source} now.`);
+
+        const anchors = root.querySelectorAll('a');
+        expect(anchors).toHaveLength(1);
+        expect(anchors[0].getAttribute('href')).toBe(href);
+        expect(anchors[0].textContent).toBe(href);
+        expect(root.textContent).toBe(`See ${href} now.`);
+    });
+
+    it('never puts held markup into an href', async () => {
+        const { root } = await render('[x](https://example.com/`code`) and <https://example.com/`y`>');
+
+        for (const element of root.querySelectorAll('[href]')) {
+            expect(element.getAttribute('href')).not.toMatch(/[<>\u0000]/);
+        }
+        expect(root.querySelector('a code')).toBeNull();
+        expect(root.innerHTML).not.toContain('\u0000');
+    });
+
+    it('links allowed and leaves blocked links in the same line', async () => {
+        const { root } = await render('[ok](https://example.com/a) [bad](javascript:x) <mailto:a@example.com>');
+
+        const anchors = Array.from(root.querySelectorAll('a'));
+        expect(anchors.map(anchor => anchor.getAttribute('href'))).toEqual(['https://example.com/a', 'mailto:a@example.com']);
+        expect(root.textContent).toContain('[bad](javascript:x)');
     });
 });
