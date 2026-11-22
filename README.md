@@ -27,7 +27,7 @@ If you value privacy but still want the power of LLMs, LocalAI is for you. There
 * **Decision Model (optional):** Configure an Ollama System One decision model for structured choices and scores. It is off by default, requires Ollama 0.40.6 or later, and lists only decision-capable models; cloud models use Ollama cloud quota. A weaker model produces weaker decisions, and Ollama rejects non-decision models.
 * **Custom Prompts:** Create, store, and execute your own prompts locally for a personalised experience.
 * **Backup and Transfer:** Export your settings, user prompts and functions to one file with `Export All` in the options and restore them with `Import All`. See [Export All / Import All](documentation.md#export-all--import-all).
-* **External Hooks:** Enhance functionality by integrating your own solutions and resources.
+* **External Hooks (deprecated):** Existing external tool integrations remain available until their removal in a future release. See [External tools](documentation.md#external-tools-deprecated).
 
 ## What do you need to use it?
 

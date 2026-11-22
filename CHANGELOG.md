@@ -1,6 +1,16 @@
 # Local AI - Changelog
 
-## [1.30.15] - 2026-11-18 - latest
+## [1.30.16] - 2026-11-22 - latest
+
+### Fixes
+
+- A tool call now runs only when the exact tool name was offered on the request that produced the reply. This covers streamed replies, follow-up rounds and retries. With tools off or an unsupported model, no tool runs. Unknown names are rejected before any read, navigation or external request, and external tool requests must stay within the configured endpoint (#97)
+
+### Changes
+
+- External tools are deprecated and will be removed in a future release. The options page shows a notice. Configured external tools keep working during deprecation (#97)
+
+## [1.30.15] - 2026-11-18
 
 ### Changes
 
