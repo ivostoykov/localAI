@@ -489,6 +489,30 @@ function getAssistantMessageText(message = {}) {
     return '';
 }
 
+// The current chat's ribbon instructions win; the Options instructions are the fallback.
+function selectSystemInstructions(requestInstructions, optionsInstructions) {
+    const requested = typeof requestInstructions === 'string' ? requestInstructions.trim() : '';
+    if (requested) { return requested; }
+    return typeof optionsInstructions === 'string' ? optionsInstructions.trim() : '';
+}
+
+// Only the selected instructions, as the first message, may use the system role in a main chat request.
+function enforceSystemRoleBoundary(messages, systemInstructions) {
+    if (!Array.isArray(messages)) { return messages; }
+    return messages.map((message, index) => {
+        if (message?.role !== 'system') { return message; }
+        if (index === 0 && systemInstructions && message.content === systemInstructions) { return message; }
+        const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content ?? '');
+        return { ...message, role: 'user', content: formatReferenceMaterial('DEMOTED SYSTEM MESSAGE', content) };
+    });
+}
+
+// A chat reply is the assistant's turn; a different role from the server must not carry into the next request.
+function normaliseModelReplyMessage(message) {
+    if (!message || typeof message !== 'object' || message.role === 'assistant') { return message; }
+    return { ...message, role: 'assistant' };
+}
+
 function sanitizeAssistantMessageForHistory(message = {}) {
     const sanitizedMessage = structuredClone(message);
     delete sanitizedMessage.thinking;
@@ -1291,7 +1315,7 @@ async function fetchDataAction(request, sender) {
         let attachments = [...(activeSession?.attachments || [])];
         const { pageContent, pageHash } = await processCommandArguments(userInput, attachments, tabId);
         const cleanedUserInput = replaceCommandPlaceholders(userInput);
-        const systemInstructions = request.systemInstructions || laiOptions?.systemInstructions || '';
+        const systemInstructions = selectSystemInstructions(request.systemInstructions, laiOptions?.systemInstructions);
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - About to call buildOptimisedContext, backgroundMemory is:`, typeof backgroundMemory);
 
         const optimisedMessages = await backgroundMemory.buildOptimisedContext(
@@ -1319,7 +1343,8 @@ async function fetchDataAction(request, sender) {
 
             if (base64Images.length > 0) {
                 // Add images to the first user message (Ollama format)
-                const firstUserMessage = optimisedMessages.find(msg => msg.role === 'user');
+                // Generated reference blocks were system messages before #105; skipping them by provenance keeps images on the same message as before.
+                const firstUserMessage = optimisedMessages.find(msg => msg.role === 'user' && !isReferenceMessage(msg));
                 if (firstUserMessage) {
                     firstUserMessage.images = base64Images;
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Added ${base64Images.length} image(s).`);
@@ -1330,6 +1355,9 @@ async function fetchDataAction(request, sender) {
         }
 
         await throwIfRequestCancelled(controller, tabId);
+        // Current time is reference data below the instructions, added once per request and never persisted.
+        const timeContextIndex = optimisedMessages[0]?.role === 'system' ? 1 : 0;
+        optimisedMessages.splice(timeContextIndex, 0, createReferenceMessage('CURRENT TIME', new Date().toISOString()));
         request.data.messages = optimisedMessages;
         activeSession.messages = [
             ...getVisibleSessionMessages(activeSession.messages),
@@ -1383,6 +1411,7 @@ async function fetchDataAction(request, sender) {
             while(true) {
                 await throwIfRequestCancelled(controller, tabId);
                 const offeredToolNames = getOfferedToolNames(request.data.tools);
+                request.data.messages = enforceSystemRoleBoundary(request.data.messages, systemInstructions);
                 reqOpt.body = JSON.stringify(request.data);
                 response = await fetch(url, reqOpt);
                 if (request.data.stream && response.ok) {
@@ -1413,7 +1442,7 @@ async function fetchDataAction(request, sender) {
                 }
                 await throwIfRequestCancelled(controller, tabId);
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response received.`, responseText);
-                responseMessage = body?.message;
+                responseMessage = normaliseModelReplyMessage(body?.message);
                 console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response as JSON`, body);
                 request.data.messages.push(responseMessage);
                 await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response received.`, { "responseText": responseText, "body": body }, 'log', sender?.tab?.id);

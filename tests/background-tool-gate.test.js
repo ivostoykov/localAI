@@ -14,7 +14,18 @@ const gateCode = [
         'createStreamRequestId', 'sendStreamError', 'wasTerminalMessageDelivered'].map(extract)
 ].join('\n');
 
-const load = deps => new Function('deps', `with (deps) { ${gateCode}\nreturn { fetchDataAction, resolveToolCalls, buildExternalToolUrl, getOfferedToolNames }; }`)(deps);
+const memorySource = fs.readFileSync(path.join(__dirname, '../src/background-memory.js'), 'utf-8');
+const roleBoundaryCode = [
+    memorySource.match(/const REFERENCE_MATERIAL_NOTICE = .*;\n/)[0],
+    memorySource.match(/function formatReferenceMaterial\([\s\S]*?\n}\n/)[0],
+    memorySource.match(/const REFERENCE_MESSAGES = new WeakSet\(\);\n/)[0],
+    memorySource.match(/function createReferenceMessage\([\s\S]*?\n}\n/)[0],
+    memorySource.match(/function isReferenceMessage\([\s\S]*?\n}\n/)[0],
+    ...['selectSystemInstructions', 'enforceSystemRoleBoundary', 'normaliseModelReplyMessage']
+        .map(name => backgroundCode.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n}\\n`))[0])
+].join('\n');
+
+const load = deps => new Function('deps', `with (deps) { ${gateCode}\n${roleBoundaryCode}\nreturn { fetchDataAction, resolveToolCalls, buildExternalToolUrl, getOfferedToolNames }; }`)(deps);
 
 const INTERNAL = [
     { type: 'function', function: { name: 'browse_url', parameters: { type: 'object', properties: { url: { type: 'string' } } } } },

@@ -163,7 +163,7 @@ On each web page (where the tab has a valid `http` location), there is a `Local 
 
 # System instructions
 
-<img src="Chrome/img/wrench.svg" height="30" alt="New Session"/> - Edit system instructions. **Only for the session**. Use the [Options](#options) page to set permanent system instructions.
+<img src="Chrome/img/wrench.svg" height="30" alt="New Session"/> - Edit system instructions. **Only for the session**. Use the [Options](#options) page to set permanent system instructions. The chat uses its own instructions when set and otherwise uses the Options instructions. Page and attachment summaries and condensed conversation history are passed to the model as reference material.
 
 <img src="media/instruct.png" height="400" alt="New Session"/>
 

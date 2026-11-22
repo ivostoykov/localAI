@@ -186,9 +186,7 @@ function initPageFilterBtn(timeout){
 function getCurrentSystemInstructions() {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return ''; }
-    const value = `${shadowRoot.querySelector('#laiSysIntructInput')?.value || ''}; timestamp: ${new Date().toISOString()}`;
-
-    return value || '';
+    return shadowRoot.querySelector('#laiSysIntructInput')?.value || '';
 }
 
 async function createNewSessionClicked(e, shadowRoot) {
