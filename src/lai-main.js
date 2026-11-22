@@ -1973,11 +1973,9 @@ function laiHandleStreamActions(logMessage, recipient, abortText = '') {
 
     if (abortText && recipient && !recipient.querySelector('.lai-aborted-text')) {
         const span = document.createElement('span');
-        if (span) {
-            span.classList.add("lai-aborted-text");
-            span.textContent = abortText;
-            recipient.appendChild(span);
-        } else { recipient.innerHTML += `<span class="lai-aborted-text">${abortText}</span>`; }
+        span.classList.add("lai-aborted-text");
+        span.textContent = abortText;
+        recipient.appendChild(span);
     }
 
     if (recipient) {
@@ -2373,7 +2371,9 @@ function showHelp() {
 
     for (const command in commandPlaceholders) {
         const li = document.createElement('li');
-        li.innerHTML = `<strong>${command}</strong>: ${commandPlaceholders[command]}`;
+        const cmdName = document.createElement('strong');
+        cmdName.textContent = command;
+        li.append(cmdName, document.createTextNode(`: ${commandPlaceholders[command]}`));
         ul.appendChild(li);
         li.addEventListener('click', e => {
             const userInput = shadowRoot.getElementById('laiUserInput');
