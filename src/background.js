@@ -822,9 +822,72 @@ async function validateToolCall(call = {}, availableTools) {
     return { isValid: true };
 }
 
-async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, navigationSession = null) {
+const MAX_REJECTED_TOOL_ROUNDS = 3;
+
+// Snapshot of the names sent in `tools` on one model request; a returned call is honoured only if listed here.
+function getOfferedToolNames(tools) {
+    if (!Array.isArray(tools)) { return new Set(); }
+    return new Set(tools
+        .map(tool => tool?.function?.name)
+        .filter(name => typeof name === 'string' && name.length > 0));
+}
+
+// External tool names become one encoded path segment under the configured endpoint.
+// Separators, escapes, control characters and dot segments are refused rather than normalised.
+function buildExternalToolUrl(toolBaseUrl, toolName) {
+    if (typeof toolName !== 'string' || toolName === '' || toolName === '.' || toolName === '..' || /[\/\\%\u0000-\u001f\u007f]/.test(toolName)) {
+        throw new Error(`Unsafe external tool name: ${JSON.stringify(toolName)}`);
+    }
+    const base = typeof toolBaseUrl === 'string' ? toolBaseUrl.trim() : '';
+    if (!base || !URL.canParse(base)) {
+        throw new Error('External tools endpoint is not configured or is not a valid URL.');
+    }
+    const baseUrl = new URL(base);
+    if (baseUrl.protocol !== 'http:' && baseUrl.protocol !== 'https:') {
+        throw new Error(`External tools endpoint must use http or https: ${baseUrl.protocol}`);
+    }
+    const basePath = baseUrl.pathname.replace(/\/+$/, '');
+    const expectedPath = `${basePath}/${encodeURIComponent(toolName)}`;
+    const target = new URL(baseUrl.href);
+    target.hash = '';
+    target.pathname = expectedPath;
+    if (target.origin !== baseUrl.origin || target.pathname !== expectedPath) {
+        throw new Error(`External tool path escapes the configured endpoint: ${JSON.stringify(toolName)}`);
+    }
+    return target.href;
+}
+
+// Null when the call may run; otherwise the reason it must not. Only the name is inspected, never the arguments.
+function getToolCallRejection(toolCall, offeredToolNames, toolBaseUrl) {
+    const name = toolCall?.function?.name;
+    if (!(offeredToolNames instanceof Set) || typeof name !== 'string' || !offeredToolNames.has(name)) {
+        return 'it was not offered on this request';
+    }
+    if (getInternalToolNames().includes(name)) { return null; }
+    try {
+        buildExternalToolUrl(toolBaseUrl, name);
+        return null;
+    } catch (urlError) {
+        return urlError.message;
+    }
+}
+
+function getRejectedToolCallMessage(name, reason) {
+    const label = typeof name === 'string' && name ? name : '(unnamed)';
+    return `Tool call "${label}" was rejected and not executed: ${reason}.\nOnly call tools from the list provided with this request. If no tool was provided, answer without tools.`;
+}
+
+async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, navigationSession = null, offeredToolNames = null) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolveToolCalls tab:`, tab, 'tab?.id:', tab?.id);
     // const availableTools = await getPromptTools();
+
+    const toolName = toolCall?.function?.name;
+    const rejection = getToolCallRejection(toolCall, offeredToolNames, toolBaseUrl);
+    if (rejection) {
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tool call ${JSON.stringify(toolName)} rejected: ${rejection}`);
+        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tool call ${JSON.stringify(toolName)} rejected: ${rejection}`, null, 'warn', tab?.id);
+        return getRejectedToolCallMessage(toolName, rejection);
+    }
 
     let data;
     let res;
@@ -837,8 +900,9 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, na
     } */
 
     // const funcType = availableTools.find(f => f.function.name === toolCall.function.name)?.type || null;
-    const funcType =  isInternalTool(toolCall?.function?.name) ? "tool" : "function";
-    const funcUrl = `${toolBaseUrl}/${toolCall.function.name}`;
+    // Exact match: isInternalTool lower-cases, which would route a differently cased external name to a built-in.
+    const funcType = getInternalToolNames().includes(toolName) ? "tool" : "function";
+    const funcUrl = funcType === 'function' ? buildExternalToolUrl(toolBaseUrl, toolName) : '';
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${funcType} ${toolCall.function.name} call request`, toolCall);
     await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${funcType} ${toolCall.function.name} call request`, toolCall, 'debug', tab?.id);
 
@@ -857,6 +921,8 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, na
             case 'function':
                 res = await fetchExtResponse(funcUrl, {
                     method: 'POST',
+                    // A redirect could move the POST off the configured endpoint.
+                    redirect: 'error',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(toolCall.function.arguments),
                 }, true, tab);
@@ -1287,6 +1353,9 @@ async function fetchDataAction(request, sender) {
         }
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - updated request`, request.data);
 
+        // The tools list is decided here only; never trust one supplied by the sender.
+        delete request.data.tools;
+        delete request.data.tool_choice;
         if (promptTools.length > 0 && await modelCanUseTools(model, sender?.tab)) {
             request.data["tools"] = promptTools;
             request.data["tool_choice"] = "auto"
@@ -1310,8 +1379,10 @@ async function fetchDataAction(request, sender) {
         try {
             await throwIfRequestCancelled(controller, tabId);
             navigationSession = createNavigationSession(tabId, controller.signal);
+            let rejectedToolRounds = 0;
             while(true) {
                 await throwIfRequestCancelled(controller, tabId);
+                const offeredToolNames = getOfferedToolNames(request.data.tools);
                 reqOpt.body = JSON.stringify(request.data);
                 response = await fetch(url, reqOpt);
                 if (request.data.stream && response.ok) {
@@ -1352,6 +1423,7 @@ async function fetchDataAction(request, sender) {
                 if(requestedTools.length < 1){  break;  }
 
                 let sessionUpdatedWithTools = false;
+                let rejectedInRound = 0;
 
                 for (let i = 0, l = requestedTools.length; i < l; i++) {
                     const tool = requestedTools[i];
@@ -1359,7 +1431,16 @@ async function fetchDataAction(request, sender) {
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - requested tools`, toolNamesUsed);
                     await throwIfRequestCancelled(controller, tabId);
 
-                    const toolData = await resolveToolCalls(tool, laiOptions.toolFunc, sender?.tab, activeSession?.id, navigationSession);
+                    const rejection = getToolCallRejection(tool, offeredToolNames, laiOptions.toolFunc);
+                    if (rejection) {
+                        rejectedInRound++;
+                        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tool call ${JSON.stringify(toolNamesUsed)} rejected: ${rejection}`);
+                        await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tool call ${JSON.stringify(toolNamesUsed)} rejected: ${rejection}`, null, 'warn', sender?.tab?.id);
+                        request.data.messages.push({ role: 'tool', tool_name: String(toolNamesUsed), content: getRejectedToolCallMessage(toolNamesUsed, rejection) });
+                        continue;
+                    }
+
+                    const toolData = await resolveToolCalls(tool, laiOptions.toolFunc, sender?.tab, activeSession?.id, navigationSession, offeredToolNames);
                     await throwIfRequestCancelled(controller, tabId);
                     const newMessages = { role: 'tool', tool_name: toolNamesUsed, content: toolData }
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - resolved tool call`, newMessages);
@@ -1384,6 +1465,12 @@ async function fetchDataAction(request, sender) {
                     await throwIfRequestCancelled(controller, tabId);
                     if (!await saveSession(activeSession)) { throw new Error(sessionSaveFailedMessage); }
                     // delete request.data.tools;
+                }
+
+                // A model that only asks for tools it was not given would otherwise loop for ever.
+                rejectedToolRounds = rejectedInRound === requestedTools.length ? rejectedToolRounds + 1 : 0;
+                if (rejectedToolRounds >= MAX_REJECTED_TOOL_ROUNDS) {
+                    throw new Error(`The model kept requesting tools that were rejected (${MAX_REJECTED_TOOL_ROUNDS} rounds in a row); none of them were executed.`);
                 }
             };
 

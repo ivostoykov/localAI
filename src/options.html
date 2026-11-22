@@ -194,13 +194,14 @@
                 </div>
 
                 <div class="el-holder">
-                  <label for="toolFunc">Tools:</label>
-                  <input type="url" id="toolFunc" />
+                  <label for="toolFunc">External tools:</label>
+                  <input type="url" id="toolFunc" aria-describedby="externalToolsNotice" />
                   <div id="toolButtons">
                     <img src="img/testnet.svg" class="model-icon-button" data-action="test-connection"
                       alt="Test connection" title="Test connection">
                   </div>
                 </div>
+                <p class="deprecation-notice" id="externalToolsNotice">External tools are deprecated and will be removed in a future release.</p>
               </div>
 
               <!-- Right Column: Embedding & Document Configuration -->
@@ -351,6 +352,7 @@
             </a>
           </div>
 
+          <p class="deprecation-notice">External tools are deprecated and will be removed in a future release.</p>
           <div id="toolsContainer" class="container">
             <h1>Tools</h1>
           </div>

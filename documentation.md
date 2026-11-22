@@ -373,36 +373,24 @@ When a tool is included, during interaction, if the model determines a tool's us
 
 Tools enhance the model's utility, allowing it to handle complex scenarios by integrating real-time data or operations that require exact execution, thus expanding its practical applications beyond generating text to include dynamic data manipulation.
 
-There is one built-in fool function related wtih the active tab, allowing to get the URL and loaded page content. It require to be devined by the user into the Options -> Functions section.
-
-```
-{
-    "function": {
-        "description": "Returns the active browser tab URL and content without need for further web search.",
-        "name": "get_tab_info",
-        "parameters": {
-            "properties": {},
-            "required": [],
-            "type": "object"
-        }
-    },
-    "strict": true,
-    "type": "tool",
-    "usage_cost": 1
-}
-```
-
 > [!Note]
-> get_tab_info **must** be declared as `type: "tool"`
+> A tool runs only if the exact name was offered to the model on the request that produced the reply. This holds for streamed replies, follow-up rounds and retries. With tools off, or with a model that does not support tools, no tool runs. An unknown name is rejected before any page read, navigation or external request.
+
+Built-in tools such as `get_tab_info` are supplied by the extension. The Functions settings are for external tools.
 
 > [!Note]
 > As per [Llama3 documentation](https://www.llama.com/docs/model-cards-and-prompt-formats/llama3_1/#-tool-calling-(8b/70b/405b)-): *We recommend using Llama 70B-instruct or Llama 405B-instruct for applications that combine conversation and tool calling. **Llama 8B-Instruct can not reliably maintain a conversation alongside tool calling definitions**.*
 
 #### Definition
 
-[OpenAI Documentation](https://platform.openai.com/docs/guides/function-calling?api-mode=responses) provide description of definition structure. Whenever a prompt is sent to LLM those definitions will be included.
+[OpenAI Documentation](https://platform.openai.com/docs/guides/function-calling?api-mode=responses) provide description of definition structure. The extension includes the available definitions when tools are enabled and the model supports them.
 
-#### External Helper Project
+#### External tools (deprecated)
+
+> [!Warning]
+> External tools are deprecated and will be removed in a future release. You can continue using configured endpoints during deprecation.
+
+The **External tools** field on the options page holds an endpoint URL. When the model calls an external function, the call is sent as a POST to that URL followed by the function name as a single path segment. Use the final HTTP or HTTPS endpoint. The extension rejects redirects, path separators and dot segments.
 
 For those seeking ideas on implementing the functions, I've created a small project available [here](https://github.com/ivostoykov/llmTools). It can be used "as is" or modified to suit specific needs. For any suggestions, issues, or assistance related to this project, please use the project's own [issue tracking system](https://github.com/ivostoykov/llmTools/issues).
 
