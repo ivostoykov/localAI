@@ -124,4 +124,3 @@ describe('cleanFileContent HTML parsing (#100)', () => {
         expect(document.querySelector('img')).toBeNull();
     });
 });
-
