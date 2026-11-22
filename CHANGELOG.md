@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.17] - 2026-11-22 - latest
+## [1.30.18] - 2026-11-22 - latest
+
+### Fixes
+
+- Only your chat or Options instructions receive the system role. Page summaries, attachment summaries and condensed history are supplied as reference material (#105).
+
+## [1.30.17] - 2026-11-22
 
 ### Fixes
 
