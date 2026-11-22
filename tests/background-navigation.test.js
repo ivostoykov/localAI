@@ -12,8 +12,8 @@ const backgroundCode = fs.readFileSync(
 const fetchDataActionCode = backgroundCode.match(/async function fetchDataAction\([\s\S]*?\n}\n/)[0];
 const onRemovedListenerCode = backgroundCode.match(/chrome\.tabs\.onRemoved\.addListener\(async \(tabId\) => \{[\s\S]*?\n\}\);\n/)[0];
 
-const requestHelpersCode = ['registerRequestController', 'unregisterRequestController', 'throwIfRequestCancelled', 'sendStreamAbort', 'createStreamRequestId', 'sendStreamError', 'wasTerminalMessageDelivered']
-    .map(name => backgroundCode.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0])
+const requestHelpersCode = [backgroundCode.match(/const MAX_REJECTED_TOOL_ROUNDS = \d+;/)[0], ...['registerRequestController', 'unregisterRequestController', 'throwIfRequestCancelled', 'sendStreamAbort', 'createStreamRequestId', 'sendStreamError', 'wasTerminalMessageDelivered', 'getOfferedToolNames', 'getToolCallRejection', 'getRejectedToolCallMessage', 'buildExternalToolUrl']
+    .map(name => backgroundCode.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0])]
     .join('\n');
 
 // The background script relies on globals; `with` scopes the stubs for the extracted code only.
@@ -51,6 +51,7 @@ function createDeps(bodies) {
         },
         getLaiOptions: vi.fn(async () => ({ toolFunc: '', debug: false })),
         getPromptTools: vi.fn(async () => [{ type: 'function', function: { name: 'browse_url' } }]),
+        getInternalToolNames: () => ['browse_url'],
         getAiUrl: vi.fn(async () => 'http://localhost:11434/api/chat'),
         showUIMessage: vi.fn(),
         validateAndGetTabId: vi.fn(async () => null),

@@ -131,6 +131,9 @@ describe('session tab tools (#62)', () => {
     const tabStateCode = fs.readFileSync(path.join(__dirname, '../src/jslib/tab-state.js'), 'utf-8');
     const backgroundCode = fs.readFileSync(path.join(__dirname, '../src/background.js'), 'utf-8');
     const resolverCode = backgroundCode.match(/async function resolveToolCalls\([\s\S]*?\n}\n/)[0];
+    const toolGateCode = ['getToolCallRejection', 'getRejectedToolCallMessage', 'buildExternalToolUrl']
+        .map(name => backgroundCode.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n}\\n`))[0])
+        .join('\n');
     const call = (name, args = {}) => ({ function: { name, arguments: args } });
 
     function setup() {
@@ -165,6 +168,7 @@ describe('session tab tools (#62)', () => {
             ${tabStateCode}
             const tabState = new TabStateStore({ storage: deps.storage });
             ${internalToolsCode}
+            ${toolGateCode}
             ${resolverCode}
             return { execInternalTool, resolveToolCalls, tabState, getInternalToolNames, isInternalTool, INTERNAL_TOOL_DEFINITIONS };
         }`)({ ...deps, storage });
@@ -329,7 +333,7 @@ describe('session tab tools (#62)', () => {
         memory.getRecentTurns = vi.fn(async () => []);
         memory.storeContext = vi.fn();
         Object.assign(env.deps.backgroundMemory, memory);
-        const result = await env.resolveToolCalls(call('read_session_tab_page', { tab_reference: 2 }), '', { id: 1 }, 's1');
+        const result = await env.resolveToolCalls(call('read_session_tab_page', { tab_reference: 2 }), '', { id: 1 }, 's1', null, new Set(['read_session_tab_page']));
         expect(result).toContain('Other page content');
         expect(env.deps.backgroundMemory.storeContext).not.toHaveBeenCalled();
         expect(env.deps.backgroundMemory.addPageToSession).not.toHaveBeenCalled();

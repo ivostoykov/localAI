@@ -42,6 +42,10 @@ const resolveModelNameForRequestCode = backgroundCode.match(/async function reso
 const modelCanThinkCode = backgroundCode.match(/async function modelCanThink\([\s\S]*?\n}\n/)[0];
 const modelCanUseToolsCode = backgroundCode.match(/async function modelCanUseTools\([\s\S]*?\n}\n/)[0];
 const validateModelInfoCacheCode = backgroundCode.match(/async function validateModelInfoCache\([\s\S]*?\n}\n/)[0];
+const getOfferedToolNamesCode = backgroundCode.match(/function getOfferedToolNames\([\s\S]*?\n}\n/)[0];
+const toolCallRejectionCode = ['getToolCallRejection', 'getRejectedToolCallMessage'].map(name => backgroundCode.match(new RegExp(`function ${name}\\([\\s\\S]*?\\n}\\n`))[0]).join('\n');
+const buildExternalToolUrlCode = backgroundCode.match(/function buildExternalToolUrl\([\s\S]*?\n}\n/)[0];
+const toolGateCode = `${backgroundCode.match(/const MAX_REJECTED_TOOL_ROUNDS = \d+;/)[0]}\n${getOfferedToolNamesCode}\n${toolCallRejectionCode}\n${buildExternalToolUrlCode}`;
 
 const testFunctionsCode = `
 ${processTextChunkCode}
@@ -1177,7 +1181,7 @@ describe('prompt last-page data (#63)', () => {
         };
         const sessions = new Function('deps', `with (deps) { ${sessionsCode}; return { saveSession }; }`)(deps);
         deps.saveSession = vi.fn(sessions.saveSession);
-        const run = new Function('deps', `with (deps) { ${getVisibleSessionMessagesCode}\n${fetchDataActionCode}; return fetchDataAction; }`)(deps);
+        const run = new Function('deps', `with (deps) { ${toolGateCode}\n${getVisibleSessionMessagesCode}\n${fetchDataActionCode}; return fetchDataAction; }`)(deps);
         const prompt = (tab, extra = {}) => run({
             action: 'fetchData', sessionId: 'shared', url: 'http://localhost/api/chat',
             data: { userInput: 'Prompt' }, ...extra
