@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.19] - 2026-11-22 - latest
+## [1.30.20] - 2026-11-22 - latest
+
+### Fixes
+
+- Markdown links open only HTTP, HTTPS and mailto destinations. Other schemes are displayed as text (#99).
+
+## [1.30.19] - 2026-11-22
 
 ### Fixes
 
