@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.18] - 2026-11-22 - latest
+## [1.30.19] - 2026-11-22 - latest
+
+### Fixes
+
+- Command names and descriptions, help entries and aborted-reply notices are rendered as plain text, so pasted or imported markup is displayed literally (#101).
+
+## [1.30.18] - 2026-11-22
 
 ### Fixes
 
