@@ -59,6 +59,8 @@ User prompts are rendered as Markdown in the chat history, both when submitted a
 
 # AI response parser
 
+Chat messages support clickable HTTP, HTTPS and mailto links. Relative links and destinations with other schemes are displayed as text. To make a bare web address clickable after an equals sign, separate it with a space or use a Markdown link.
+
 A new Markdown parser is included for an improved experience. It is available as an independent open-source project on GitHub: [solomd2html](https://github.com/ivostoykov/solomd2html). Please use the parser's [Issues section](https://github.com/ivostoykov/solomd2html/issues) for bug reports and suggestions related to the AI output format.
 
 <img src="media/ai_reply.png" height="600" />
