@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.16] - 2026-11-22 - latest
+## [1.30.17] - 2026-11-22 - latest
+
+### Fixes
+
+- Attached HTML files are parsed in a separate, inert document before their text is extracted (#100).
+
+## [1.30.16] - 2026-11-22
 
 ### Fixes
 
