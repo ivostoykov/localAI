@@ -390,7 +390,7 @@ Built-in tools such as `get_tab_info` are supplied by the extension. The Functio
 > [!Warning]
 > External tools are deprecated and will be removed in a future release. You can continue using configured endpoints during deprecation.
 
-The **External tools** field on the options page holds an endpoint URL. When the model calls an external function, the call is sent as a POST to that URL followed by the function name as a single path segment. Only names offered on the request that produced the reply are dispatched, and the request stays under the configured endpoint.
+The **External tools** field on the options page holds an endpoint URL. When the model calls an external function, the call is sent as a POST to that URL followed by the function name as a single path segment. Use the final HTTP or HTTPS endpoint. The extension rejects redirects, path separators and dot segments.
 
 For those seeking ideas on implementing the functions, I've created a small project available [here](https://github.com/ivostoykov/llmTools). It can be used "as is" or modified to suit specific needs. For any suggestions, issues, or assistance related to this project, please use the project's own [issue tracking system](https://github.com/ivostoykov/llmTools/issues).
 
