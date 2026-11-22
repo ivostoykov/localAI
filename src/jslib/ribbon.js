@@ -571,7 +571,10 @@ function popUserCommandList(el) {
         const cmdItemButtons = addCmdItemButtons(document.createElement('div'), i);
         const cmdItem = document.createElement('div');
         cmdItem.classList.add('user-cmd-item-command');
-        cmdItem.innerHTML = `<b>/${cmd.commandName}</b> - ${cmd.commandDescription || 'No description provided.'}`
+        const cmdName = document.createElement('b');
+        cmdName.textContent = `/${cmd.commandName}`;
+        const cmdDescription = document.createTextNode(` - ${cmd.commandDescription || 'No description provided.'}`);
+        cmdItem.append(cmdName, cmdDescription);
 
         el.appendChild(cmdItemButtons);
         el.appendChild(cmdItem);
