@@ -27,15 +27,14 @@ function cleanFileContent(content, mimeType) {
 
     if (mimeType && mimeType.includes('html')) {
         try {
-            const div = document.createElement('div');
-            div.innerHTML = content;
+            const doc = new DOMParser().parseFromString(content, 'text/html');
 
             const unwantedSelectors = ['script', 'style', 'noscript', 'iframe'];
             unwantedSelectors.forEach(selector => {
-                div.querySelectorAll(selector).forEach(el => el.remove());
+                doc.querySelectorAll(selector).forEach(el => el.remove());
             });
 
-            return div.textContent?.trim() || '';
+            return doc.documentElement?.textContent?.trim() || '';
         } catch (e) {
             console.error(`>>> ${manifest?.name ?? ''} - cleanFileContent: Error parsing HTML`, e);
             return content;
