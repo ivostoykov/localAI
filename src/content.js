@@ -294,8 +294,7 @@ function triggerUpdate() {
 async function init() {
   try {
     if (!chrome.runtime.id) { chrome.runtime.reload(); }
-    document.documentElement.querySelector('localAI')?.remove();
-    document.querySelector('localAI')?.remove();
+    document.querySelectorAll('local-ai#localAI').forEach(host => host.remove());
 
     const localAI = document.createElement('local-ai');
     localAI.id = "localAI";

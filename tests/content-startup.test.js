@@ -89,6 +89,37 @@ describe('content start-up', () => {
     }
   });
 
+  it('leaves the panel closed when it closes during the page-click options lookup', async () => {
+    const { document, start, deps } = setup();
+    await start();
+    const sidebar = document.createElement('div');
+    sidebar.classList.add('active');
+    deps.getSideBar.mockReturnValue(sidebar);
+    deps.getOptions.mockImplementation(async () => {
+      sidebar.classList.remove('active');
+      return { closeOnClickOut: true };
+    });
+
+    document.body.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(deps.getOptions).toHaveBeenCalledOnce();
+    expect(deps.laiSwapSidebarWithButton).not.toHaveBeenCalled();
+  });
+
+  it('replaces a stale host during init', async () => {
+    const { document, build, getShadowRoot } = setup();
+    const staleHost = document.createElement('local-ai');
+    staleHost.id = 'localAI';
+    staleHost.attachShadow({ mode: 'closed' });
+    document.documentElement.appendChild(staleHost);
+
+    await build();
+
+    expect(staleHost.isConnected).toBe(false);
+    expect(Array.from(document.querySelectorAll('local-ai'))).toEqual([getShadowRoot().host]);
+  });
+
   it('rebuilds a missing UI without adding listeners', async () => {
     const { document, listeners, build, start } = setup();
     await start();
