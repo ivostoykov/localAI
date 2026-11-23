@@ -1,6 +1,13 @@
 # Local AI - Changelog
 
-## [1.30.24] - 2026-11-23 - latest
+## [1.30.25] - 2026-11-23 - latest
+
+### Changes
+
+- Removed the unused Firefox `webRequest` permission; the add-on now requests only the access it uses (#102).
+- Updated development dependencies, including the test runner and its HTML/CSS tooling. Nothing shipped in the extension changed (#102).
+
+## [1.30.24] - 2026-11-23
 
 ### Fixes
 
