@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- Restricted direct page-script access to the chat panel and limited rendered chat history to when the panel is open (#103).
+- Chat history is rendered only while the panel is open and removed from the page when it closes. Menu and click-out handling has been reworked (#103).
 
 ## [1.30.21] - 2026-11-23
 

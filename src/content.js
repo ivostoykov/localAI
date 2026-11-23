@@ -318,7 +318,7 @@ async function init() {
     localAI.appendChild(style);
 
     document.documentElement.appendChild(localAI);
-    sidebarRoot = localAI.attachShadow({ mode: 'closed' });
+    sidebarRoot = localAI.attachShadow({ mode: 'open' });
     await buildMainButton();
     await laiFetchAndBuildSidebarContent();
     await initSidebar(Date.now() + 3000);

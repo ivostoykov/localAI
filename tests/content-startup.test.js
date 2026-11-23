@@ -45,11 +45,12 @@ describe('content start-up', () => {
     expect(build).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the shadow root private and leaves extension clicks to its own handlers', async () => {
+  it('keeps the shadow root open and leaves extension clicks to its own handlers', async () => {
     const { window, document, start, getShadowRoot, deps } = setup();
     await start();
     const host = document.querySelector('local-ai');
-    expect(Reflect.get(host, 'shadowRoot')).toBeNull();
+    expect(getShadowRoot().host).toBe(host);
+    expect(getShadowRoot().mode).toBe('open');
     const button = document.createElement('button');
     getShadowRoot().appendChild(button);
     const action = vi.fn();
