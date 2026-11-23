@@ -1,6 +1,11 @@
 # Local AI - Changelog
 
-## [1.30.23] - 2026-11-23 - latest
+## [1.30.24] - 2026-11-23 - latest
+
+### Fixes
+
+- Local AI asks before sending a model-generated search query or opening a link. The shared web access setting covers both, and existing link permission still requires approval for searches (#98).
+## [1.30.23] - 2026-11-23
 
 ### Fixes
 
