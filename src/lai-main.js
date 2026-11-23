@@ -2126,7 +2126,8 @@ async function ask2ExplainSelection(response) {
         await laiSwapSidebarWithButton();
     }
 
-    userInput.value = `Explain the meaning of the selected text below. Use the attached page context only as context for its meaning.\n\n${wrapInTextFence(selection)}`;
+    const contextNote = cleanPageText ? ' Use the attached page context only as context for its meaning.' : '';
+    userInput.value = `Explain the meaning of the selected text below.${contextNote}\n\n${wrapInTextFence(selection)}`;
     userInput?.dispatchEvent(enterEvent);
 }
 

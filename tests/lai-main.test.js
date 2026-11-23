@@ -2123,6 +2123,7 @@ describe('context-menu selection line breaks (#74)', () => {
 
             expect(global.addAttachment).not.toHaveBeenCalled();
             expect(prompt.value).toContain('```text\nCCAT\n```');
+            expect(prompt.value).not.toContain('attached page context');
             expect(warnSpy.mock.calls.some(args => String(args[0]).includes('explaining the selection only'))).toBe(true);
             warnSpy.mockRestore();
         });
