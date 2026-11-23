@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.20] - 2026-11-22 - latest
+## [1.30.21] - 2026-11-23 - latest
+
+### Fixes
+
+- Debug logging now decides whether full request messages, model replies, tool arguments and results, and file contents reach the console. With it off, only summary error messages are logged and payloads are neither serialised nor forwarded; turning it off takes effect immediately, without reloading the page (#107).
+
+## [1.30.20] - 2026-11-22
 
 ### Fixes
 
