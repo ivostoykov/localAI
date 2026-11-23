@@ -45,6 +45,8 @@ The red cross near the ear allows temporarily hiding the head—only for the cur
 
 Click the icon to open the main UI.
 
+The panel uses a closed shadow root to restrict direct access from scripts on the host page. Closing the panel clears its rendered chat history. Reopening it restores the saved session. Keyboard events from the prompt can still reach the host page.
+
 <img src="media/UI.gif" height="600" />
 
 

@@ -191,6 +191,8 @@ describe('lai-main.js', () => {
 
         it.each(['streamEnd', 'streamAbort', 'streamError'])('acknowledges and clears its own %s terminal message', async (action) => {
             document.body.innerHTML = '<div class="lai-ai-input"><span class="lai-input-text" id="laiActiveAiInput"></span></div><textarea id="laiUserInput"></textarea><button id="laiAbort"></button>';
+            document.body.classList.add('active');
+            global.getSideBar = vi.fn(() => document.body);
             setActiveStreamRequestId('own');
             await expect(messageProcessor({ action, requestId: 'own', response: JSON.stringify({ message: { content: '' } }) }, {})).resolves.toEqual({ requestId: 'own' });
             expect(getActiveStreamRequestId()).toBeNull();
@@ -852,6 +854,7 @@ describe('queryAI session identity (#29)', () => {
         global.updateStatusBar = vi.fn();
         global.resetStatusbar = vi.fn();
         global.getSideBar = vi.fn(() => document.body);
+        document.body.classList.add('active');
         sendMessage = vi.fn(async () => ({ status: 'success' }));
         const chrome = { runtime: { sendMessage, onMessage: { addListener: vi.fn() } } };
         ({ queryAI } = executeQueryAI(global.document, global.window, global.manifest, chrome, global.getLineNumber, global.isMessagePersistable));
@@ -978,7 +981,12 @@ describe('tab session restoration (#40)', () => {
         renderSessionHistoryMessages = vi.fn(async session => {
             renderedSessions.push(session);
             const list = document.getElementById('laiChatMessageList');
-            list.innerHTML = '<div class="lai-chat-history restored-user"></div><div class="lai-chat-history restored-ai"></div>';
+            list.replaceChildren(...session.messages.map(message => {
+                const card = document.createElement('div');
+                card.className = message.role === 'assistant' ? 'lai-chat-history restored-ai' : 'lai-chat-history restored-user';
+                card.textContent = message.content;
+                return card;
+            }));
         });
         global.setActiveSessionId = setActiveSessionId;
         global.getActiveSessionById = getActiveSessionById;
@@ -1028,13 +1036,43 @@ describe('tab session restoration (#40)', () => {
         expect(sentMessages('updateTabState').filter(message => 'sessionId' in message)).toEqual([expect.objectContaining({ sessionId: 's1' })]);
     });
 
-    it('keeps a closed panel closed while still restoring the session history', async () => {
+    it('binds a closed panel without rendering history until it opens', async () => {
         replyToTabState([{ tab: binding({ panelOpen: false }), request: null }]);
 
         await restore();
 
-        expect(renderedSessions).toHaveLength(1);
+        expect(setActiveSessionId).toHaveBeenCalledWith('s1');
+        expect(renderedSessions).toHaveLength(0);
         expect(document.getElementById('laiSidebar').classList.contains('active')).toBe(false);
+
+        replyToTabState([{ tab: binding(), request: null }]);
+        await laiSwapSidebarWithButton();
+        const list = document.getElementById('laiChatMessageList');
+        expect(list.textContent).toBe('questionanswer');
+
+        await laiSwapSidebarWithButton(true);
+        expect(list.textContent).toBe('');
+    });
+
+    it('restores the stored answer when a stream completes with the panel closed', async () => {
+        replyToTabState([
+            { tab: binding(), request: streamingSnapshot() },
+            { tab: binding(), request: streamingSnapshot() }
+        ]);
+        await restore();
+        expect(assistantRecipient().textContent).toContain('Hello ');
+
+        await laiSwapSidebarWithButton(true);
+        expect(document.getElementById('laiChatMessageList').textContent).toBe('');
+        expect(await messageProcessor({ action: 'streamEnd', requestId: 'r1' }))
+            .toEqual({ requestId: null });
+
+        getActiveSessionById.mockResolvedValue({ id: 's1', messages: [{ role: 'assistant', content: 'Hello world' }] });
+        replyToTabState([{ tab: binding(), request: streamingSnapshot({ status: 'complete' }) }]);
+        await laiSwapSidebarWithButton();
+        expect(renderedSessions.at(-1).messages).toEqual([{ role: 'assistant', content: 'Hello world' }]);
+        expect(document.querySelector('.restored-ai').textContent).toBe('Hello world');
+        expect(getActiveStreamRequestId()).toBeNull();
     });
 
     it('starts empty without a binding and clears a binding whose session is gone', async () => {
@@ -1075,6 +1113,7 @@ describe('tab session restoration (#40)', () => {
     });
 
     it('ignores duplicate sequence numbers without dropping raw debug chunks', async () => {
+        document.getElementById('laiSidebar').classList.add('active');
         setActiveStreamRequestId('r1');
         setActiveStreamSeq(3);
         await addInputCardToUIChatHistory('', 'ai');
@@ -1086,6 +1125,7 @@ describe('tab session restoration (#40)', () => {
     });
 
     it('treats debug-only chunks as duplicates that do not create sequence gaps', async () => {
+        document.getElementById('laiSidebar').classList.add('active');
         setActiveStreamRequestId('r1');
         setActiveStreamSeq(0);
         await addInputCardToUIChatHistory('', 'ai');
@@ -1438,6 +1478,8 @@ describe('sidebar session catch-up on focus (#61)', () => {
         global.chrome.runtime.getURL = path => `chrome-extension://test/${path}`;
 
         seedChat();
+        document.body.classList.add('active');
+        global.getSideBar = vi.fn(() => document.body);
         activeSessionId = 's1';
         global.getActiveSessionId = vi.fn(async () => activeSessionId);
         storedSessions = {};
@@ -1448,6 +1490,16 @@ describe('sidebar session catch-up on focus (#61)', () => {
             addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex,
             setActiveStreamRequestId, getActiveStreamRequestId
         } = executeCatchUp(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, undefined));
+    });
+
+    it('does not read or render newly stored turns while the panel is closed', async () => {
+        document.body.classList.remove('active');
+        storedSessions.s1 = sessionWith([{ role: 'assistant', content: 'Hidden while closed' }]);
+
+        await catchUpActiveSessionFromStorage();
+
+        expect(global.getActiveSessionById).not.toHaveBeenCalled();
+        expect(cards()).toHaveLength(0);
     });
 
     it('changes nothing when the saved session has no new turns', async () => {
@@ -1786,7 +1838,7 @@ describe('user prompt Markdown rendering (#41)', () => {
         global.chrome = { runtime: { sendMessage, onMessage: { addListener: vi.fn() }, getURL: path => `chrome-extension://test/${path}` } };
 
         document.body.innerHTML = `
-            <div id="laiSidebar">
+            <div id="laiSidebar" class="active">
                 <template id="editorTemplate">
                     <div id="userCommandEditor" class="user-command-editor">
                         <div class="help-close-btn" title="Close">✖</div>

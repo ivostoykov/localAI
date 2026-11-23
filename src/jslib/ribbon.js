@@ -38,24 +38,24 @@ async function initRibbon() {
     }
 
     shadowRoot?.querySelector('#addUsrCmdMenu')?.addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn')?.click();
+        closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
         popUserCommandEditor();
     });
 
     shadowRoot?.querySelector('#listUsrCmdMenu')?.addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn')?.click();
+        closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
         popUserCommandList(e);
     });
     shadowRoot?.querySelector('#listSysCmdMenu')?.addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn')?.click();
+        closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
         showHelp();
     });
     shadowRoot?.querySelector('#createSessionCmdMenu')?.addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn')?.click();
+        closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
         ribbon?.querySelector('#newSession')?.click();
     });
     shadowRoot?.querySelector('#delSessionsCmdMenu')?.addEventListener('click', e => {
-        shadowRoot?.querySelector('#cogBtn')?.click();
+        closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
         const element = shadowRoot?.getElementById('recycleCurrentSessionBtn');
         if (!element) { return; }
         const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
@@ -63,6 +63,7 @@ async function initRibbon() {
     });
 
     shadowRoot?.querySelector('#mainHelpMenu')?.addEventListener('click', async (e) => {
+        closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
         try {
             await chrome.runtime.sendMessage({ action: "openMainHelpMenu" })
             if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
@@ -75,6 +76,7 @@ async function initRibbon() {
     });
 
     shadowRoot?.querySelector('#modifiersHelp')?.addEventListener('click', async (e) => {
+        closeRibbonMenuElement(shadowRoot.querySelector('#modifiers'), shadowRoot);
         try {
             await chrome.runtime.sendMessage({ action: "openModifiersHelpMenu" })
             if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
@@ -88,10 +90,7 @@ async function initRibbon() {
 
     shadowRoot?.querySelector('#optionsMenu')?.addEventListener('click', async function (e) {
         if (!checkExtensionState()) { return; }
-        const cogMenu = shadowRoot?.querySelector('#cogMenu');
-        if (!cogMenu.classList.contains('invisible')) {
-            cogMenu.classList.add('invisible');
-        }
+        closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
 
         try {
             updateStatusBar('Opening Option Page ...');
@@ -122,11 +121,13 @@ async function initRibbon() {
         setTimeout(resetStatusbar, 10000);
     }, false);
     ribbon?.querySelector('#cogBtn')?.addEventListener('click', async function (e) {
-        const el = e.target;
+        const el = e.composedPath().find(node => node?.id === 'cogBtn');
         e.stopPropagation();
+        closeQuickPromptListMenu();
+        closeSessionListOnOutsideClick();
         await closeAllDropDownRibbonMenus(e);
         shadowRoot.querySelector('#cogMenu').classList.toggle('invisible');
-        el.classList.toggle('js-menu-is-open');
+        el.classList.toggle('js-menu-is-open', !shadowRoot.querySelector('#cogMenu').classList.contains('invisible'));
     }, false);
 
     ribbon?.querySelector('#refreshCloudModelListBtn')?.addEventListener('click', refreshCloudModelListBtnClick);
@@ -153,7 +154,7 @@ async function initRibbon() {
 
     shadowRoot?.getElementById('laiAbort')?.addEventListener('click', async e => await laiAbortRequest(e), false);
     if (laiOptions && laiOptions.openPanelOnLoad) {
-        await openSidebarPanelIfClosed();
+        await openSidebarPanelIfClosed(false);
     }
 
     shadowRoot?.getElementById('laiSessionHistoryMenu')?.querySelectorAll('img').forEach(el => laiSetImg(el));
@@ -218,17 +219,14 @@ async function closeAllDropDownRibbonMenus(e) {
     const openMenus = Array.from(shadowRoot?.querySelectorAll('.js-menu-is-open') ?? []);
     if (openMenus.length < 1) { return; }
 
-    const compPath = typeof e?.composedPath === 'function' ? e.composedPath() : []; // check for sidebar - if not in there, head button is clicked
-    if (compPath?.findIndex(e => e.id === 'laiMainButton') > -1) { return; } // ext main buttono was clicked
-
-    const originator = compPath?.[0]; // e?.target;
+    const compPath = e?.composedPath?.() ?? [];
+    if (compPath.some(node => node?.id === 'laiMainButton')) { return; }
 
     openMenus.forEach(el => {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - compPath inside forEach`, compPath);
-        if (el === originator) { return; }
-        if (compPath?.findIndex(p => p === el) > 0) { return; } // clicked inside the menu
-        const relatedMenuId = el?.dataset?.menuId;
-        if (relatedMenuId && compPath?.findIndex(p => p?.id === relatedMenuId) > -1) { return; }
+        if (compPath.includes(el)) { return; }
+        const relatedMenuId = el.id === 'cogBtn' ? 'cogMenu' : el.dataset.menuId;
+        if (relatedMenuId && compPath.some(node => node?.id === relatedMenuId)) { return; }
         closeRibbonMenuElement(el, shadowRoot);
     });
 }
@@ -239,7 +237,9 @@ function closeRibbonMenuElement(el, shadowRoot = getShadowRoot()) {
         closeModelListMenu(el, shadowRoot);
         return;
     }
-    el?.click();
+    const menu = el.id === 'cogBtn' ? shadowRoot?.querySelector('#cogMenu') : el.querySelector('.session-menu');
+    menu?.classList.add('invisible');
+    el.classList.remove('js-menu-is-open');
 }
 
 function closeModelListMenu(container = null, shadowRoot = getShadowRoot()) {
@@ -276,6 +276,7 @@ async function createNewSessionClicked(e, shadowRoot) {
 async function sessionHistoryClicked(e) {
     e.preventDefault();
     e.stopPropagation();
+    closeQuickPromptListMenu();
     await closeAllDropDownRibbonMenus(e);
     await popSessionList();
 }
@@ -300,6 +301,7 @@ async function popSessionList(el = null) {
         return;
     }
 
+    dialog.classList.remove('invisible');
     let openSessions = { openSessionIds: [], ownSessionId: null };
     try {
         openSessions = await fetchOpenSessions();
@@ -311,10 +313,10 @@ async function popSessionList(el = null) {
         .filter(session => session?.id)
         .sort((a, b) => (b.lastAccessedAt ?? b.createdAt ?? 0) - (a.lastAccessedAt ?? a.createdAt ?? 0));
 
+    if (dialog.classList.contains('invisible')) { return; }
     hideSessionListDeleteAllConfirm(dialog);
     buildSessionListRows(dialog, sessions, ownSessionId, openSessionIds);
 
-    dialog.classList.remove('invisible');
     dialog.focus();
 }
 
@@ -410,7 +412,7 @@ function buildSessionListActionButton(action, accessibleName, iconPath) {
 }
 
 async function sessionListBlockClicked(e) {
-    const path = e.composedPath?.() || [];
+    const path = e?.composedPath?.() || [];
     const button = path.find(node => node?.tagName === 'BUTTON' && node?.dataset?.action);
     const row = path.find(node => node?.classList?.contains('session-list-item'));
 
@@ -493,7 +495,7 @@ function sessionListKeydown(e) {
 
 function closeSessionListOnOutsideClick(e) {
     const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
-    const path = e.composedPath?.() || [];
+    const path = e?.composedPath?.() || [];
     const isDialogOrTrigger = path.some(node => node?.id === 'sessionListContainer' || node?.id === 'sessionHistory');
     if (dialog && !dialog.classList.contains('invisible') && !isDialogOrTrigger) {
         closeSessionListDialog(dialog);
@@ -660,15 +662,16 @@ function showLastErrorMessage(e) {
 async function modelLabelClicked(e) {
     e.stopPropagation();
     e.preventDefault();
-    let container = e?.currentTarget; // e.target;
-    if (container.id !== 'modelNameContainer') { container = e.target.closest('div#modelNameContainer'); }
+    const container = e.composedPath().find(node => node?.id === 'modelNameContainer');
     if (!container) { return; }
+    closeQuickPromptListMenu();
+    closeSessionListOnOutsideClick();
     await closeAllDropDownRibbonMenus(e);
 
     const isOpen = container.classList.contains('open');
     if (!isOpen) {
-        await getAndShowModels();
         container.classList.add('open', 'js-menu-is-open');
+        await getAndShowModels();
         return;
     }
 
@@ -702,6 +705,10 @@ async function getAndShowModels(forceRefresh = false) {
         laiOptions.modelList = response.models?.map(m => m.name).filter(Boolean).sort() || [];
         await setOptions(laiOptions);
         await fillAndShowModelList(response);
+        const root = getShadowRoot();
+        if (!root?.querySelector('#modelNameContainer')?.classList.contains('open')) {
+            closeModelListMenu(null, root);
+        }
         if ((response.groups?.cloud || []).length > 0 && !response.errors?.cloud) {
             await chrome.storage.local.set({ ollamaCloudModelListUpdate: Date.now() });
             const tab = getShadowRoot()?.querySelector('#cloudModelTab');
@@ -881,7 +888,7 @@ async function fillAndShowModelList(modelPayload = []) {
 
             item.addEventListener('click', async event => {
                 event.stopPropagation();
-                await closeAllDropDownRibbonMenus(event);
+                closeModelListMenu();
                 const matchingOption = Array.from(modelsDropDown.options).findIndex(option => option.value === model.name);
                 if (matchingOption > -1) {
                     modelsDropDown.selectedIndex = matchingOption;
@@ -900,10 +907,7 @@ async function swapActiveModel(e, modelName) {
     e.stopPropagation();
     const laiOptions = await getOptions();
     const oldModel = laiOptions.aiModel;
-    if (modelName === oldModel) {
-        closeModelListMenu();
-        return;
-    }
+    if (modelName === oldModel) { return; }
 
     laiOptions.aiModel = modelName;
     await setOptions(laiOptions);
@@ -913,7 +917,6 @@ async function swapActiveModel(e, modelName) {
     availableModelList?.querySelectorAll('.model-list-item').forEach(item => {
         item.classList.toggle('active-model-list-item', item.dataset.modelName === modelName);
     });
-    closeModelListMenu(getSideBar()?.querySelector('div#modelNameContainer'));
     showMessage(`${oldModel} replaced with ${modelName}.`, 'success');
 }
 
@@ -1002,9 +1005,12 @@ async function renderSessionHistoryMessage(msg, index = -1) {
 }
 
 async function renderSessionHistoryMessages(session) {
+    if (!getSideBar()?.classList.contains('active')) { return; }
+    const viewRevision = panelViewRevision;
     clearChatHistoryUI();
 
     for (const [i, msg] of (session?.messages ?? []).entries()) {
+        if (viewRevision !== panelViewRevision) { return; }
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Restoring message ${i}:`, msg);
         await renderSessionHistoryMessage(msg, i);
     }
@@ -1083,8 +1089,9 @@ async function deleteAllHistorySessionsClicked(e) {
 }
 
 function modifiersClicked(e) {
-    let el = e.target;
-    let menu = el?.querySelector('.session-menu');
+    const el = e.composedPath()[0];
+    if (el?.id !== 'modifiers') { return; }
+    const menu = el.querySelector('.session-menu');
     if (!menu) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - .session-menu element not found`);
         return;
@@ -1093,6 +1100,9 @@ function modifiersClicked(e) {
     e.stopPropagation();
 
     if (menu.classList.contains('invisible')) {
+        closeQuickPromptListMenu();
+        closeSessionListOnOutsideClick();
+        closeAllDropDownRibbonMenus(e);
         menu.classList.remove('invisible');
         el.classList.add('js-menu-is-open');
     } else {

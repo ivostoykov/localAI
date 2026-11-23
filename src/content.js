@@ -43,8 +43,9 @@ var userPredefinedCmd = [
   { "commandName": "help", "commandDescription": "Show the help and stop" }
 ];
 
-function getRootElement() { return document.documentElement.querySelector('localAI') || document.getElementById('localAI'); }
-function getShadowRoot() { return getRootElement()?.shadowRoot; }
+let sidebarRoot;
+function getRootElement() { return sidebarRoot?.host.isConnected ? sidebarRoot.host : null; }
+function getShadowRoot() { return getRootElement() ? sidebarRoot : null; }
 function getSideBar() { return getShadowRoot()?.getElementById('laiSidebar'); }
 function getMainButton() { return getShadowRoot()?.getElementById('laiMainButton'); }
 function getRibbon() { return getShadowRoot()?.querySelector('div.lai-ribbon'); }
@@ -96,21 +97,20 @@ async function allDOMContentLoaded(e) {
     attachElementSelectionListenersToFrames();
 
     document.addEventListener('click', async function (event) {
-      closeQuickPromptListMenu(event);
+      if (event.composedPath().includes(getRootElement())) { return; }
+      closeQuickPromptListMenu();
+      closeSessionListOnOutsideClick();
       if (isElementSelectionActive) {
         getSelectedClickedElement(event);
       }
 
-      await closeAllDropDownRibbonMenus(event);
-      const path = typeof event?.composedPath === 'function' ? event.composedPath() : [];
-      if (path.find(el => el?.id === 'localAI')) { return; }
-      if(event?.target?.id === 'localAI') { return; }
+      await closeAllDropDownRibbonMenus();
 
       const sideBar = getSideBar();
       if (!sideBar?.classList.contains('active')) { return; }
 
       const options = await getOptions()
-      if (!options.closeOnClickOut || isPinned()) { return; }
+      if (!options.closeOnClickOut || isPinned() || !sideBar.classList.contains('active')) { return; }
       await laiSwapSidebarWithButton(true);
     }, true);
 
@@ -319,7 +319,7 @@ async function init() {
     localAI.appendChild(style);
 
     document.documentElement.appendChild(localAI);
-    localAI.attachShadow({ "mode": 'open' });
+    sidebarRoot = localAI.attachShadow({ mode: 'closed' });
     await buildMainButton();
     await laiFetchAndBuildSidebarContent();
     await initSidebar(Date.now() + 3000);

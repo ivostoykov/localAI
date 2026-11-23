@@ -8,6 +8,8 @@ async function quickPromptClicked(e) {
         return;
     }
 
+    closeSessionListOnOutsideClick();
+    closeAllDropDownRibbonMenus();
     shadowRoot.querySelector('.prompt-menu')?.remove();
 
     const tmpl = shadowRoot.querySelector('#promptMenuTemplate');
@@ -26,6 +28,7 @@ async function quickPromptClicked(e) {
     }
 
     await buildPromptList(menu.querySelector('.dynamic-prompt-list'));
+    if (!menu.isConnected) { return; }
 
     const searchInput = menu.querySelector('.search-input')
     if (!searchInput) {
@@ -69,6 +72,7 @@ async function buildPromptList(list) {
 }
 
 async function insertClickedPrompt(e, promptDiv) {
+    removeQuickPromptMenu(e);
     const cmd = await getAiUserCommands();
     const index = parseInt(promptDiv?.dataset?.index, 10);
     let prompt = cmd?.[index]?.commandBody ?? 'Unknown';
@@ -86,7 +90,6 @@ async function insertClickedPrompt(e, promptDiv) {
 
     userInput.value = prompt;
     userInput.focus();
-    removeQuickPromptMenu(e);
 }
 
 function quickPromptFilterChanged(e) {
@@ -171,15 +174,9 @@ function eraseUserInputArea(e) {
 }
 
 function closeQuickPromptListMenu(e) {
-    const path = e.composedPath();
-    if (path[0].classList?.contains('input-controls-container')) { return; }
-    if (path.some(el => el.classList?.contains('dynamic-prompt-list'))) { return; }
-
-    const shadowRoot = getShadowRoot();
-    const menu = shadowRoot?.querySelector('.prompt-menu');
-    if (!menu) { return; }
-    if(e.composedPath()?.some(el => el?.classList?.contains?.('lai-user-area'))) {  return;  }
-    if (!path.includes(menu)) { removeQuickPromptMenu(e); }
+    const path = e?.composedPath() ?? [];
+    const menu = getShadowRoot()?.querySelector('.prompt-menu');
+    if (menu && !path.includes(menu)) { removeQuickPromptMenu(e); }
 }
 
 async function debugBtnClicked(e){
