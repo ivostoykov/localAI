@@ -669,7 +669,7 @@ async function createMainButtonElement() {
 
 async function laiMainButtonClicked(e) {
   e.preventDefault();
-  await setSidebarOpen(!getSideBar()?.classList.contains("active"));
+  await setSidebarOpen(!getSideBar()?.classList.contains("active"), true, true, true);
   return false;
 }
 
@@ -904,10 +904,19 @@ async function mountSidebarFrame(container, retry = true) {
   }
 }
 
-async function setSidebarOpen(open, restoreHistory = true, notify = true) {
-  if (!getShadowRoot()) { await start(); }
+async function setSidebarOpen(open, restoreHistory = true, notify = true, userInitiated = false) {
+  if (open && !getShadowRoot()) {
+    if (hostGuard?.isBlocked?.() && !userInitiated) {
+      throw new Error('Local AI stopped recreating the panel after repeated removals.');
+    }
+    await start();
+  }
   const root = getShadowRoot();
-  if (!root) { throw new Error('Local AI host is unavailable.'); }
+  if (!root) {
+    sidebarOpen = open;
+    if (open) { throw new Error('Local AI host is unavailable.'); }
+    return { ...getHostState(), restoreHistory };
+  }
   let container = getSideBar();
   if (open) {
     if (!container) {
@@ -982,10 +991,10 @@ chrome.runtime.onConnect.addListener(port => {
   });
 });
 
-function teardownSidebarFrame() {
+function teardownSidebarFrame({ keepOpen = false } = {}) {
   sidebarFrame?.remove();
   sidebarFrame = undefined;
-  void setSidebarOpen(false).catch(console.error);
+  if (!keepOpen) { void setSidebarOpen(false).catch(console.error); }
 }
 
 function handleSidebarPortDisconnect(port) {
@@ -998,7 +1007,9 @@ function handleSidebarPortDisconnect(port) {
   clearTimeout(sidebarPortRetryTimer);
 
   if (!sidebarFrame?.isConnected) {
-    teardownSidebarFrame();
+    // A removed host takes the iframe with it. The guard recreates the host and
+    // restores the panel, so keep the desired open state.
+    teardownSidebarFrame({ keepOpen: !getRootElement() });
     return;
   }
 
@@ -1041,11 +1052,11 @@ async function processHostMessage(request) {
       return { result: true };
     case 'capturePageData': return { success: await setActiveSessionPageData(await getMyTabId()) };
     case 'callContentExtractor': return { result: await handleContentExtractorCall(request) };
-    case 'toggleSidebar': await setSidebarOpen(!getHostState().open); return { result: true };
+    case 'toggleSidebar': await setSidebarOpen(!getHostState().open, true, true, true); return { result: true };
     case 'toggleSelectElement':
       isElementSelectionActive = request.selection === true;
       if (!isElementSelectionActive) { clearAllElementDecorations(); }
-      else { await setSidebarOpen(true); }
+      else { await setSidebarOpen(true, true, true, true); }
       return { result: true };
     case 'getContextMenuImageBounds': return getContextMenuImageBounds();
     case 'scrollContextMenuImageIntoView': return scrollContextMenuImageIntoView();
@@ -1056,16 +1067,16 @@ async function processHostMessage(request) {
     case 'inserSelectedInPrompt':
     case 'explainSelection': {
       const selection = window.getSelection()?.toString().trim() || request.selection;
-      const state = await setSidebarOpen(true);
+      const state = await setSidebarOpen(true, true, true, true);
       return sendToSidebar(request.action, { selection, url: state.url, title: state.title }, true);
     }
     case 'activePageContent': {
       const content = await cleanPageContent();
-      const state = await setSidebarOpen(true);
+      const state = await setSidebarOpen(true, true, true, true);
       return sendToSidebar(request.action, { content, url: state.url }, true);
     }
     case 'attachCroppedContextMenuImage':
-      await setSidebarOpen(true);
+      await setSidebarOpen(true, true, true, true);
       return sendToSidebar(request.action, { base64: request.base64 }, true);
     case 'streamData':
     case 'streamEnd':

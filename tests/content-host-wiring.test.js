@@ -147,6 +147,7 @@ describe('content host guard wiring', () => {
             sidebarFrame: { isConnected: false },
             sidebarPortRetryTimer: undefined,
             clearAllElementDecorations: vi.fn(),
+            getRootElement: () => ({}),
             teardownSidebarFrame: vi.fn()
         };
         const { handleSidebarPortDisconnect } = load(functionCode('handleSidebarPortDisconnect'), ['handleSidebarPortDisconnect'])(deps);
@@ -220,6 +221,108 @@ describe('content host guard wiring', () => {
 
         expect(deps.sidebarOpen).toBe(true);
         expect(deps.clearSidebarBlockedBadge).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not recreate the host when closing a missing host', async () => {
+        const deps = {
+            sidebarOpen: true,
+            getShadowRoot: () => null,
+            start: vi.fn(),
+            getHostState: () => ({ open: false, pinned: false, url: 'https://example.com', title: 't' })
+        };
+        const { setSidebarOpen } = load(functionCode('setSidebarOpen'), ['setSidebarOpen'])(deps);
+
+        await expect(setSidebarOpen(false)).resolves.toMatchObject({ open: false });
+        expect(deps.start).not.toHaveBeenCalled();
+        expect(deps.sidebarOpen).toBe(false);
+    });
+
+    it('refuses an automatic open after the guard blocked the panel', async () => {
+        const deps = {
+            sidebarOpen: false,
+            getShadowRoot: () => null,
+            hostGuard: { isBlocked: () => true },
+            start: vi.fn()
+        };
+        const { setSidebarOpen } = load(functionCode('setSidebarOpen'), ['setSidebarOpen'])(deps);
+
+        await expect(setSidebarOpen(true)).rejects.toThrow('repeated removals');
+        expect(deps.start).not.toHaveBeenCalled();
+    });
+
+    it('lets a user open recreate the host and restart the guard after a block', async () => {
+        let rootAvailable = false;
+        const container = { classList: { toggle: vi.fn() } };
+        const deps = {
+            sidebarOpen: false,
+            getShadowRoot: () => (rootAvailable ? {} : null),
+            hostGuard: { isBlocked: () => true },
+            start: vi.fn(async () => { rootAvailable = true; }),
+            getSideBar: () => container,
+            getHighestZIndex: () => 1,
+            installResizeHandle: vi.fn(),
+            sidebarFrame: { isConnected: true, src: 'chrome-extension://ext/sidebar.html' },
+            isSidebarFrameUrl: () => true,
+            getOptions: async () => ({}),
+            getMainButton: () => null,
+            sidebarPinned: false,
+            getHostState: () => ({ open: true, pinned: false, url: 'https://example.com', title: 't' }),
+            sidebarReady: false,
+            sendToSidebar: vi.fn(async () => { }),
+            clearSidebarBlockedBadge: vi.fn()
+        };
+        const { setSidebarOpen } = load(functionCode('setSidebarOpen'), ['setSidebarOpen'])(deps);
+
+        await setSidebarOpen(true, true, true, true);
+
+        expect(deps.start).toHaveBeenCalledTimes(1);
+        expect(deps.sidebarOpen).toBe(true);
+        expect(deps.clearSidebarBlockedBadge).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not recreate the host when the iframe unload disconnects the broker', async () => {
+        const port = {};
+        const frame = { isConnected: false, remove: vi.fn() };
+        const deps = {
+            sidebarPort: port,
+            sidebarChannel: {},
+            sidebarReady: true,
+            isElementSelectionActive: false,
+            sidebarFrame: frame,
+            sidebarPortRetryTimer: undefined,
+            clearAllElementDecorations: vi.fn(),
+            getRootElement: () => null,
+            getShadowRoot: () => null,
+            getHostState: () => ({ open: false }),
+            start: vi.fn(),
+            sidebarOpen: true
+        };
+        const source = functionCode('teardownSidebarFrame')
+            + functionCode('handleSidebarPortDisconnect')
+            + functionCode('setSidebarOpen');
+        const { handleSidebarPortDisconnect } = load(source, ['handleSidebarPortDisconnect'])(deps);
+
+        handleSidebarPortDisconnect(port);
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(frame.remove).toHaveBeenCalledTimes(1);
+        expect(deps.start).not.toHaveBeenCalled();
+        expect(deps.sidebarOpen).toBe(true);
+    });
+
+    it('tears down the frame without recreating a host', () => {
+        const frame = { remove: vi.fn() };
+        const deps = {
+            sidebarFrame: frame,
+            setSidebarOpen: vi.fn(async () => { })
+        };
+        const { teardownSidebarFrame } = load(functionCode('teardownSidebarFrame'), ['teardownSidebarFrame'])(deps);
+
+        teardownSidebarFrame();
+
+        expect(frame.remove).toHaveBeenCalledTimes(1);
+        expect(deps.sidebarFrame).toBeUndefined();
+        expect(deps.setSidebarOpen).toHaveBeenCalledWith(false);
     });
 
     it('does not clear the badge when closing', async () => {
