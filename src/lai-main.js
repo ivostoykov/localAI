@@ -2095,15 +2095,26 @@ async function ask2ExplainSelection(response) {
         showMessage('Nothing selected to explain!', 'warning');
         return;
     }
-    const cleanPageText = await getEnhancedPageContent()
-    const theAttachment = {
-      id: crypto.randomUUID(),
-      type: "snippet",
-      content: `SELECTION SNIPPET START:\n${cleanPageText}\nSELECTION SNIPPET END`,
-      filename: 'User Selection'
-    };
-    await addAttachment(theAttachment);
-    showAttachment(theAttachment);
+
+    let cleanPageText = '';
+    try {
+        cleanPageText = (await getEnhancedPageContent()) || '';
+    } catch (error) {
+        logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not extract page context; explaining the selection only`, error?.message);
+    }
+
+    if (cleanPageText) {
+        const pageContextLabel = document.title?.trim() || location.hostname || 'current page';
+        const theAttachment = {
+            id: crypto.randomUUID(),
+            type: "snippet",
+            content: `PAGE CONTEXT START:\n${cleanPageText}\nPAGE CONTEXT END`,
+            filename: `Page context: ${pageContextLabel}`,
+            sourceUrl: location.href
+        };
+        await addAttachment(theAttachment);
+        showAttachment(theAttachment);
+    }
 
     const enterEvent = new KeyboardEvent('keydown', {
         bubbles: true,
@@ -2115,7 +2126,7 @@ async function ask2ExplainSelection(response) {
         await laiSwapSidebarWithButton();
     }
 
-    userInput.value = `Focusing on abbreviations or non common content, explain briefly the meaning of the next snippet:\n- ${selection}`;
+    userInput.value = `Explain the meaning of the selected text below. Use the attached page context only as context for its meaning.\n\n${wrapInTextFence(selection)}`;
     userInput?.dispatchEvent(enterEvent);
 }
 

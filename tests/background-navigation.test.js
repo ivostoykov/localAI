@@ -231,6 +231,23 @@ describe('background.js navigation lifecycle', () => {
         errorSpy.mockRestore();
     });
 
+    it('sends the Explain page-context attachment without tools (#106)', async () => {
+        const { deps } = createDeps([]);
+        const attachment = {
+            id: 'explain-context',
+            type: 'snippet',
+            content: 'PAGE CONTEXT START:\npage text\nPAGE CONTEXT END',
+            filename: 'Page context: Guide'
+        };
+        deps.getSessionForRequest.mockImplementation(async id => ({ id, messages: [], attachments: [attachment], titleGenerated: true }));
+
+        await loadFetchDataAction(deps)({ ...request(), tools: false }, sender);
+
+        const attachments = deps.backgroundMemory.buildOptimisedContext.mock.calls[0][5];
+        expect(attachments).toContainEqual(attachment);
+        expect(deps.fetch.mock.calls[0][1].body).not.toContain('"tools"');
+    });
+
     it('removes terminal state only after a matching acknowledgement', async () => {
         const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
         deps.handleStreamEnd.mockResolvedValueOnce({ requestId: '44444444-4444-4444-8444-444444444444' });

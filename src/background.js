@@ -336,7 +336,7 @@ async function composeContextMenu() {
 
     await chrome.contextMenus.create({
         id: "askAiExplanation",
-        title: "Ask AI to Explain Selected",
+        title: "Explain Selected with Page Context",
         parentId: "sendToLocalAi",
         contexts: ["selection"]
     });
