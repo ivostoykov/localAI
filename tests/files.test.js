@@ -17,7 +17,7 @@ global.manifest = {
 };
 global.getLineNumber = () => 'test';
 
-const executeFilesCode = new Function('chrome', 'manifest', 'getLineNumber', 'crypto', filesCode + '; return { readFileContent };');
+const executeFilesCode = new Function('chrome', 'manifest', 'getLineNumber', 'crypto', filesCode + '; return { readFileContent, addAttachment };');
 
 let readFileContent;
 
@@ -61,4 +61,28 @@ describe('files.js', () => {
             global.FileReader = originalFileReader;
         });
     });
+
+    describe('addAttachment diagnostics (#107)', () => {
+        it('keeps attachment content out of the console unless debugging is on', async () => {
+            const secret = 'SECRET-ATTACHMENT-CONTENT';
+            const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const { addAttachment } = executeFilesCode(global.chrome, global.manifest, global.getLineNumber, global.crypto);
+            global.showMessage = vi.fn();
+            global.getActiveSession = vi.fn(async () => { throw new Error('storage failed'); });
+            const attachment = { filename: 'notes.txt', type: 'text/plain', content: secret };
+
+            globalThis.debugEnabled = false;
+            await addAttachment(attachment);
+            expect(JSON.stringify(errorSpy.mock.calls)).toContain('notes.txt');
+            expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(secret);
+
+            globalThis.debugEnabled = true;
+            await addAttachment(attachment);
+            expect(JSON.stringify(errorSpy.mock.calls)).toContain(secret);
+
+            globalThis.debugEnabled = false;
+            errorSpy.mockRestore();
+        });
+    });
+
 });

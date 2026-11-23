@@ -5,6 +5,20 @@ console.debug = function(...args) {
     originalDebug(...args);
 };
 
+function isDebugEnabled() {
+    return !!debugEnabled;
+}
+
+// Payload-bearing diagnostics stay in the console only while the user has debugging enabled.
+// The summary message is always written so failures remain diagnosable.
+function logDiagnostic(consoleAction, message, ...details) {
+    if (!isDebugEnabled()) {
+        console[consoleAction](message);
+        return;
+    }
+    console[consoleAction](message, ...details);
+}
+
 function setDebugFlag(enabled) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Debugging is now ${enabled ? 'ON' : 'OFF'}.`);
     debugEnabled = enabled;

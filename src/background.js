@@ -800,7 +800,9 @@ async function validateToolCall(call = {}, availableTools) {
     if (!availableTools) { availableTools = await getPromptTools(); }
 
     if (!call?.function?.name || Object.keys(call.function).length < 1) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - call request is null or empty!`, call);
+        const callName = call?.function?.name;
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - call request is null or empty!${callName ? ` Tool: ${callName}` : ''}`);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - call request detail`, call);
         return { isValid: false, reason: "Missing or empty call object!" };
     }
 
@@ -959,7 +961,8 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, na
                 }
                 break;
             default:
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid tool type:`, {
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid tool type: ${toolCall?.function?.type ?? 'unknown'}`);
+                logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid tool type detail`, {
                     toolCallFunctionType: toolCall?.function?.type,
                     toolCallFunctionName: toolCall?.function?.name,
                     funcType,
@@ -984,7 +987,8 @@ async function resolveToolCalls(toolCall, toolBaseUrl, tab, sessionId = null, na
     } catch (err) {
 
         await updateUIStatusBar(`Error occurred while calling ${toolCall.function.name}...`, tab);
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error calling ${toolCall.function.name}`, err, toolCall, res);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error calling ${toolCall.function.name}`, err);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error calling ${toolCall.function.name} detail`, { toolCall, res });
         if (err.name === 'TypeError' && err.message.includes('fetch')) {
             await showUIMessage(`External tools endpoint (${funcUrl}) seems missing to be down!`, "error");
             data = "Tool execution failed — endpoint unavailable.";
@@ -1025,7 +1029,8 @@ async function processCommandPlaceholders(userInputValue, existingAttachments = 
             case 'page': {
                 const freshContent = await callContentScriptExtractor(tabId, 'getEnhancedPageContent', null);
                 if (!freshContent || freshContent.startsWith('Error')) {
-                    console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to extract page content for @{{page}}`, freshContent);
+                    console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to extract page content for @{{page}}`);
+                    logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to extract page content detail`, freshContent);
                 } else {
                     const tab = await chrome.tabs.get(tabId).catch(() => null);
                     const freshHash = await generatePageHash(tab?.url || '', freshContent);
@@ -1533,7 +1538,8 @@ async function fetchDataAction(request, sender) {
                 console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to store turn in memory:`, memoryError);
             }
 
-            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] -  - response body message`, body?.message);
+            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response body message`);
+            logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response body message detail`, body?.message);
             await dumpInFrontConsole(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response body message`, body?.message, 'info', sender?.tab?.id);
             // Only send response to frontend if it has content or tool calls
             // Thinking-only responses are logged in worker console but not displayed
@@ -1564,7 +1570,12 @@ async function fetchDataAction(request, sender) {
             }
         }
         catch (e) {
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e, response, request?.data, responseText);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - error`, e);
+            logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - request/response detail`, {
+                response,
+                requestData: request?.data,
+                responseText
+            });
             // abort(reason) rejects a pending fetch or reader.read() with the bare reason
             // string, which carries no AbortError name.
             if (controller.signal.aborted && e?.name !== 'AbortError') {
@@ -1658,13 +1669,15 @@ async function checkResponseTextAndBody(params){
         "responseText": responseText
     };
     await dumpInFrontConsole(o.message, o, 'log', sender?.tab?.id);
-    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${o.message}`, o);
+    console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${o.message}`);
+    logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty response detail`, o);
     throw new Error(o.message);
 }
 
 async function fetchExtResponse(url, options, resentWithoutTools = true, tab) {
     if (!url || !options.method) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid fetchExtResponse parameters:`, {
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid fetchExtResponse parameters: missing ${!url ? 'URL' : 'method'}`);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid fetchExtResponse detail`, {
             url,
             optionsMethod: options?.method,
             options,
@@ -1692,7 +1705,8 @@ async function fetchExtResponse(url, options, resentWithoutTools = true, tab) {
 
         return response;
     } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - External call to ${url} failed!`, error, options);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - External call to ${url} failed!`, error);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - External call to ${url} detail`, options);
         throw error;
     }
 }
@@ -1709,7 +1723,8 @@ async function convertFileToText(fileAsB64) {
     let url = null;
     if(urlStr && URL.canParse(urlStr)) {  url = URL.parse(urlStr);  }
     if (!url) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing file conversion endpoint`, laiOptions);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing file conversion endpoint: tika`);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing file conversion endpoint detail`, laiOptions);
         await showUIMessage('Missing document converter endpoint!', 'error');
         return '';
     }
@@ -1734,7 +1749,8 @@ async function convertFileToText(fileAsB64) {
         const res = typeof response === 'string' ? response : (typeof response.text === 'function' ? await response.text() : '');
         return res;
     } catch (e) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error fetching text from file: ${e.message}`, e, fileAsB64);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error fetching text from file: ${e.message}`, e);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - File conversion detail`, { fileAsB64 });
         return '';
     }
 }
@@ -1808,7 +1824,9 @@ async function dumpInFrontConsole(message, obj, type = 'log', tabId) {
                 return;
             }
         }
-        await chrome.tabs.sendMessage(tabId, { "action": "dumpInConsole", message: message, obj: JSON.stringify(obj ?? {}), type: type });
+        // The summary stays available with debugging off; only the payload is held back.
+        const serialisedObj = isDebugEnabled() ? JSON.stringify(obj ?? {}) : '';
+        await chrome.tabs.sendMessage(tabId, { "action": "dumpInConsole", message: message, obj: serialisedObj, type: type });
         if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
@@ -2177,7 +2195,8 @@ ${`${text}`.replace(/\s+/g, ' ').trim()}
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - title: ${title}`);
         return title;
     } catch (err) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, {err, res, data, title});
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Title generation detail`, { res, data, title });
         return null;
     }
 }

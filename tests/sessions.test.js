@@ -592,3 +592,34 @@ describe('attachment deletion persistence (#76)', () => {
         expect((await api.getAllSessions())[0].attachments).toEqual([{ id: 'a' }]);
     });
 });
+
+describe('saveSession diagnostics (#107)', () => {
+    it('keeps session messages out of the console unless debugging is on', async () => {
+        const secret = 'SECRET-SESSION-MESSAGE';
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const api = executeSessionsCode(
+            global.chrome,
+            global.manifest,
+            global.getLineNumber,
+            global.allSessionsStorageKey,
+            global.activeSessionIdKey,
+            global.storageUserCommandsKey,
+            global.storageOptionKey,
+            global.activePageStorageKey,
+            []
+        );
+        const session = { messages: [{ role: 'user', content: secret }] };
+
+        globalThis.debugEnabled = false;
+        expect(await api.saveSession(session)).toBe(false);
+        expect(JSON.stringify(errorSpy.mock.calls)).toContain('messages: 1');
+        expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(secret);
+
+        globalThis.debugEnabled = true;
+        expect(await api.saveSession(session)).toBe(false);
+        expect(JSON.stringify(errorSpy.mock.calls)).toContain(secret);
+
+        globalThis.debugEnabled = false;
+        errorSpy.mockRestore();
+    });
+});

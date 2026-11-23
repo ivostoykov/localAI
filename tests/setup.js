@@ -1,4 +1,22 @@
 import { fakeBrowser } from '@webext-core/fake-browser';
+import { afterEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Several suites replace global.console; the diagnostics gate reads it from the
+// global scope, so give every test the native console back afterwards.
+const nativeConsole = global.console;
+afterEach(() => { global.console = nativeConsole; });
+
+// Code evaluated with `new Function` resolves the diagnostics gate from the real
+// jslib/log.js so tests cannot drift from the shipped gate.
+const logSource = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/jslib/log.js'), 'utf-8');
+(0, eval)([
+    'var debugEnabled = false;',
+    logSource.match(/function isDebugEnabled\([\s\S]*?\n}\n/)[0],
+    logSource.match(/function logDiagnostic\([\s\S]*?\n}\n/)[0]
+].join('\n'));
 
 // Mock Chrome extension APIs globally
 global.chrome = fakeBrowser;

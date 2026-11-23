@@ -1,7 +1,8 @@
 async function addAttachment(attachment) {
     try {
         if (!attachment) {
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing or empty attachment parameter!`, attachment);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing or empty attachment parameter!`);
+            logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing attachment detail`, attachment);
             return;
         }
         let activeSession = await getActiveSession();
@@ -13,7 +14,11 @@ async function addAttachment(attachment) {
         await setActiveSession(activeSession);
     } catch (err) {
         showMessage(err.message, 'error');
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error occured while adding attachment: ${err.message}`, err, attachment);
+        const attachmentSummary = [].concat(attachment ?? [])
+            .map(item => `${item?.filename || 'unnamed'} (${item?.type || 'unknown type'}, ${(item?.content || '').length} chars)`)
+            .join('; ');
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error occured while adding attachment: ${err.message}${attachmentSummary ? ` - ${attachmentSummary}` : ''}`, err);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Attachment detail`, attachment);
     }
 }
 

@@ -313,6 +313,10 @@ This will send the content of the page from current active tab to the AI with a 
 
 The `Export All` and `Import All` buttons in the General Settings ribbon move your settings, user prompts and functions together in one file. Chat sessions, caches and other transient data are not included. Importing first validates the whole file, then asks for confirmation, and finally replaces only the collections present in it; anything absent from the file stays as it is. A file that fails validation, or a cancelled confirmation, changes nothing. The per-section buttons are labelled `Export Prompts` / `Import Prompts` and `Export Functions` / `Import Functions`; they continue to handle only their own collection.
 
+### Debug logging
+
+Off by default. When on, the panel's console receives the full request messages, model replies, tool call arguments and results, and document-conversion payloads, alongside the usual diagnostics. When off, only summary messages are written: which operation failed, the error name or message, and an HTTP status. Message contents, request and reply bodies, tool arguments and file contents are not serialised, forwarded to the page or written to the console. The setting is read live, so turning it off stops new payloads immediately without reloading the page.
+
 ### Allow navigation
 
 Off by default. The built-in `browse_url` tool lets the model open a link in a separate, inactive background tab and read its content; your current tab, its form state and the chat are not changed. While this option is off, a small Local AI pop-up window asks before every page the model wants to open (the chat status bar points to it). The question is asked in an extension window rather than in the chat panel, because the visited page can read and change the panel's content:
