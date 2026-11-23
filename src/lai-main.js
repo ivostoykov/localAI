@@ -1229,7 +1229,7 @@ function laiExtractDataFromResponse(response) {
     } catch (err) {
         showMessage(err.message, 'error');
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing response`, response);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing response`, response);
         return '';
     }
 
@@ -1248,7 +1248,8 @@ function laiExtractDataFromResponse(response) {
     }
 
     if(!response.model || !response.message || !fullContent){
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Wrong response`, response);
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Wrong response`);
+        logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Wrong response detail`, response);
     }
 
     setModelNameLabel(response?.model ?? 'unknown');
@@ -1347,7 +1348,8 @@ function parseFinalStreamResponse(response = {}) {
     try {
         const parsed = JSON.parse(response.response);
         if (isValidFinalStreamMessage(parsed?.message)) { return parsed; }
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Final streamed response has no valid message; using streamed content`, parsed);
+        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Final streamed response has no valid message; using streamed content`);
+        logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Final streamed response detail`, parsed);
         return null;
     } catch (err) {
         console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Final streamed response could not be parsed; using streamed content`, err);
@@ -1852,7 +1854,8 @@ async function messageProcessor(response, sender) {
                 await handleStreamDataMessage(response);
             } catch (err) {
                 streamDataError = err;
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err, response);
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
+                logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - stream message detail`, response);
             }
             break;
         case "streamAbort":
@@ -1861,7 +1864,8 @@ async function messageProcessor(response, sender) {
             try {
                 await finaliseStreamRecipient(recipient, response);
             } catch (error) {
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to finalise streamed response`, error, response);
+                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to finalise streamed response`, error);
+                logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to finalise streamed response detail`, response);
                 showMessage(`Failed to render the response as markdown - ${error.message}`, 'warning');
             }
             activeStreamRequestId = null;
@@ -1877,7 +1881,7 @@ async function messageProcessor(response, sender) {
             const cleanedSelection = getSelectionText(response);
             if (!cleanedSelection) {
                 showMessage('Element picked up successfully.', 'info')
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
+                logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selection is missing or empty!`, response);
                 break;
             }
 
@@ -1897,7 +1901,7 @@ async function messageProcessor(response, sender) {
             const insertedSelection = getSelectionText(response);
             if (!insertedSelection) {
                 showMessage('Element picked up successfully.', 'info')
-                console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selection is missing or empty!: `, response);
+                logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Selection is missing or empty!`, response);
                 break;
             }
             const isSidebarActive = getSideBar()?.classList.contains('active');
@@ -2044,7 +2048,7 @@ async function handleContentExtractorCall(response) {
 async function ask2ExplainSelection(response) {
     if (!response) {
         showMessage('Nothing received to explain!', 'warning');
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response: `, response);
+        logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - response: `, response);
         return;
     }
 
@@ -2515,9 +2519,12 @@ function micClicked(e) {
 function dumpInConsole(message = '', obj, consoleAction = 'log') {
     try {
         obj = obj && typeof (obj) === 'string' ? JSON.parse(obj) : obj;
-        if (message) {
+        if (!message) { return; }
+        if (isDebugEnabled() && obj) {
             console[consoleAction](message, obj);
+            return;
         }
+        console[consoleAction](message);
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error parsing JSON or logging message: ${error.message}`, error);
     }

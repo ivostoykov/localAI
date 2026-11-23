@@ -199,6 +199,38 @@ describe('background.js navigation lifecycle', () => {
         expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError', requestId: '33333333-3333-4333-8333-333333333333' }));
     });
 
+    it('keeps request and response payloads out of the console unless debugging is on (#107)', async () => {
+        const secret = 'SECRET-REQUEST-RESPONSE-VALUE';
+        const { deps } = createDeps([]);
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const deliverThenFail = () => {
+            deps.consumeStreamResponse.mockResolvedValueOnce({
+                responseText: JSON.stringify({ message: { content: secret } }),
+                body: { message: { role: 'assistant', content: secret } }
+            });
+            deps.handleStreamEnd.mockRejectedValueOnce(new Error('delivery failed'));
+        };
+
+        globalThis.debugEnabled = false;
+        deliverThenFail();
+        const failed = await loadFetchDataAction(deps)({ ...request(), data: { userInput: secret } }, sender);
+        expect(failed.status).toBe('error');
+        expect(errorSpy.mock.calls.some(args => String(args[0]).includes(' - error'))).toBe(true);
+        expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('SECRET-REQUEST-RESPONSE-VALUE');
+
+        globalThis.debugEnabled = true;
+        deliverThenFail();
+        await loadFetchDataAction(deps)({ ...request(), data: { userInput: secret } }, sender);
+        expect(JSON.stringify(errorSpy.mock.calls)).toContain('SECRET-REQUEST-RESPONSE-VALUE');
+
+        globalThis.debugEnabled = false;
+        errorSpy.mockClear();
+        deliverThenFail();
+        await loadFetchDataAction(deps)({ ...request(), data: { userInput: secret } }, sender);
+        expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('SECRET-REQUEST-RESPONSE-VALUE');
+        errorSpy.mockRestore();
+    });
+
     it('removes terminal state only after a matching acknowledgement', async () => {
         const { deps } = createDeps([{ message: { role: 'assistant', content: 'Answer' } }]);
         deps.handleStreamEnd.mockResolvedValueOnce({ requestId: '44444444-4444-4444-8444-444444444444' });
