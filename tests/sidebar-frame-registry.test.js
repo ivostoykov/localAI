@@ -128,6 +128,20 @@ describe('SidebarFrameRegistry confirm', () => {
         await expect(registry.confirm(sender)).resolves.toEqual({ ok: false, reason: 'bad-sender' });
     });
 
+    it('lets exactly one of two concurrent confirms win', async () => {
+        const { registry, storage } = createRegistry();
+        await registry.register(topFrameSender());
+
+        const replies = await Promise.all([
+            registry.confirm(sidebarFrameSender()),
+            registry.confirm(sidebarFrameSender())
+        ]);
+
+        expect(replies.filter(reply => reply.ok)).toHaveLength(1);
+        expect(replies.find(reply => !reply.ok)).toEqual({ ok: false, reason: 'consumed' });
+        expect(storage.entries['sidebarFrameReg:7'].consumed).toBe(true);
+    });
+
     it('rejects a tab without a registration', async () => {
         const { registry } = createRegistry();
 
@@ -173,6 +187,9 @@ describe('attachSidebarFrameCleanup', () => {
         };
     }
 
+    // Cleanup listeners fire and forget; the queued removal settles on the next turn.
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
     async function registeredRegistry() {
         const context = createRegistry();
         await context.registry.register(topFrameSender());
@@ -185,6 +202,7 @@ describe('attachSidebarFrameCleanup', () => {
         attachSidebarFrameCleanup(registry, tabs);
 
         tabs.listeners.removed(7);
+        await flush();
 
         expect(storage.entries['sidebarFrameReg:7']).toBeUndefined();
     });
@@ -195,6 +213,7 @@ describe('attachSidebarFrameCleanup', () => {
         attachSidebarFrameCleanup(registry, tabs);
 
         tabs.listeners.updated(7, { status: 'loading' });
+        await flush();
 
         expect(storage.entries['sidebarFrameReg:7']).toBeUndefined();
     });
@@ -210,6 +229,7 @@ describe('attachSidebarFrameCleanup', () => {
         attachSidebarFrameCleanup(registry, tabs);
 
         tabs.listeners.updated(7, changeInfo);
+        await flush();
 
         expect(storage.entries['sidebarFrameReg:7']).toEqual({ createdAt: 1000, consumed: false });
     });

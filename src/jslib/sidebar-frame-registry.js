@@ -38,10 +38,25 @@ class SidebarFrameRegistry {
         this.sidebarUrl = sidebarUrl;
         this.now = now;
         this.ttl = ttl;
+        this.queues = new Map(); // per-tab promise chain; storage reads and writes must not interleave
     }
 
     key(tabId) {
         return `${laiSidebarFrameRegPrefix}${tabId}`;
+    }
+
+    // Runs one registry operation at a time per tab. The background handles messages
+    // concurrently, so two confirms could otherwise both read `consumed: false`.
+    enqueue(tabId, operation) {
+        const key = String(tabId);
+        const previous = this.queues.get(key) ?? Promise.resolve();
+        const result = previous.then(operation, operation);
+        const tail = result.then(() => undefined, () => undefined);
+        this.queues.set(key, tail);
+        tail.then(() => {
+            if (this.queues.get(key) === tail) { this.queues.delete(key); }
+        });
+        return result;
     }
 
     async get(tabId) {
@@ -87,8 +102,10 @@ class SidebarFrameRegistry {
             return { ok: false, reason: 'bad-sender' };
         }
 
-        await this.storage.set({ [this.key(tabId)]: { createdAt: this.now(), consumed: false } });
-        return { ok: true };
+        return this.enqueue(tabId, async () => {
+            await this.storage.set({ [this.key(tabId)]: { createdAt: this.now(), consumed: false } });
+            return { ok: true };
+        });
     }
 
     async confirm(sender) {
@@ -98,24 +115,28 @@ class SidebarFrameRegistry {
             return { ok: false, reason: 'bad-sender' };
         }
 
-        const record = await this.get(tabId);
-        if (!record) { return { ok: false, reason: 'no-registration' }; }
-        if (record.consumed) { return { ok: false, reason: 'consumed' }; }
-        if (!Number.isFinite(record.createdAt) || this.now() - record.createdAt > this.ttl) {
-            return { ok: false, reason: 'expired' };
-        }
+        return this.enqueue(tabId, async () => {
+            const record = await this.get(tabId);
+            if (!record) { return { ok: false, reason: 'no-registration' }; }
+            if (record.consumed) { return { ok: false, reason: 'consumed' }; }
+            if (!Number.isFinite(record.createdAt) || this.now() - record.createdAt > this.ttl) {
+                return { ok: false, reason: 'expired' };
+            }
 
-        await this.storage.set({ [this.key(tabId)]: { ...record, consumed: true, consumedAt: this.now() } });
-        return { ok: true, tabId };
+            await this.storage.set({ [this.key(tabId)]: { ...record, consumed: true, consumedAt: this.now() } });
+            return { ok: true, tabId };
+        });
     }
 
     async remove(tabId) {
         if (tabId == null) { return; }
-        try {
-            await this.storage?.remove?.(this.key(tabId));
-        } catch (error) {
-            console.warn('>>> Failed to remove the sidebar frame registration', error);
-        }
+        return this.enqueue(tabId, async () => {
+            try {
+                await this.storage?.remove?.(this.key(tabId));
+            } catch (error) {
+                console.warn('>>> Failed to remove the sidebar frame registration', error);
+            }
+        });
     }
 }
 
