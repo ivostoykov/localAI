@@ -35,6 +35,7 @@
                 "jslib/content-cleaner.js",
                 "jslib/li-extractor.js",
                 "jslib/content-extractor.js",
+                "jslib/host-guard.js",
                 "jslib/page-snapshot.js",
                 "jslib/sidebar-port.js",
                 "content.js"

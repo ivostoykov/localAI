@@ -1073,6 +1073,7 @@ function setSessionRowAccessibleNames(row, title) {
 async function deleteAllHistorySessionsClicked(e) {
     e.stopPropagation();
     e.stopImmediatePropagation();
+    if (typeof sidebarActionAllowed === 'function' && !sidebarActionAllowed()) { return; }
     const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
     try {
         await recycleAllSessions();

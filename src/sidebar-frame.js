@@ -1,6 +1,10 @@
 let sidebarChannel;
 let sidebarTabId;
 let streamQueue = Promise.resolve();
+let sidebarGeneration = 0;
+let sidebarDraft;
+let sidebarVisibility;
+let sidebarReconnector;
 
 async function getMyTabId() {
     return sidebarTabId;
@@ -12,6 +16,11 @@ function getSideBar() { return getRootElement(); }
 
 async function applySidebarState(state) {
     const sidebar = getSideBar();
+    if (!sidebar) { return; }
+
+    if (sidebarVisibility) {
+        if (state.open) { void sidebarVisibility.enable(); } else { sidebarVisibility.disable(); }
+    }
     if (sidebar.classList.contains('active') === state.open) { return; }
 
     const revision = ++panelViewRevision;
@@ -20,7 +29,10 @@ async function applySidebarState(state) {
     if (!state.open) { clearChatHistoryUI(); }
     await reportTabBinding({ panelOpen: state.open });
     if (state.open && revision === panelViewRevision) {
-        if (state.restoreHistory !== false) { await restoreTabSessionFromBackground(); }
+        if (state.restoreHistory !== false) {
+            await restoreTabSessionFromBackground();
+            await sidebarDraft?.load();
+        }
         if (revision === panelViewRevision) { sidebar.querySelector('#laiUserInput')?.focus(); }
     }
 }
@@ -62,6 +74,73 @@ function processSidebarRequest(action, payload) {
     }
 }
 
+function guardSidebarAction(action) {
+    if (!sidebarVisibility) {
+        action();
+        return true;
+    }
+    return sidebarVisibility.guard(action);
+}
+
+// Precondition form for handlers that keep their body: shows the blocked message
+// and returns false when the sidebar is not fully visible.
+function sidebarActionAllowed() {
+    return guardSidebarAction(() => true);
+}
+
+async function clearSidebarDraft() {
+    await sidebarDraft?.clear();
+}
+
+function connectSidebarPort() {
+    const generation = ++sidebarGeneration;
+    const port = chrome.runtime.connect({ name: 'localai-sidebar' });
+    const channel = createSidebarChannel(port, processSidebarRequest, () => {
+        if (generation !== sidebarGeneration) { return; }
+        sidebarChannel = undefined;
+        void sidebarReconnector?.schedule();
+    });
+    sidebarChannel = channel;
+    return channel;
+}
+
+async function connectAndSynchronise({ initial }) {
+    const channel = connectSidebarPort();
+    if (initial) {
+        await getAiUserCommands();
+        await initSidebar(Date.now() + 3000);
+    } else {
+        await channel.request('catchUp', { restore: true });
+    }
+    await applySidebarState(await channel.request('getHostState'));
+    await applySidebarState(await channel.request('ready'));
+    await sidebarDraft?.load();
+    sidebarReconnector?.reset();
+}
+
+function installSidebarListeners() {
+    chrome.storage.onChanged.addListener(reconcileActiveSessionWithStorage);
+    chrome.storage.onChanged.addListener(onModelOptionsChanged);
+
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || event.defaultPrevented || !sidebarChannel) { return; }
+        void sidebarChannel.request('escape').then(applySidebarState).catch(console.debug);
+    });
+
+    document.addEventListener('input', event => {
+        if (event.target?.id !== 'laiUserInput') { return; }
+        void sidebarDraft?.save(event.target.value);
+    });
+
+    document.addEventListener('laiActiveSessionChanged', () => {
+        void sidebarDraft?.switchSession();
+    });
+
+    window.addEventListener('pagehide', () => {
+        void sidebarDraft?.flush();
+    });
+}
+
 async function startSidebarFrame() {
     const confirmation = await chrome.runtime.sendMessage({ action: 'confirmSidebarFrame' });
     if (!confirmation?.ok || !Number.isInteger(confirmation.tabId)) {
@@ -70,23 +149,22 @@ async function startSidebarFrame() {
     }
 
     sidebarTabId = confirmation.tabId;
-    const port = chrome.runtime.connect({ name: 'localai-sidebar' });
-    sidebarChannel = createSidebarChannel(port, processSidebarRequest, showSidebarConnectionFailure);
-    await getAiUserCommands();
-    await initSidebar(Date.now() + 3000);
-    await applySidebarState(await sidebarChannel.request('getHostState'));
-    await applySidebarState(await sidebarChannel.request('ready'));
-    chrome.storage.onChanged.addListener(reconcileActiveSessionWithStorage);
-    chrome.storage.onChanged.addListener(onModelOptionsChanged);
-    port.onDisconnect.addListener(() => {
-        chrome.storage.onChanged.removeListener(reconcileActiveSessionWithStorage);
-        chrome.storage.onChanged.removeListener(onModelOptionsChanged);
+    sidebarDraft = createSidebarDraftController({ tabId: sidebarTabId });
+    sidebarVisibility = createSidebarVisibilityController({
+        getRoot: () => document.getElementById('laiSidebar'),
+        showMessage: (message, type) => showMessage(message, type)
     });
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && !event.defaultPrevented) {
-            void sidebarChannel.request('escape').then(applySidebarState).catch(console.debug);
-        }
+    sidebarReconnector = createSidebarReconnector({
+        isConfirmed: async () => {
+            const status = await chrome.runtime.sendMessage({ action: 'isSidebarFrameConfirmed' });
+            return status?.confirmed === true;
+        },
+        connect: () => connectAndSynchronise({ initial: false }),
+        onFailed: showSidebarConnectionFailure
     });
+
+    await connectAndSynchronise({ initial: true });
+    installSidebarListeners();
 }
 
 startSidebarFrame().catch(error => {

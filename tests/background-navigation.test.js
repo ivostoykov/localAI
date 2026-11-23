@@ -103,6 +103,7 @@ function createDeps(bodies) {
         disposeNavigationSession: vi.fn(async (session) => { session.disposed = true; }),
         handleNavigationTabRemoved: vi.fn(async () => undefined),
         removeActiveSessionPageData: vi.fn(async () => undefined),
+        removeDraftsForTab: vi.fn(async () => undefined),
         activePageStorageKey: 'LAI_ACTIVE_PAGE'
     };
     return { deps, sessions };

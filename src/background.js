@@ -19,12 +19,15 @@ importBackgroundScript('jslib/model-catalogue.js');
 importBackgroundScript('jslib/stream-request-state.js');
 importBackgroundScript('jslib/tab-state.js');
 importBackgroundScript('jslib/sidebar-frame-registry.js');
+importBackgroundScript('jslib/draft-store.js');
+importBackgroundScript('jslib/sidebar-badge.js');
 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
 const tabState = new TabStateStore(); // per-tab session binding, background-owned (#40)
 const liveStreamStates = new Map(); // authoritative in-memory streamState per live requestId (#40)
 const sidebarFrameRegistry = new SidebarFrameRegistry(); // one-shot iframe confirmation per tab (#104)
+const sidebarBadgeApi = chrome.action;
 
 chrome.runtime.onConnect.addListener(createSidebarPortBroker(sidebarFrameRegistry, chrome.tabs));
 
@@ -73,6 +76,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     controllers.delete(tabId);
     await streamRequestState?.removeForTab(tabId);
     await tabState?.remove(tabId);
+    await removeDraftsForTab(chrome.storage.session, tabId);
     await handleNavigationTabRemoved(tabId);
     await removeActiveSessionPageData(tabId);
 
@@ -102,6 +106,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 });
 
 attachSidebarFrameCleanup(sidebarFrameRegistry);
+attachSidebarBadgeCleanup(sidebarBadgeApi, chrome.tabs);
 
 function isOptionsPageSender(sender) {
     const optionsUrl = chrome.runtime.getURL('options.html');
@@ -161,6 +166,17 @@ async function handleRuntimeMessage(request, sender) {
             }
             return confirmation;
         }
+
+        case 'isSidebarFrameConfirmed':
+            return { confirmed: await sidebarFrameRegistry.isConfirmedSender(sender) };
+
+        case 'sidebarBlocked':
+            await setSidebarBlockedBadge(sidebarBadgeApi, tabId);
+            return { ok: true };
+
+        case 'clearSidebarBlocked':
+            await clearSidebarBlockedBadge(sidebarBadgeApi, tabId);
+            return { ok: true };
 
         case 'removeStreamRequestState':
             return await removeStreamRequestStateForSender(request, sender);

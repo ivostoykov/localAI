@@ -117,6 +117,26 @@ describe('createDraftStore', () => {
         expect(storage.set).not.toHaveBeenCalled();
     });
 
+    it('flushes a pending draft immediately and cancels the debounce', async () => {
+        const { store, storage, clock, key } = createStore();
+
+        store.save('now');
+        await store.flush();
+
+        expect(storage.set).toHaveBeenCalledTimes(1);
+        expect(storage.entries[key]).toBe('now');
+        clock.advance(300);
+        expect(storage.set).toHaveBeenCalledTimes(1);
+    });
+
+    it('flushes nothing when no draft is pending', async () => {
+        const { store, storage } = createStore();
+
+        await store.flush();
+
+        expect(storage.set).not.toHaveBeenCalled();
+    });
+
     it('does nothing without a tab or session', () => {
         const storage = createStorage();
         const clock = createClock();

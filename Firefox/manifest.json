@@ -19,6 +19,8 @@
       "jslib/stream-request-state.js",
       "jslib/tab-state.js",
       "jslib/sidebar-frame-registry.js",
+      "jslib/draft-store.js",
+      "jslib/sidebar-badge.js",
       "background-memory.js",
       "jslib/sessions.js",
       "jslib/session-repository.js",
@@ -41,6 +43,7 @@
         "jslib/content-cleaner.js",
         "jslib/li-extractor.js",
         "jslib/content-extractor.js",
+        "jslib/host-guard.js",
         "jslib/page-snapshot.js",
         "jslib/sidebar-port.js",
         "content.js"

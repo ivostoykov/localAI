@@ -4,6 +4,16 @@ if(typeof manifest === 'undefined'){
 
 // Each sidebar (content-script instance) owns its active session; it is never shared through storage (#29).
 var laiActiveSessionId = null;
+
+// The iframe uses this to rebind its draft store when the active session changes.
+function notifyActiveSessionChanged(sessionId) {
+    if (typeof document === 'undefined' || typeof CustomEvent !== 'function' || !document?.dispatchEvent) { return; }
+    try {
+        document.dispatchEvent(new CustomEvent('laiActiveSessionChanged', { detail: { sessionId } }));
+    } catch (error) {
+        console.debug('>>> Failed to announce the active session change', error);
+    }
+}
 // Serialises read-modify-write of the session catalogue within one script realm (the background serves every tab).
 var laiSessionMutationQueue = Promise.resolve();
 
@@ -121,7 +131,10 @@ function notifyTabBindingChanged(sessionId) {
 async function deleteActiveSessionId() {
     const hadSession = !!laiActiveSessionId;
     laiActiveSessionId = null;
-    if (hadSession) { notifyTabBindingChanged(null); }
+    if (hadSession) {
+        notifyTabBindingChanged(null);
+        notifyActiveSessionChanged(null);
+    }
 }
 
 async function clearLegacyActiveSessionId() {
@@ -232,7 +245,7 @@ async function setActiveSessionId(sessionId) {
         }
         const changed = laiActiveSessionId !== sessionId;
         laiActiveSessionId = sessionId;
-        if (changed) { notifyTabBindingChanged(sessionId); }
+        if (changed) { notifyTabBindingChanged(sessionId); notifyActiveSessionChanged(sessionId); }
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - setActiveSessionId error: ${error.message}`, error);
     }

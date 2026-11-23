@@ -146,10 +146,12 @@ describe('createHostGuard', () => {
             clock.advance(delay);
         }
 
+        expect(guard.isBlocked()).toBe(false);
         host.isConnected = false;
         observers[0].callback([{ type: 'childList' }]);
         expect(notifyBlocked).toHaveBeenCalledTimes(1);
         expect(observers[0].disconnected).toBe(true);
+        expect(guard.isBlocked()).toBe(true);
         expect(remount).toHaveBeenCalledTimes(5);
 
         observers[0].callback([{ type: 'childList' }]);

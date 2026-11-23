@@ -61,7 +61,7 @@ describe('sidebar port', () => {
         const connectCode = hostCode.slice(hostCode.indexOf('function isSidebarBackgroundSender'), hostCode.indexOf('async function sendToSidebar'));
         new Function('chrome', 'manifest', 'createSidebarChannel', `
             let sidebarFrame = { isConnected: true };
-            let sidebarPort, sidebarChannel, sidebarFrameTimer;
+            let sidebarPort, sidebarChannel, sidebarFrameTimer, sidebarPortRetryTimer;
             ${connectCode}
         `)(chrome, manifest, createSidebarChannel);
         for (const sender of [

@@ -114,17 +114,21 @@ function hideLocalAIForImageCapture(rect) {
     ? getSideBar().getBoundingClientRect() : (getMainButton() ?? host).getBoundingClientRect();
   const overlaps = hostRect.left < rect.right && hostRect.right > rect.x && hostRect.top < rect.bottom && hostRect.bottom > rect.y;
   if (!overlaps) { return { hidden: false }; }
-  host.dataset.contextCaptureDisplay = host.style.display;
-  host.style.display = 'none';
-  return { hidden: true };
+  return withHostGuardSuspended(() => {
+    host.dataset.contextCaptureDisplay = host.style.display;
+    host.style.display = 'none';
+    return { hidden: true };
+  });
 }
 
 function restoreLocalAIAfterImageCapture() {
   const host = getRootElement();
   if (!host || !Object.hasOwn(host.dataset, 'contextCaptureDisplay')) { return false; }
-  host.style.display = host.dataset.contextCaptureDisplay;
-  delete host.dataset.contextCaptureDisplay;
-  return true;
+  return withHostGuardSuspended(() => {
+    host.style.display = host.dataset.contextCaptureDisplay;
+    delete host.dataset.contextCaptureDisplay;
+    return true;
+  });
 }
 
 function handleTabSessionPageShow(event) {
@@ -223,6 +227,8 @@ async function init() {
     const hostStyle = document.createElement('style');
     hostStyle.textContent = sidebarHostCss;
     sidebarRoot.appendChild(hostStyle);
+    withHostGuardSuspended(() => applyCriticalHostStyles(localAI));
+    startHostGuard();
   } catch (err) {
     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error initiating the extension UI: ${err.message}`, err);
   }
@@ -765,13 +771,68 @@ const sidebarHostCss = `
 `;
 
 let sidebarFrame;
+let sidebarOpen = false;
+let hostGuard;
+let hostGuardSuspended = false;
 let sidebarPort;
+let sidebarPortRetryTimer;
 let sidebarChannel;
 let sidebarPinned = false;
 let sidebarReady = false;
 let sidebarMount;
 let sidebarFrameTimer;
 let sidebarFrameCanRetry = false;
+
+function withHostGuardSuspended(operation) {
+  hostGuardSuspended = true;
+  try { return operation(); } finally { hostGuardSuspended = false; }
+}
+
+function isHostGuardSuspended() { return hostGuardSuspended; }
+
+function isHostTamperedNow() {
+  return !hostGuardSuspended && isHostTamperedByDefault(getRootElement());
+}
+
+function startHostGuard() {
+  if (hostGuard?.isBlocked?.()) {
+    hostGuard.stop();
+    hostGuard = null;
+  }
+  if (hostGuard) { hostGuard.start(); return; }
+
+  hostGuard = createHostGuard({
+    getHost: () => getRootElement(),
+    remount: () => {
+      void remountSidebarHost().catch(error => console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to recreate the sidebar host: ${error.message}`, error));
+    },
+    notifyBlocked: () => {
+      void chrome.runtime.sendMessage({ action: 'sidebarBlocked' }).catch(error => console.debug('Failed to report the blocked sidebar.', error));
+    },
+    isHostTampered: isHostTamperedNow,
+    debug: (...args) => console.debug(...args)
+  });
+  hostGuard.start();
+}
+
+async function remountSidebarHost() {
+  const shouldOpen = sidebarOpen;
+  try {
+    await init();
+    if (shouldOpen) { await setSidebarOpen(true); }
+  } finally {
+    hostGuard?.start();
+    hostGuard?.onRemounted();
+  }
+}
+
+async function clearSidebarBlockedBadge() {
+  try {
+    await chrome.runtime.sendMessage({ action: 'clearSidebarBlocked' });
+  } catch (error) {
+    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to clear the sidebar badge`, error);
+  }
+}
 
 function getHostState() {
   return {
@@ -862,6 +923,8 @@ async function setSidebarOpen(open, restoreHistory = true, notify = true) {
     }
   }
   container?.classList.toggle('active', open);
+  sidebarOpen = open;
+  if (open) { void clearSidebarBlockedBadge(); }
   const options = await getOptions();
   getMainButton()?.classList.toggle('invisible', open || !options?.showEmbeddedButton);
   const state = { ...getHostState(), restoreHistory };
@@ -898,6 +961,7 @@ chrome.runtime.onConnect.addListener(port => {
   }
   sidebarPort = port;
   clearTimeout(sidebarFrameTimer);
+  clearTimeout(sidebarPortRetryTimer);
   sidebarChannel = createSidebarChannel(port, async (action, payload) => {
     switch (action) {
       case 'getHostState': return getHostState();
@@ -914,17 +978,37 @@ chrome.runtime.onConnect.addListener(port => {
       default: throw new Error('Unknown page operation.');
     }
   }, () => {
-    if (sidebarPort !== port) { return; }
-    sidebarPort = undefined;
-    sidebarChannel = undefined;
-    sidebarReady = false;
-    isElementSelectionActive = false;
-    clearAllElementDecorations();
-    sidebarFrame?.remove();
-    sidebarFrame = undefined;
-    void setSidebarOpen(false).catch(console.error);
+    handleSidebarPortDisconnect(port);
   });
 });
+
+function teardownSidebarFrame() {
+  sidebarFrame?.remove();
+  sidebarFrame = undefined;
+  void setSidebarOpen(false).catch(console.error);
+}
+
+function handleSidebarPortDisconnect(port) {
+  if (sidebarPort !== port) { return; }
+  sidebarPort = undefined;
+  sidebarChannel = undefined;
+  sidebarReady = false;
+  isElementSelectionActive = false;
+  clearAllElementDecorations();
+  clearTimeout(sidebarPortRetryTimer);
+
+  if (!sidebarFrame?.isConnected) {
+    teardownSidebarFrame();
+    return;
+  }
+
+  // The background broker may have stopped with the service worker. Keep the
+  // iframe mounted so it can reconnect; a real teardown still closes the panel.
+  sidebarPortRetryTimer = setTimeout(() => {
+    if (sidebarPort) { return; }
+    teardownSidebarFrame();
+  }, 6000);
+}
 
 async function sendToSidebar(action, payload, waitForReady = false) {
   if (waitForReady) {

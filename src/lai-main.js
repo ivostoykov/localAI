@@ -628,6 +628,7 @@ async function onPromptTextAreaKeyDown(e) {
             showMessage('It looks like there is no propt yet.', 'warning');
             return;
         }
+        if (typeof sidebarActionAllowed === 'function' && !sidebarActionAllowed()) { return; }
 
         const userInput = await stripDebugCommands(elTarget.value.trim()) ?? "";
         if(!userInput) {
@@ -1140,6 +1141,7 @@ async function queryAI(userInput) {
         streamResyncInFlight = false;
         await reportTabBinding({ sessionId });
         updateStatusBar('Prompt sent to the model, awaiting response...');
+        if (typeof clearSidebarDraft === 'function') { await clearSidebarDraft(); }
         const response = await chrome.runtime.sendMessage(requestData);
         if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
 

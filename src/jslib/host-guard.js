@@ -134,6 +134,10 @@ function createHostGuard({
         onRemounted() {
             attempt = 0;
             observeHostAttributes();
+        },
+
+        isBlocked() {
+            return blocked;
         }
     };
 }

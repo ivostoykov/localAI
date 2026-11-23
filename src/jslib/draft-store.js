@@ -72,6 +72,20 @@ function createDraftStore({
             } catch (error) {
                 console.warn('>>> Failed to clear the sidebar draft', error);
             }
+        },
+
+        // Writes a pending draft immediately; the iframe calls it on pagehide so a
+        // host removal does not lose the last keystrokes before the debounce fires.
+        async flush() {
+            if (timer == null) { return; }
+            cancel();
+            const draft = pendingText;
+            pendingText = null;
+            try {
+                await write(draft);
+            } catch (error) {
+                console.warn('>>> Failed to save the sidebar draft', error);
+            }
         }
     };
 }

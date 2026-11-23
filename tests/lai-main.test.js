@@ -57,7 +57,7 @@ const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingP
 const frameCode = fs.readFileSync('src/sidebar-frame.js', 'utf8');
 const viewCode = frameCode.slice(frameCode.indexOf('async function applySidebarState'), frameCode.indexOf('function showSidebarConnectionFailure'));
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-    tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + viewCode + laiMainExports
+    tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + '\nlet sidebarVisibility; let sidebarDraft;\n' + viewCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId, getActiveStreamRequestId, isMessagePersistable;
