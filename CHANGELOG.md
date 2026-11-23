@@ -1,5 +1,12 @@
 # Local AI - Changelog
 
+## [1.31.0] - unreleased
+
+### Changes
+
+- The sidebar now opens in its own extension frame, keeping chat history and typing separate from the web page (#104).
+- The sidebar frame is the only extension resource that web pages can load (#102).
+
 ## [1.30.25] - 2026-11-23 - latest
 
 ### Changes
