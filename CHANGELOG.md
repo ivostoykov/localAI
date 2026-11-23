@@ -5,7 +5,10 @@
 ### Changes
 
 - The sidebar now opens in its own extension frame, keeping chat history and typing separate from the web page (#104).
-- The sidebar frame is the only extension resource that web pages can load (#102).
+- The sidebar frame is the only extension resource that web pages can load. Chrome gives it a dynamic URL (#102).
+- Local AI recreates the panel if a page removes or hides it and keeps your unsent prompt. Repeated removals delay retries and eventually stop them, with a `!` on the toolbar icon (#104).
+- In Chrome, Enter and Delete All are blocked while the panel is covered. Firefox lacks the visibility detection used for this check (#104).
+- The panel attempts to reconnect when the extension background restarts (#104).
 
 ## [1.30.25] - 2026-11-23 - latest
 

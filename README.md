@@ -16,6 +16,7 @@ If you value privacy but still want the power of LLMs, LocalAI is for you. There
 ### Key Benefits:
 
 * **Local Control:** Your data stays on your device—no sharing or storing of your actions. You control what to keep or delete.
+* **Isolated Sidebar:** Chat history and prompt typing stay inside the extension frame. See [The panel](documentation.md#the-panel) for recovery and browser differences.
 * **Task Assistance:** Need summaries or quick insights? LocalAI helps with tasks using the information in your active tab.
 * **Attach Images:** Right-click an image and choose **Local AI → Attach Image** to attach a screenshot of its visible area. Only the viewport is captured at screen resolution; iframe images and off-screen portions are not included.
 * **Web Search:** The AI can use your configured search provider in a temporary background tab. The Local AI pop-up shows the exact query and provider before sending it. One approval covers the search and its result pages. Captcha or consent pages stay open for you to resolve.
