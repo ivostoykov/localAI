@@ -71,6 +71,28 @@ describe('decision-model options', () => {
         });
     });
 
+    it('preserves legacy link permission until the web access checkbox is changed and saved', async () => {
+        await fakeBrowser.storage.sync.set({ laiOptions: { allowNavigation: true } });
+        const { window, document, api } = loadOptions();
+        const form = document.getElementById('laiOptionsForm');
+        const webAccess = document.getElementById('allowNavigation');
+        const save = () => api.saveSettings({ preventDefault() {}, target: form });
+        const permission = async () => (await fakeBrowser.storage.sync.get('laiOptions')).laiOptions;
+
+        await save();
+        expect(await permission()).toMatchObject({ allowNavigation: true, webAccessIncludesSearch: false });
+
+        webAccess.checked = true;
+        webAccess.dispatchEvent(new window.Event('change'));
+        await save();
+        expect(await permission()).toMatchObject({ allowNavigation: true, webAccessIncludesSearch: true });
+
+        webAccess.checked = false;
+        webAccess.dispatchEvent(new window.Event('change'));
+        await save();
+        expect(await permission()).toMatchObject({ allowNavigation: false, webAccessIncludesSearch: false });
+    });
+
     it('attaches decision-model button handlers before availability is known', async () => {
         const { document, api, sendMessage } = loadOptions();
         const reload = document.querySelector('#decisionModelButtons [data-action="reload"]');

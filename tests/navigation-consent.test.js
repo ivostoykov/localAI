@@ -11,7 +11,7 @@ const consentCode = read('src/navigation-consent.js');
 
 // jsdom cannot create trusted events, so interaction tests can opt into treating dispatched events as user input.
 // The script is evaluated after the document has loaded, so its DOMContentLoaded hook stays idle and tests call init themselves.
-async function loadConsentPage({ trustEvents = false, response = { status: 'ok', url: 'https://example.com/jobs/<img src=x onerror=alert(1)>' } } = {}) {
+async function loadConsentPage({ trustEvents = false, response = { status: 'ok', kind: 'navigate', url: 'https://example.com/jobs/<img src=x onerror=alert(1)>' } } = {}) {
     const dom = new JSDOM(consentHtml, { url: 'chrome-extension://test-extension/navigation-consent.html?requestId=req-1' });
     const { window } = dom;
     if (window.document.readyState !== 'complete') {
@@ -66,9 +66,23 @@ describe('navigation-consent page', () => {
         const urlEl = document.getElementById('consentUrl');
         expect(urlEl.textContent).toBe('https://example.com/jobs/<img src=x onerror=alert(1)>');
         expect(urlEl.children).toHaveLength(0);
-        expect(document.getElementById('consentNote').textContent).toMatch(/"Allow always" also turns on "Allow navigation"/);
-        expect([...document.querySelectorAll('#consentButtons button')].map(b => b.textContent)).toEqual(['Allow always', 'Allow this time', 'Cancel']);
+        expect(document.getElementById('consentNote').textContent).toMatch(/The full URL may contain conversation content/);
+        expect([...document.querySelectorAll('#consentButtons button')].map(b => b.textContent)).toEqual(['Always allow', 'Allow once', 'Cancel']);
         expect(document.activeElement?.id).toBe('consentOnce');
+    });
+
+    it('renders search disclosure and the legacy grant as literal text', async () => {
+        const query = '  <img src=x onerror=alert(1)> & exact query  ';
+        const { document, init } = await loadConsentPage({
+            response: { status: 'ok', kind: 'search', query, provider: 'DuckDuckGo',
+                host: 'duckduckgo.com', legacyNavigationGrant: true }
+        });
+        await init();
+        expect(document.getElementById('consentUrl').textContent).toBe(query);
+        expect(document.getElementById('consentUrl').children).toHaveLength(0);
+        expect(document.getElementById('consentProvider').textContent).toBe('Search provider: DuckDuckGo (duckduckgo.com)');
+        expect(document.getElementById('consentNote').textContent).toContain('sent to the search provider');
+        expect(document.getElementById('consentLegacy').classList.contains('invisible')).toBe(false);
     });
 
     it('shows an error and no choices when the background rejects the request', async () => {

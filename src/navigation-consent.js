@@ -80,12 +80,28 @@ async function initNavigationConsent() {
         console.error('Failed to load the navigation consent request', err);
     }
 
-    if (response?.status !== 'ok' || typeof response?.url !== 'string') {
+    const isSearch = response?.kind === 'search';
+    const isNavigation = response?.kind === 'navigate';
+    const validSearch = isSearch && ['query', 'provider', 'host'].every(key => typeof response[key] === 'string');
+    const validNavigation = isNavigation && typeof response.url === 'string';
+    if (response?.status !== 'ok' || (!validSearch && !validNavigation)) {
         showConsentError();
         return;
     }
 
-    document.getElementById('consentUrl').textContent = response.url;
+    document.getElementById('consentTitle').textContent = isSearch
+        ? 'Search the web with this query?'
+        : 'Open this page in a background tab?';
+    document.getElementById('consentUrl').textContent = isSearch ? response.query : response.url;
+    document.getElementById('consentNote').textContent = isSearch
+        ? 'The query may contain conversation content. It will be sent to the search provider, and Local AI will open result pages.'
+        : 'The full URL may contain conversation content. Opening it sends a request to the destination site.';
+    if (isSearch) {
+        const provider = document.getElementById('consentProvider');
+        provider.textContent = `Search provider: ${response.provider} (${response.host})`;
+        provider.classList.remove('invisible');
+    }
+    document.getElementById('consentLegacy').classList.toggle('invisible', !response.legacyNavigationGrant);
     document.querySelectorAll('#consentButtons button').forEach(btn => {
         btn.addEventListener('click', (e) => {
             if (isTrustedUserEvent(e) && isConsentInputReady()) { sendConsentChoice(btn.dataset.choice); }

@@ -91,6 +91,10 @@ document.addEventListener('changesSaved', () => {
     btn.textContent = "Close";
 });
 
+document.getElementById('allowNavigation')?.addEventListener('change', e => {
+    e.target.dataset.permissionChanged = 'true';
+});
+
 document.getElementById('laiOptionsForm').addEventListener('submit', async e => await saveSettings(e));
 setTimeout(() => {
     document.getElementById('laiOptionsForm').addEventListener('input', () => {
@@ -170,6 +174,11 @@ async function loadSettings(e) {
             }
         });
 
+        const webAccess = document.getElementById('allowNavigation');
+        if (webAccess) {
+            webAccess.indeterminate = formData.allowNavigation === true && formData.webAccessIncludesSearch !== true;
+        }
+
         document.getElementById("tempInput").dispatchEvent(new Event('input', { bubbles: true }));
 
     } catch (err) {
@@ -236,8 +245,20 @@ async function saveSettings(e) {
             optionsData[list] = attributeValues ?? [];
         }
 
+        const webAccess = elements.namedItem('allowNavigation');
+        if (webAccess) {
+            if (webAccess.dataset.permissionChanged === 'true') {
+                optionsData.webAccessIncludesSearch = webAccess.checked;
+            } else {
+                const { laiOptions } = await chrome.storage.sync.get('laiOptions');
+                optionsData.allowNavigation = laiOptions?.allowNavigation === true;
+                optionsData.webAccessIncludesSearch = laiOptions?.webAccessIncludesSearch === true;
+            }
+        }
+
         console.debug(`>>> [${getLineNumber()}] - Options Data:`, optionsData);
         await chrome.storage.sync.set({ 'laiOptions': optionsData });
+        if (webAccess) { delete webAccess.dataset.permissionChanged; }
         showMessage('Settings saved', 'success');
         document.dispatchEvent(new CustomEvent('changesSaved'));
     } catch (err) {

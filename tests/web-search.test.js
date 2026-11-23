@@ -19,8 +19,11 @@ const moduleCode = `
     ${searchEnginesCode}
     var DEFAULT_SEARCH_ENGINE = 'duckduckgo';
     var DEFAULT_SEARCH_RESULT_COUNT = 3;
+    const requestWebAccessConsent = async () => ({ granted: true });
+    const throwIfNavigationCancelled = async () => {};
     ${webSearchCode}
-    return { waitForTabLoad, extractSerpUrls, isCaptchaOrConsentPage, fetchPageSummary, searchWeb };
+    return { waitForTabLoad, extractSerpUrls, isCaptchaOrConsentPage, fetchPageSummary,
+        searchWeb: (query, originTabId) => searchWeb(query, { originTabId }) };
 `;
 
 const { waitForTabLoad, extractSerpUrls, isCaptchaOrConsentPage, fetchPageSummary, searchWeb } =

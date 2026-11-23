@@ -9,6 +9,10 @@ const pageNavigationCode = fs.readFileSync(
     'utf-8'
 );
 
+const searchCode = ['search-engines.js', 'web-search.js'].map(file =>
+    fs.readFileSync(path.join(__dirname, '../src/jslib', file), 'utf-8')
+).join('\n');
+
 const LONG_CONTENT = `# Job advert\n\n${'Senior engineer role with details. '.repeat(20)}\n[Apply](https://example.com/apply)`;
 
 function createChromeFake() {
@@ -141,9 +145,12 @@ function loadModule(chrome, callContentScriptExtractor, askDecision) {
     return new Function(
         'chrome', 'callContentScriptExtractor', 'manifest', 'getLineNumber', 'storageOptionKey', 'askDecision',
         `${pageNavigationCode}
+        const DEFAULT_SEARCH_ENGINE = 'duckduckgo';
+        const DEFAULT_SEARCH_RESULT_COUNT = 3;
+        ${searchCode}
         return { validateNavigationUrl, createNavigationSession, disposeNavigationSession, handleNavigationTabRemoved,
             requestNavigationConsent, handleNavigationConsentMessage, handleNavigationConsentWindowRemoved, pendingNavigationConsents,
-            watchOwnedTabLoad, loadUrlInOwnedTab, inspectNavigationContentState, waitForNavigationContent, browseUrl, navigationSessions,
+            watchOwnedTabLoad, loadUrlInOwnedTab, inspectNavigationContentState, waitForNavigationContent, browseUrl, searchWeb, navigationSessions,
             NAVIGATION_BUSY_SELECTORS };`
     )(chrome, callContentScriptExtractor, { name: 'Local AI helper' }, () => 'test', 'laiOptions', askDecision || (async () => null));
 }
@@ -176,6 +183,105 @@ describe('page-navigation.js', () => {
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
+    });
+
+    describe('shared search consent', () => {
+        const query = ' exact <b>query</b> & details ';
+        const search = () => nav.searchWeb(query, nav.createNavigationSession(1, null));
+        const respond = (choice) => helpers.answerConsent(helpers.consentRequests.at(-1), choice);
+
+        beforeEach(() => {
+            helpers.consentChoice = null;
+            chrome.scripting.executeScript.mockResolvedValue([]);
+        });
+
+        it.each(['cancel', 'closed', 'timeout'])('prevents outbound activity after %s', async outcome => {
+            const result = search();
+            await vi.advanceTimersByTimeAsync(0);
+            expect(chrome.tabs.create).not.toHaveBeenCalled();
+            if (outcome === 'cancel') {
+                await respond('cancel');
+            } else if (outcome === 'closed') {
+                await chrome.windows.remove([...helpers.windows.keys()][0]);
+            } else {
+                await vi.advanceTimersByTimeAsync(120000);
+            }
+            await expect(result).resolves.toMatch(/Search was not performed: .* Do not retry this search unless the user asks/);
+            expect(chrome.tabs.create).not.toHaveBeenCalled();
+            expect(chrome.tabs.update).not.toHaveBeenCalled();
+            expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+        });
+
+        it('displays the exact query and provider, rejects a forged answer, and covers results with one approval', async () => {
+            chrome.scripting.executeScript.mockResolvedValueOnce([{ result: 'Results' }])
+                .mockResolvedValueOnce([{ result: ['https://example.com/result'] }]);
+            chrome.tabs.sendMessage.mockImplementation(async (_, message) =>
+                message.action === 'callContentExtractor' ? { result: 'Result content' } : undefined);
+            const result = search();
+            await vi.advanceTimersByTimeAsync(0);
+            const requestId = helpers.consentRequests.at(-1);
+            const win = [...helpers.windows.values()][0];
+            const sender = { id: 'test-extension', url: win.url, tab: { id: win.tabId, windowId: win.id } };
+
+            await expect(nav.handleNavigationConsentMessage({ action: 'getNavigationConsentRequest', requestId }, sender))
+                .resolves.toEqual({ status: 'ok', kind: 'search', query, provider: 'DuckDuckGo', host: 'duckduckgo.com', legacyNavigationGrant: false });
+            await expect(helpers.answerConsent(requestId, 'allow', { tab: { id: 1, windowId: 9 } }))
+                .resolves.toEqual({ status: 'rejected' });
+            expect(chrome.tabs.create).not.toHaveBeenCalled();
+            await respond('once');
+            await expect(runWithTimers(result)).resolves.toContain('Result content');
+            expect(chrome.tabs.create).toHaveBeenCalledOnce();
+            expect(chrome.windows.create).toHaveBeenCalledOnce();
+            expect(chrome.tabs.update.mock.calls.map(([, props]) => props.url)).toEqual([
+                `https://duckduckgo.com/?q=${encodeURIComponent(query)}&ia=web`,
+                'https://example.com/result'
+            ]);
+            expect(helpers.syncStore.laiOptions).toBeUndefined();
+
+            const next = search();
+            await vi.advanceTimersByTimeAsync(0);
+            expect(chrome.windows.create).toHaveBeenCalledTimes(2);
+            await respond('cancel');
+            await next;
+        });
+
+        it.each(['once', 'cancel', 'allow'])('keeps legacy link access and handles search choice %s', async choice => {
+            helpers.syncStore.laiOptions = { allowNavigation: true };
+            const session = nav.createNavigationSession(1, null);
+            await expect(nav.requestNavigationConsent(session, 'https://example.com/')).resolves.toMatchObject({ choice: 'setting' });
+            expect(chrome.windows.create).not.toHaveBeenCalled();
+
+            const first = search();
+            await vi.advanceTimersByTimeAsync(0);
+            const win = [...helpers.windows.values()][0];
+            await expect(nav.handleNavigationConsentMessage({ action: 'getNavigationConsentRequest', requestId: win.requestId },
+                { id: 'test-extension', url: win.url, tab: { id: win.tabId, windowId: win.id } }))
+                .resolves.toMatchObject({ legacyNavigationGrant: true });
+            await respond(choice);
+            await runWithTimers(first);
+
+            if (choice === 'allow') {
+                expect(helpers.syncStore.laiOptions).toEqual({ allowNavigation: true, webAccessIncludesSearch: true });
+                await expect(runWithTimers(search())).resolves.toContain('No results found');
+                await expect(nav.requestNavigationConsent(session, 'https://example.com/')).resolves.toMatchObject({ choice: 'setting' });
+                expect(chrome.windows.create).toHaveBeenCalledOnce();
+            } else {
+                expect(helpers.syncStore.laiOptions).toEqual({ allowNavigation: true });
+                const next = search();
+                await vi.advanceTimersByTimeAsync(0);
+                expect(chrome.windows.create).toHaveBeenCalledTimes(2);
+                await respond('cancel');
+                await next;
+            }
+        });
+
+        it('skips search prompts after an Always allow choice for navigation', async () => {
+            helpers.consentChoice = 'allow';
+            const session = nav.createNavigationSession(1, null);
+            await runWithTimers(nav.requestNavigationConsent(session, 'https://example.com/'));
+            await expect(runWithTimers(search())).resolves.toContain('No results found');
+            expect(chrome.windows.create).toHaveBeenCalledOnce();
+        });
     });
 
     describe('validateNavigationUrl', () => {
@@ -223,7 +329,7 @@ describe('page-navigation.js', () => {
             const sender = { id: 'test-extension', url: win.url, tab: { id: win.tabId, windowId: win.id } };
 
             await expect(nav.handleNavigationConsentMessage({ action: 'getNavigationConsentRequest', requestId }, sender))
-                .resolves.toEqual({ status: 'ok', url: 'https://example.com/<b>x</b>' });
+                .resolves.toEqual({ status: 'ok', kind: 'navigate', url: 'https://example.com/<b>x</b>', legacyNavigationGrant: false });
             await expect(nav.handleNavigationConsentMessage({ action: 'getNavigationConsentRequest', requestId }, { ...sender, tab: { id: 1, windowId: 9 } }))
                 .resolves.toEqual({ status: 'rejected' });
 
@@ -276,7 +382,7 @@ describe('page-navigation.js', () => {
             const session = nav.createNavigationSession(1, null);
 
             await expect(runWithTimers(nav.requestNavigationConsent(session, 'https://example.com/'))).resolves.toEqual({ granted: true, choice: 'allow' });
-            expect(helpers.syncStore.laiOptions).toEqual({ aiUrl: 'http://x/api/chat', aiModel: 'm', debug: true, allowNavigation: true });
+            expect(helpers.syncStore.laiOptions).toEqual({ aiUrl: 'http://x/api/chat', aiModel: 'm', debug: true, allowNavigation: true, webAccessIncludesSearch: true });
         });
 
         it('Allow this time does not change the setting or cover a later request', async () => {

@@ -112,9 +112,13 @@ async function fetchPageSummary(searchTabId, url) {
     }
 }
 
-async function searchWeb(query, originatingTabId) {
-    if (!query?.trim()) {
+async function searchWeb(query, session) {
+    if (typeof query !== 'string' || !query.trim()) {
         return 'No search query provided.';
+    }
+
+    if (!session) {
+        return 'Search was not performed: no active model request. Do not retry this search unless the user asks for it.';
     }
 
     const stored = await chrome.storage.sync.get('laiOptions');
@@ -122,8 +126,17 @@ async function searchWeb(query, originatingTabId) {
     const engine = opts.searchEngine || DEFAULT_SEARCH_ENGINE;
     const maxResults = Math.min(Number(opts.searchResultCount) || DEFAULT_SEARCH_RESULT_COUNT, 5);
 
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - searchWeb:`, { query, engine, maxResults });
+    const serpUrl = getSearchUrl(engine, query);
+    const engineName = getEngineConfig(engine).name;
+    const consent = await requestWebAccessConsent(session, {
+        kind: 'search', query, provider: engineName, host: new URL(serpUrl).host
+    });
+    if (!consent.granted) {
+        return `Search was not performed: ${consent.reason}. Do not retry this search unless the user asks for it.`;
+    }
+    await throwIfNavigationCancelled(session);
 
+    const originatingTabId = session.originTabId;
     let searchTabId;
     let keepSearchTab = false;
     try {
@@ -134,7 +147,7 @@ async function searchWeb(query, originatingTabId) {
     }
 
     try {
-        const serpUrl = getSearchUrl(engine, query);
+        await throwIfNavigationCancelled(session);
         try {
             const loadPromise = waitForTabLoad(searchTabId);
             await chrome.tabs.update(searchTabId, { url: serpUrl });
@@ -169,6 +182,7 @@ async function searchWeb(query, originatingTabId) {
 
         const summaries = [];
         for (const url of resultUrls) {
+            await throwIfNavigationCancelled(session);
             const { content } = await fetchPageSummary(searchTabId, url);
             if (content?.trim()) {
                 const summary = content.length > SEARCH_SUMMARY_MAX_CHARS
@@ -184,10 +198,10 @@ async function searchWeb(query, originatingTabId) {
             return `Found ${resultUrls.length} result(s) for "${query}" but could not extract content from any of them.\n\nURLs found:\n${urlList}`;
         }
 
-        const engineName = getEngineConfig(engine).name;
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - searchWeb complete:`, { engine: engineName, summaries: summaries.length });
         return `# Web Search: "${query}"\nEngine: ${engineName}\n\n${summaries.join('\n\n---\n\n')}`;
     } catch (err) {
+        if (err?.name === 'AbortError') { throw err; }
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Search failed unexpectedly:`, err);
         return `Search failed: ${err.message}`;
     } finally {
