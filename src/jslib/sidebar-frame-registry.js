@@ -123,9 +123,18 @@ class SidebarFrameRegistry {
                 return { ok: false, reason: 'expired' };
             }
 
-            await this.storage.set({ [this.key(tabId)]: { ...record, consumed: true, consumedAt: this.now() } });
+            await this.storage.set({ [this.key(tabId)]: { ...record, consumed: true, consumedAt: this.now(), frameId: sender.frameId, documentId: sender.documentId ?? null } });
             return { ok: true, tabId };
         });
+    }
+
+    async isConfirmedSender(sender) {
+        const tabId = sidebarFrameTabId(sender);
+        if (tabId == null || !Number.isInteger(sender.frameId) || sender.frameId <= 0
+            || !this.isOwnSender(sender) || !this.isSidebarUrl(sender.url)) { return false; }
+        const record = await this.get(tabId);
+        return record?.consumed === true && record.frameId === sender.frameId
+            && (record.documentId == null || record.documentId === sender.documentId);
     }
 
     async remove(tabId) {
@@ -150,4 +159,68 @@ function attachSidebarFrameCleanup(registry, tabs = chrome?.tabs) {
         if (changeInfo?.status !== 'loading') { return; }
         registry.remove(tabId);
     });
+}
+
+
+function createSidebarPortBroker(registry, tabs) {
+    const activeTabs = new Set();
+
+    return async function brokerSidebarPort(framePort) {
+        if (framePort.name !== 'localai-sidebar') { return; }
+
+        const tabId = sidebarFrameTabId(framePort.sender);
+        if (tabId == null || activeTabs.has(tabId)) {
+            framePort.disconnect();
+            return;
+        }
+
+        let pagePort;
+        let disconnected = false;
+        let reserved = false;
+        const queued = [];
+
+        function disconnect() {
+            if (disconnected) { return; }
+            disconnected = true;
+            if (reserved) { activeTabs.delete(tabId); }
+            queued.length = 0;
+            pagePort?.disconnect();
+            framePort.disconnect();
+        }
+
+        function forward(port, message) {
+            try {
+                port.postMessage(message);
+            } catch {
+                disconnect();
+            }
+        }
+
+        framePort.onDisconnect.addListener(disconnect);
+        framePort.onMessage.addListener(message => {
+            if (disconnected) { return; }
+            if (pagePort) { forward(pagePort, message); }
+            else if (queued.length < 16) { queued.push(message); }
+            else { disconnect(); }
+        });
+
+        try {
+            if (!await registry.isConfirmedSender(framePort.sender) || activeTabs.has(tabId)) {
+                disconnect();
+                return;
+            }
+            if (disconnected) { return; }
+            activeTabs.add(tabId);
+            reserved = true;
+            pagePort = tabs.connect(tabId, { frameId: 0, name: framePort.name });
+            pagePort.onDisconnect.addListener(disconnect);
+            pagePort.onMessage.addListener(message => {
+                if (!disconnected) { forward(framePort, message); }
+            });
+            for (const message of queued) { forward(pagePort, message); }
+            queued.length = 0;
+        } catch {
+            disconnect();
+        }
+    };
 }

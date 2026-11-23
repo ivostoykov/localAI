@@ -70,7 +70,7 @@ async function startSidebarFrame() {
     }
 
     sidebarTabId = confirmation.tabId;
-    const port = chrome.tabs.connect(sidebarTabId, { frameId: 0, name: 'localai-sidebar' });
+    const port = chrome.runtime.connect({ name: 'localai-sidebar' });
     sidebarChannel = createSidebarChannel(port, processSidebarRequest, showSidebarConnectionFailure);
     await getAiUserCommands();
     await initSidebar(Date.now() + 3000);

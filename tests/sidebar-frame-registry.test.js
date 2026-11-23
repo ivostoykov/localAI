@@ -5,9 +5,9 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(__dirname, '../src/jslib/sidebar-frame-registry.js'), 'utf8');
-const loadModule = new Function('chrome', `${source}; return { SidebarFrameRegistry, attachSidebarFrameCleanup };`);
+const loadModule = new Function('chrome', `${source}; return { SidebarFrameRegistry, attachSidebarFrameCleanup, createSidebarPortBroker };`);
 
-const { SidebarFrameRegistry, attachSidebarFrameCleanup } = loadModule({});
+const { SidebarFrameRegistry, attachSidebarFrameCleanup, createSidebarPortBroker } = loadModule({});
 
 function createStorage(entries = {}) {
     return {
@@ -92,7 +92,7 @@ describe('SidebarFrameRegistry confirm', () => {
 
         now = 2500;
         await expect(registry.confirm(sidebarFrameSender())).resolves.toEqual({ ok: true, tabId: 7 });
-        expect(storage.entries['sidebarFrameReg:7']).toEqual({ createdAt: 1000, consumed: true, consumedAt: 2500 });
+        expect(storage.entries['sidebarFrameReg:7']).toEqual({ createdAt: 1000, consumed: true, consumedAt: 2500, frameId: 3, documentId: null });
 
         await expect(registry.confirm(sidebarFrameSender())).resolves.toEqual({ ok: false, reason: 'consumed' });
     });
@@ -232,5 +232,93 @@ describe('attachSidebarFrameCleanup', () => {
         await flush();
 
         expect(storage.entries['sidebarFrameReg:7']).toEqual({ createdAt: 1000, consumed: false });
+    });
+});
+
+function mockPort(sender) {
+    function event() {
+        const listeners = [];
+        return {
+            addListener: listener => listeners.push(listener),
+            emit: message => listeners.forEach(listener => listener(message))
+        };
+    }
+    return {
+        name: 'localai-sidebar',
+        sender,
+        onMessage: event(),
+        onDisconnect: event(),
+        postMessage: vi.fn(),
+        disconnect: vi.fn()
+    };
+}
+
+describe('sidebar port broker', () => {
+    async function setup(confirm = true) {
+        const { registry } = createRegistry();
+        const sender = sidebarFrameSender({ documentId: 'confirmed-document' });
+        await registry.register(topFrameSender());
+        if (confirm) { await registry.confirm(sender); }
+        const pagePort = mockPort();
+        const tabs = { connect: vi.fn(() => pagePort) };
+        return { broker: createSidebarPortBroker(registry, tabs), sender, pagePort, tabs };
+    }
+
+    it.each([
+        { tab: { id: 8 } },
+        { frameId: 4 },
+        { id: 'other' },
+        { url: 'chrome-extension://ext/options.html' },
+        { documentId: 'different-document' }
+    ])('rejects a sender that does not match the confirmed sidebar: %j', async override => {
+        const { broker, sender, tabs } = await setup();
+        const port = mockPort({ ...sender, ...override });
+        await broker(port);
+        expect(port.disconnect).toHaveBeenCalledOnce();
+        expect(tabs.connect).not.toHaveBeenCalled();
+    });
+
+    it('rejects a frame that has not confirmed', async () => {
+        const { broker, sender, tabs } = await setup(false);
+        const port = mockPort(sender);
+        await broker(port);
+        expect(port.disconnect).toHaveBeenCalledOnce();
+        expect(tabs.connect).not.toHaveBeenCalled();
+    });
+
+    it('admits only one concurrent port and relays messages in both directions unchanged', async () => {
+        const { broker, sender, tabs, pagePort } = await setup();
+        const port = mockPort(sender);
+        const duplicate = mockPort(sender);
+        const first = broker(port);
+        const second = broker(duplicate);
+        const request = { id: 1, action: 'getHostState' };
+        port.onMessage.emit(request);
+        await Promise.all([first, second]);
+        expect(tabs.connect).toHaveBeenCalledExactlyOnceWith(7, { frameId: 0, name: 'localai-sidebar' });
+        expect(duplicate.disconnect).toHaveBeenCalledOnce();
+        expect(pagePort.postMessage).toHaveBeenCalledExactlyOnceWith(request);
+        const reply = { id: 1, ok: true, result: { open: true } };
+        pagePort.onMessage.emit(reply);
+        expect(port.postMessage).toHaveBeenCalledExactlyOnceWith(reply);
+    });
+
+    it.each(['frame', 'page'])('disconnects the other endpoint when the %s disconnects', async endpoint => {
+        const { broker, sender, pagePort, tabs } = await setup();
+        const port = mockPort(sender);
+        await broker(port);
+        (endpoint === 'frame' ? port : pagePort).onDisconnect.emit();
+        expect((endpoint === 'frame' ? pagePort : port).disconnect).toHaveBeenCalledOnce();
+        await broker(mockPort(sender));
+        expect(tabs.connect).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not connect a port that closed during authentication', async () => {
+        const { broker, sender, tabs } = await setup();
+        const port = mockPort(sender);
+        const pending = broker(port);
+        port.onDisconnect.emit();
+        await pending;
+        expect(tabs.connect).not.toHaveBeenCalled();
     });
 });

@@ -755,8 +755,8 @@ const sidebarHostCss = `
 
 #laiSidebar { position: fixed; inset: 0 0 0 auto; width: min(800px, 30vw); height: 100vh;
   box-sizing: border-box; border: 5px double #c3c3c3; background: white; }
-.lai-semi-sphere-button { background: white; box-sizing: border-box; }
-.img-btn { width: 30px; height: 38px; vertical-align: middle; }
+.lai-semi-sphere-button { background: white; }
+.img-btn { width: 55px; height: 60px; vertical-align: middle; }
 .invisible { display: none !important; }
 #laiSidebar:not(.active) { visibility: hidden; pointer-events: none; }
 #laiSidebar iframe { display: block; border: 0; width: 100%; height: 100%; }
@@ -881,9 +881,17 @@ async function handleSidebarEscape(notify = true) {
   return getHostState();
 }
 
+function isSidebarBackgroundSender(sender) {
+  if (sender?.id !== chrome.runtime.id || sender.tab != null) { return false; }
+  const backgroundPath = manifest.background?.service_worker
+    ?? manifest.background?.page
+    ?? '_generated_background_page.html';
+  return sender.url === chrome.runtime.getURL(backgroundPath);
+}
+
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== 'localai-sidebar') { return; }
-  if (port.sender?.id !== chrome.runtime.id || !isSidebarFrameUrl(port.sender.url) ||
+  if (!isSidebarBackgroundSender(port.sender) ||
       !sidebarFrame?.isConnected || sidebarPort) {
     port.disconnect();
     return;

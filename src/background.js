@@ -26,6 +26,8 @@ const tabState = new TabStateStore(); // per-tab session binding, background-own
 const liveStreamStates = new Map(); // authoritative in-memory streamState per live requestId (#40)
 const sidebarFrameRegistry = new SidebarFrameRegistry(); // one-shot iframe confirmation per tab (#104)
 
+chrome.runtime.onConnect.addListener(createSidebarPortBroker(sidebarFrameRegistry, chrome.tabs));
+
 importBackgroundScript('jslib/log.js');
 importBackgroundScript('background-memory.js');
 importBackgroundScript('jslib/sessions.js');

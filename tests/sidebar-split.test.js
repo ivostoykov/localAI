@@ -52,31 +52,29 @@ describe('sidebar port', () => {
         expect(onDisconnect).toHaveBeenCalledOnce();
     });
 
-    it('accepts only the extension sidebar sender while a host frame is mounted', () => {
+    it.each(['background.js', '_generated_background_page.html'])('accepts only the background sender at %s', backgroundPath => {
         const onConnect = event();
-        const chrome = { runtime: { id: 'test', getURL: () => 'chrome-extension://dynamic/sidebar.html', onConnect } };
+        const getURL = path => `chrome-extension://test/${path}`;
+        const chrome = { runtime: { id: 'test', getURL, onConnect } };
+        const manifest = { background: backgroundPath === 'background.js' ? { service_worker: backgroundPath } : { scripts: ['background.js'] } };
         const createSidebarChannel = vi.fn();
-        const urlCode = hostCode.slice(hostCode.indexOf('function isSidebarFrameUrl'), hostCode.indexOf('function installResizeHandle'));
-        const connectCode = hostCode.slice(hostCode.indexOf('chrome.runtime.onConnect.addListener'), hostCode.indexOf('async function sendToSidebar'));
-        new Function('chrome', 'createSidebarChannel', `
+        const connectCode = hostCode.slice(hostCode.indexOf('function isSidebarBackgroundSender'), hostCode.indexOf('async function sendToSidebar'));
+        new Function('chrome', 'manifest', 'createSidebarChannel', `
             let sidebarFrame = { isConnected: true };
             let sidebarPort, sidebarChannel, sidebarFrameTimer;
-            ${urlCode}
             ${connectCode}
-        `)(chrome, createSidebarChannel);
+        `)(chrome, manifest, createSidebarChannel);
         for (const sender of [
-            { id: 'test', url: 'https://example.org/sidebar.html' },
-            { id: 'other', url: 'chrome-extension://test/sidebar.html' },
-            { id: 'test', url: 'chrome-extension://test/options.html' }
+            { id: 'test', url: getURL('sidebar.html'), tab: { id: 42 } },
+            { id: 'test', url: getURL(backgroundPath), tab: { id: 42 } },
+            { id: 'other', url: getURL(backgroundPath) },
+            { id: 'test', url: getURL('options.html') }
         ]) {
             const port = { name: 'localai-sidebar', sender, disconnect: vi.fn() };
             onConnect.emit(port);
             expect(port.disconnect).toHaveBeenCalledOnce();
         }
-        const good = {
-            name: 'localai-sidebar', sender: { id: 'test', url: 'chrome-extension://dynamic/sidebar.html' },
-            disconnect: vi.fn()
-        };
+        const good = { name: 'localai-sidebar', sender: { id: 'test', url: getURL(backgroundPath) }, disconnect: vi.fn() };
         onConnect.emit(good);
         expect(good.disconnect).not.toHaveBeenCalled();
         expect(createSidebarChannel).toHaveBeenCalledExactlyOnceWith(good, expect.any(Function), expect.any(Function));
@@ -160,10 +158,9 @@ it('starts the actual sidebar scripts and renders the prompt only after host con
     const extensionEvent = { addListener: vi.fn(), removeListener: vi.fn() };
     window.chrome = {
         runtime: {
-            id: 'test', getManifest: () => ({ name: 'Local AI', version: '1.31.0' }),
+            id: 'test', connect, getManifest: () => ({ name: 'Local AI', version: '1.31.0' }),
             getURL: path => `chrome-extension://test/${path}`, sendMessage
         },
-        tabs: { connect, query: vi.fn() },
         storage: {
             onChanged: extensionEvent,
             local: { get: localRead, remove: vi.fn() },
@@ -179,7 +176,7 @@ it('starts the actual sidebar scripts and renders the prompt only after host con
         expect(localRead).not.toHaveBeenCalled();
         confirm({ ok: true, tabId: 42 });
         await vi.waitFor(() => expect(window.document.getElementById('laiSidebar').hidden).toBe(false));
-        expect(connect).toHaveBeenCalledExactlyOnceWith(42, { frameId: 0, name: 'localai-sidebar' });
+        expect(connect).toHaveBeenCalledExactlyOnceWith({ name: 'localai-sidebar' });
         expect(window.document.getElementById('laiUserInput')).toBeTruthy();
         expect(sendMessage).toHaveBeenCalledWith({ action: 'updateTabState', panelOpen: true });
     } finally {
