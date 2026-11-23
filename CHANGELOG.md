@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.22] - 2026-11-23 - latest
+## [1.30.23] - 2026-11-23 - latest
+
+### Fixes
+
+- `Explain Selected with Page Context` sends the selection as the subject of the question in its own `text` block, with the page attached separately as labelled page context. The selection is no longer labelled as a page snippet, and the page context still reaches the model with tools off. If the page cannot be extracted, the selection is explained without the attachment (#106).
+
+## [1.30.22] - 2026-11-23
 
 ### Fixes
 
