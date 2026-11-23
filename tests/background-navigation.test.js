@@ -129,7 +129,7 @@ describe('background.js navigation lifecycle', () => {
         expect(result.status).toBe('success');
         expect(deps.saveSession).toHaveBeenCalledTimes(2);
         expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'complete' }), true);
-        expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError' }));
+        expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError' }), { frameId: 0 });
     });
 
     it('checkpoints aborted state after receiver loss', async () => {
@@ -186,8 +186,8 @@ describe('background.js navigation lifecycle', () => {
 
         await expect(pending).resolves.toEqual({ status: 'aborted', message: 'User aborted last request.' });
         expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'aborted' }), true);
-        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'streamAbort', requestId });
-        expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError' }));
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, { action: 'streamAbort', requestId }, { frameId: 0 });
+        expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError' }), { frameId: 0 });
     });
 
     it('records genuine errors and sends a request-scoped stream error', async () => {
@@ -196,7 +196,7 @@ describe('background.js navigation lifecycle', () => {
         const result = await loadFetchDataAction(deps)({ ...request(), requestId: '33333333-3333-4333-8333-333333333333' }, sender);
         expect(result.status).toBe('error');
         expect(deps.streamRequestState.checkpoint).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'error', error: 'model failed' }), true);
-        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError', requestId: '33333333-3333-4333-8333-333333333333' }));
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamError', requestId: '33333333-3333-4333-8333-333333333333' }), { frameId: 0 });
     });
 
     it('keeps request and response payloads out of the console unless debugging is on (#107)', async () => {
@@ -338,7 +338,7 @@ describe('background.js navigation lifecycle', () => {
         const result = await fetchDataAction(request(), sender);
 
         expect(result.status).toBe('aborted');
-        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamAbort' }));
+        expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamAbort' }), { frameId: 0 });
         expect(deps.chrome.tabs.sendMessage).toHaveBeenCalledTimes(1);
         expect(deps.disposeNavigationSession).toHaveBeenCalledWith(sessions[0]);
         expect(sessions[0].signal.aborted).toBe(true);
@@ -668,7 +668,7 @@ describe('background.js navigation lifecycle', () => {
             expect(result.status).toBe('success');
             expect(deps.backgroundMemory.storeTurnWithEmbeddings).toHaveBeenCalledTimes(1);
             expect(deps.generateAndUpdateSessionTitle).not.toHaveBeenCalled();
-            expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamAbort' }));
+            expect(deps.chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'streamAbort' }), { frameId: 0 });
         });
 
         it('does not persist tool results when the origin closes during a tool call', async () => {

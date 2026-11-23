@@ -719,7 +719,7 @@ describe('background.js', () => {
                 action: 'streamEnd',
                 requestId: '',
                 response: JSON.stringify({ message: { content: 'Hello' } })
-            });
+            }, { frameId: 0 });
         });
 
         it('sends an empty streamEnd message when no response data exists', async () => {
@@ -729,7 +729,7 @@ describe('background.js', () => {
             expect(global.chrome.tabs.sendMessage).toHaveBeenCalledWith(123, {
                 action: 'streamEnd',
                 requestId: ''
-            });
+            }, { frameId: 0 });
         });
     });
 

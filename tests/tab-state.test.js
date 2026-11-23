@@ -338,15 +338,15 @@ describe('tab state follow-ups (#40 review)', () => {
 describe('tab-state wiring (#40)', () => {
     const readJson = file => JSON.parse(fs.readFileSync(path.join(root, file), 'utf-8'));
 
-    it('lists tab-state.js in every background and content script list', () => {
+    it('lists tab-state.js in every background and the sidebar document', () => {
         expect(backgroundCode).toMatch(/importBackgroundScript\('jslib\/tab-state\.js'\)/);
 
         const firefox = readJson('Firefox/manifest.json');
         expect(firefox.background.scripts).toContain('jslib/tab-state.js');
-        expect(firefox.content_scripts[0].js).toContain('jslib/tab-state.js');
+        expect(fs.readFileSync('src/sidebar.html', 'utf8')).toContain('jslib/tab-state.js');
 
         for (const manifest of ['src/manifest.json', 'Chrome/manifest.json']) {
-            expect(readJson(manifest).content_scripts[0].js).toContain('jslib/tab-state.js');
+            expect(readJson(manifest).content_scripts[0].js).not.toContain('jslib/tab-state.js');
         }
     });
 

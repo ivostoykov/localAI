@@ -36,18 +36,13 @@
       "js": [
         "jslib/constants.js",
         "jslib/utils.js",
-        "jslib/tab-state.js",
         "jslib/sessions.js",
         "jslib/log.js",
         "jslib/content-cleaner.js",
         "jslib/li-extractor.js",
         "jslib/content-extractor.js",
-        "jslib/files.js",
-        "jslib/solomd2html.js",
-        "jslib/ribbon.js",
-        "jslib/stt.js",
-        "jslib/user_input_ribbon.js",
-        "lai-main.js",
+        "jslib/page-snapshot.js",
+        "jslib/sidebar-port.js",
         "content.js"
       ],
       "run_at": "document_start"
@@ -60,20 +55,7 @@
     "128": "img/icon128.png"
   },
   "web_accessible_resources": [
-    {
-      "resources": [
-        "sidebar.html",
-        "css/button.css",
-        "css/ribbon.css",
-        "css/sidebar.css",
-        "jslib/user_input_ribbon.js",
-        "css/aioutput.css",
-        "css/templates.css",
-        "lai-main.js",
-        "img/*.svg"
-      ],
-      "matches": ["<all_urls>"]
-    }
+    {"resources": ["sidebar.html"], "matches": ["<all_urls>"]}
   ],
   "browser_specific_settings": {
     "gecko": {

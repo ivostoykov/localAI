@@ -101,7 +101,7 @@ describe('content side image capture helpers', () => {
         const dom = new JSDOM('<img id="target">', { url: 'https://example.com' });
         const image = dom.window.document.getElementById('target');
         Object.defineProperty(image, 'getBoundingClientRect', { value: () => ({ left: 2, top: 3, right: 20, bottom: 30, width: 18, height: 27 }) });
-        const code = fs.readFileSync('src/content.js', 'utf8');
+        const code = fs.readFileSync('src/content.js', 'utf8') + fs.readFileSync('src/jslib/sidebar-ui.js', 'utf8');
         const helpers = [...code.matchAll(/function (?:rememberContextMenuImageTarget|getContextMenuImageBounds)\([\s\S]*?\n\}/g)].map(match => match[0]).join('\n');
         const deps = { HTMLImageElement: dom.window.HTMLImageElement, window: { devicePixelRatio: 2, innerWidth: 800, innerHeight: 600 } };
         const funcs = new Function('deps', `with (deps) { let contextMenuImageTarget = null; ${helpers}\n return { rememberContextMenuImageTarget, getContextMenuImageBounds }; }`)(deps);
@@ -113,7 +113,7 @@ describe('content side image capture helpers', () => {
     });
 
     it.each([false, true])('opens a closed panel before attachment without toggling an open panel (%s)', async isActive => {
-        const code = fs.readFileSync('src/content.js', 'utf8');
+        const code = fs.readFileSync('src/content.js', 'utf8') + fs.readFileSync('src/jslib/sidebar-ui.js', 'utf8');
         const attach = code.match(/async function attachCroppedContextMenuImage\(base64\) \{[\s\S]*?\n\}/)[0];
         const handleImageFile = vi.fn(async () => undefined);
         const showMessage = vi.fn();

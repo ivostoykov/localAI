@@ -64,7 +64,7 @@ describe('debug payload gate', () => {
         const dumpInFrontConsole = loadDumpInFrontConsole(baseDeps({ chrome: { tabs: { sendMessage } } }));
 
         await dumpInFrontConsole('diagnostic summary', payload, type, 1);
-        expect(sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'dumpInConsole', message: 'diagnostic summary', obj: '', type }));
+        expect(sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'dumpInConsole', message: 'diagnostic summary', obj: '', type }), { frameId: 0 });
         expect(JSON.stringify(sendMessage.mock.calls)).not.toContain(SECRET);
 
         setDebug(true);

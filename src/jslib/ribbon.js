@@ -153,9 +153,6 @@ async function initRibbon() {
     shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
 
     shadowRoot?.getElementById('laiAbort')?.addEventListener('click', async e => await laiAbortRequest(e), false);
-    if (laiOptions && laiOptions.openPanelOnLoad) {
-        await openSidebarPanelIfClosed(false);
-    }
 
     shadowRoot?.getElementById('laiSessionHistoryMenu')?.querySelectorAll('img').forEach(el => laiSetImg(el));
 
@@ -212,7 +209,7 @@ function onModelOptionsChanged(changes, areaName) {
     scheduleModelCapabilityRefresh();
     return true;
 }
-chrome?.storage?.onChanged?.addListener(onModelOptionsChanged);
+
 
 async function closeAllDropDownRibbonMenus(e) {
     const shadowRoot = getShadowRoot();

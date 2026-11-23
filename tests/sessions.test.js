@@ -391,7 +391,7 @@ describe('sessions.js', () => {
             expect(sendMessageSpy).toHaveBeenCalledWith(tabId, {
                 action: 'capturePageData',
                 tabId: tabId
-            });
+            }, { frameId: 0 });
         });
 
         it('returns false when page data capture fails', async () => {
@@ -407,7 +407,7 @@ describe('sessions.js', () => {
             expect(sendMessageSpy).toHaveBeenCalledWith(tabId, {
                 action: 'capturePageData',
                 tabId: tabId
-            });
+            }, { frameId: 0 });
         });
 
         it('returns false when sendMessage throws error', async () => {
@@ -422,7 +422,7 @@ describe('sessions.js', () => {
             expect(sendMessageSpy).toHaveBeenCalledWith(tabId, {
                 action: 'capturePageData',
                 tabId: tabId
-            });
+            }, { frameId: 0 });
         });
     });
 

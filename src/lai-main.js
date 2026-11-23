@@ -1,5 +1,3 @@
-let restartCounter = 0;
-const RESTART_LIMIT = 5; //TODO add the limit as in param and remove these 2 vars
 let activeStreamRequestId = null;
 let activeStreamSeq = 0;
 let streamResyncInFlight = false;
@@ -136,19 +134,6 @@ async function initSidebar(deadline) {
         }
     });
 
-    const resizeHandle = shadowRoot.querySelector('.lai-resize-handle');
-    laiSetImg(resizeHandle.querySelector('img'));
-
-    resizeHandle.addEventListener('mousedown', e => laiResizeContainer(e));
-
-    if (laiOptions.loadHistoryOnStart) {
-        try {
-            if(shadowRoot){  shadowRoot?.click();  }
-        } catch (er) {
-            console.error(er)
-        }
-    }
-
     shadowRoot.querySelectorAll('img.mic').forEach(img => {
         img.closest('div.mic-container').addEventListener('click', micClicked);
         laiSetImg(img);
@@ -206,8 +191,7 @@ async function createNewSessionClicked(e, shadowRoot) {
 
 async function onCloseSidebarClick(e, shadowRoot) {
     const pinImg = getShadowRoot()?.querySelector('img[data-type="black_pushpin"]');
-
-    if (isPinned()) { pinImg?.click(); }
+    if (isPinned() && pinImg) { await laiPushpinClicked({ target: pinImg }); }
     await laiSwapSidebarWithButton(true);
 }
 
@@ -253,7 +237,6 @@ function laiShowSystemInstructions(e) {
 
 async function laiPushpinClicked(e) {
     const el = e.target;
-    const laiOptions = await getOptions();
     const container = el.closest('div');
     let isPinned = false;
 
@@ -264,7 +247,7 @@ async function laiPushpinClicked(e) {
         }
     });
 
-    laiOptions.closeOnClickOut = !isPinned;
+    await sidebarChannel.request('setPinned', { pinned: isPinned });
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     shadowRoot.getElementById('laiUserInput')?.focus();
@@ -1077,48 +1060,7 @@ function laiSourceTextClicked(e) {
 let panelViewRevision = 0;
 
 async function laiSwapSidebarWithButton(forceClose = false, restoreHistory = true) {
-    const previousViewRevision = panelViewRevision;
-    const laiOptions = await getOptions();
-    if (previousViewRevision !== panelViewRevision) { return; }
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-
-    const sideBar = shadowRoot.getElementById('laiSidebar');
-    const mainButton = shadowRoot.getElementById('laiMainButton');
-    if (!sideBar || !mainButton) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sidebar or button not found!`);
-        return;
-    }
-
-    const isSidebarActive = sideBar.classList.contains('active');
-
-    if (!forceClose && isSidebarActive && !laiOptions?.closeOnClickOut) { return; }
-
-    const viewRevision = ++panelViewRevision;
-    sideBar.classList.toggle('active');
-
-    const isNowActive = sideBar.classList.contains('active');
-    mainButton.classList.toggle('invisible', isNowActive); // hide button if sidebar shown
-    if (!isNowActive) { clearChatHistoryUI(); }
-    await reportTabBinding({ panelOpen: isNowActive });
-    if (isNowActive && viewRevision === panelViewRevision) {
-        if (restoreHistory) { await restoreTabSessionFromBackground(); }
-        sideBar.querySelector('textarea#laiUserInput')?.focus();
-    }
-}
-
-async function laiUpdateMainButtonStyles() {
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) return;
-
-    const laiOptions = await getOptions();
-    const btn = shadowRoot.getElementById('laiMainButton');
-    if (!btn) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main button not found!`);
-        return;
-    }
-
-    btn.classList.toggle('invisible', !laiOptions?.showEmbeddedButton);
+    await applySidebarState(await sidebarChannel.request('setOpen', { open: !forceClose, restoreHistory }));
 }
 
 function laiOnRibbonButtonClick(e) {
@@ -1758,7 +1700,7 @@ function getParseAndRenderOptions(rootEl) {
 }
 
 function getSelectionText(response) {
-    const liveSelection = (window.getSelection()?.toString() ?? '').trim();
+    const liveSelection = (response?.selection ?? '').trim();
     return cleanSelection(liveSelection || response?.selection || '');
 }
 
@@ -1768,53 +1710,26 @@ function wrapInTextFence(text) {
     return `${fence}text\n${text}\n${fence}\n`;
 }
 
-function onRuntimeMessage(response, sender, sendResponse) {
-    // Handle messages that don't require shadowRoot first
-    if (response && response?.action === 'ping') {
-        sendResponse({ pong: true });
-        return true;
-    }
-
-    if (response?.action === 'dumpInConsole') {
+async function messageProcessor(response) {
+    if (response.action === 'dumpInConsole') {
         dumpInConsole(response.message, response.obj, response.type);
         return;
     }
-
-    messageProcessor(response, sender)
-        .then(result => {
-            sendResponse(result ?? { result: true });
-        })
-        .catch(error => {
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error handling runtime message:`, error);
-            sendResponse({ error: error?.message || String(error) });
-        });
-
-    return true;
-}
-
-async function messageProcessor(response, sender) {
-
-    if (response?.action === 'callContentExtractor') {
-        return { result: await handleContentExtractorCall(response) };
-    }
-
-    if (response?.action === 'getContextMenuImageBounds') {
-        return getContextMenuImageBounds();
-    }
-    if (response?.action === 'scrollContextMenuImageIntoView') {
-        return scrollContextMenuImageIntoView();
-    }
-    if (response?.action === 'hideLocalAIForImageCapture') {
-        return hideLocalAIForImageCapture(response.rect);
-    }
-    if (response?.action === 'restoreLocalAIAfterImageCapture') {
-        return restoreLocalAIAfterImageCapture();
-    }
-    if (response?.action === 'waitForImageCaptureFrame') {
-        return new Promise(resolve => requestAnimationFrame(resolve));
-    }
-    if (response?.action === 'attachCroppedContextMenuImage') {
+    if (response.action === 'attachCroppedContextMenuImage') {
         await attachCroppedContextMenuImage(response.base64);
+        return { result: true };
+    }
+    if (response.action === 'attachElement') {
+        const attachment = {
+            id: crypto.randomUUID(),
+            type: 'snippet',
+            content: `SNIPPET START:\n${response.content}\nSNIPPET END`,
+            filename: 'Selected Element'
+        };
+        await addAttachment(attachment);
+        showAttachment(attachment);
+        showMessage('Element picked up successfully.', 'info');
+        updateStatusBar('Selected content added to the context.');
         return { result: true };
     }
 
@@ -1830,21 +1745,7 @@ async function messageProcessor(response, sender) {
         return { requestId: null };
     }
 
-    // All other actions require shadowRoot
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) {
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Dropping runtime message because shadowRoot is missing`, {
-            action: response?.action,
-            restartCounter,
-            readyState: document.readyState
-        });
-        if (restartCounter < RESTART_LIMIT) {
-            restartCounter++;
-            start();
-        }
-        return { error: 'Local AI UI is not ready yet.' };
-    }
-
     if (response?.action?.startsWith('stream') && !getSideBar()?.classList.contains('active')) {
         return { requestId: null };
     }
@@ -1900,9 +1801,6 @@ async function messageProcessor(response, sender) {
             laiHandleStreamActions("Stream Error", recipient);
             activeStreamRequestId = null;
             break;
-        case "toggleSidebar":
-            await laiSwapSidebarWithButton(true);
-            break;
         case "activePageSelection":
             const cleanedSelection = getSelectionText(response);
             if (!cleanedSelection) {
@@ -1916,7 +1814,7 @@ async function messageProcessor(response, sender) {
                 type: "snippet",
                 content: cleanedSelection,
                 filename: 'Selected Text',
-                sourceUrl: location.href
+                sourceUrl: response.url
             };
             await addAttachment(newActivePageSelectionAttachment);
             showAttachment(newActivePageSelectionAttachment);
@@ -1940,13 +1838,13 @@ async function messageProcessor(response, sender) {
             insertPromptInput.focus();
             break;
         case "activePageContent":
-            const pageContent = await cleanPageContent();
+            const pageContent = response.content;
             let newActivePageContentAttachment = {
                 id: crypto.randomUUID(),
                 type: "snippet",
                 content: pageContent,
                 filename: 'Page Content',
-                sourceUrl: location.href
+                sourceUrl: response.url
             };
             await addAttachment(newActivePageContentAttachment);
             showAttachment(newActivePageContentAttachment);
@@ -1956,18 +1854,12 @@ async function messageProcessor(response, sender) {
         case 'explainSelection':
             await ask2ExplainSelection(response);
             break;
-        case "toggleSelectElement":
-            isElementSelectionActive = response.selection;
-            if (!isElementSelectionActive) { clearAllElementDecorations(); }
-            break;
         case "showMessage":
             if (response.message) { showMessage(response.message, response.messageType); }
             break;
         case "updateStatusbar":
             if (response.message) { updateStatusBar(response.message); }
             break;
-        case "callContentExtractor":
-            return { result: await handleContentExtractorCall(response) };
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
             break;
@@ -2029,48 +1921,6 @@ function laiGetRecipient() {
     return recipient;
 }
 
-async function handleContentExtractorCall(response) {
-    const { functionName, argument } = response;
-    let result;
-
-    switch (functionName) {
-        case 'getPageStructureSummary':
-            const summaryObj = await getPageStructureSummary();
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getPageStructureSummary returned:`, summaryObj);
-            result = JSON.stringify(summaryObj, null, 2);
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - JSON.stringify result:`, result);
-            break;
-        case 'getPageTables':
-            result = await getPageTables(argument);
-            break;
-        case 'getPageLists':
-            result = await getPageLists(argument);
-            break;
-        case 'getPageCodeBlocks':
-            result = await getPageCodeBlocks(argument);
-            break;
-        case 'getPageMetadataFormatted':
-            result = getPageMetadataFormatted();
-            break;
-        case 'getEnhancedPageContent':
-            result = await getEnhancedPageContent();
-            break;
-        case 'getMainContentOnly':
-            result = await getMainContentOnly();
-            break;
-        default:
-            throw new Error(`Unknown content extractor function: ${functionName}`);
-    }
-
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Content extractor result ready`, {
-        functionName,
-        resultType: typeof result,
-        resultLength: result?.length
-    });
-
-    return result;
-}
-
 async function ask2ExplainSelection(response) {
     if (!response) {
         showMessage('Nothing received to explain!', 'warning');
@@ -2098,19 +1948,19 @@ async function ask2ExplainSelection(response) {
 
     let cleanPageText = '';
     try {
-        cleanPageText = (await getEnhancedPageContent()) || '';
+        cleanPageText = (await sidebarChannel.request('readPage', { kind: 'getEnhancedPageContent' })) || '';
     } catch (error) {
         logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not extract page context; explaining the selection only`, error?.message);
     }
 
     if (cleanPageText) {
-        const pageContextLabel = document.title?.trim() || location.hostname || 'current page';
+        const pageContextLabel = response.title?.trim() || new URL(response.url).hostname || 'current page';
         const theAttachment = {
             id: crypto.randomUUID(),
             type: "snippet",
             content: `PAGE CONTEXT START:\n${cleanPageText}\nPAGE CONTEXT END`,
             filename: `Page context: ${pageContextLabel}`,
-            sourceUrl: location.href
+            sourceUrl: response.url
         };
         await addAttachment(theAttachment);
         showAttachment(theAttachment);
@@ -2129,48 +1979,6 @@ async function ask2ExplainSelection(response) {
     const contextNote = cleanPageText ? ' Use the attached page context only as context for its meaning.' : '';
     userInput.value = `Explain the meaning of the selected text below.${contextNote}\n\n${wrapInTextFence(selection)}`;
     userInput?.dispatchEvent(enterEvent);
-}
-
-function laiResizeContainer(e) {
-    e.preventDefault();
-    const resizableDiv = e.target.closest('.lai-fixed-parent');
-    const sidebar = resizableDiv.closest('.active');
-    let isResizing = true;
-    let prevX = e.clientX;
-    let originalWidth = resizableDiv.getBoundingClientRect().width;
-
-    function onMouseMove(e) {
-        if (!isResizing) { return; }
-        sidebar?.classList.add('dragging');
-        const newX = e.clientX;
-        const deltaX = newX - prevX;
-
-        let newWidth = originalWidth - deltaX;
-
-        newWidth = Math.min(newWidth, window.innerWidth);
-
-        newWidth = Math.max(newWidth, 10);
-
-        resizableDiv.style.width = `${newWidth}px`;
-
-        if (newWidth >= window.innerWidth || newWidth <= 10) {
-            stopResizing();
-        }
-    }
-
-    function onMouseUp() {
-        sidebar?.classList.remove('dragging');
-        stopResizing();
-    }
-
-    function stopResizing() {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        isResizing = false;
-    }
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
 }
 
 function getRegExpMatches(regex, userInput) {
@@ -2478,7 +2286,7 @@ async function reconcileActiveSessionWithStorage(changes, areaName) {
     return true;
 }
 
-chrome?.storage?.onChanged?.addListener(reconcileActiveSessionWithStorage);
+
 
 function adjustFontSize(elm, direction) {
     if (direction === 0) { return; }

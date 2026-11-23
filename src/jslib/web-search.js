@@ -101,7 +101,7 @@ async function fetchPageSummary(searchTabId, url) {
             action: 'callContentExtractor',
             functionName: 'getMainContentOnly',
             argument: null
-        });
+        }, { frameId: 0 });
         const raw = response?.error ? '' : (response?.result || '');
         // No detected region: whole-page text is mostly navigation, so keep the summary empty.
         const content = raw.startsWith('CONTENT SCOPE: whole page') ? '' : raw;
@@ -166,7 +166,7 @@ async function searchWeb(query, session) {
                         action: 'showMessage',
                         message: 'The search engine is showing a captcha or consent page in a background tab. Resolve it there, then retry the search.',
                         messageType: 'warning'
-                    });
+                    }, { frameId: 0 });
                 } catch (err) {
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not notify originating tab:`, err);
                 }

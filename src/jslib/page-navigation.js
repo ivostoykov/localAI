@@ -206,7 +206,7 @@ async function openNavigationConsentWindow(requestId) {
 async function notifyNavigationStatus(tabId, message) {
     if (tabId == null) { return; }
     try {
-        await chrome.tabs.sendMessage(tabId, { action: 'updateStatusbar', message });
+        await chrome.tabs.sendMessage(tabId, { action: 'updateStatusbar', message }, { frameId: 0 });
     } catch (err) {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Navigation status skipped`, err?.message);
     }

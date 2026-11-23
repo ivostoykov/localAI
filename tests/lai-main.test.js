@@ -33,6 +33,7 @@ const contentCleanerCode = fs.readFileSync(
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.document = dom.window.document;
 global.window = dom.window;
+global.sidebarChannel = { request: async (action, payload) => action === "readPage" ? global.getEnhancedPageContent() : payload };
 global.manifest = {
     name: 'Local AI helper',
     version: '1.29.17'
@@ -53,8 +54,10 @@ const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\
 
 // Extract the functions we want to test
 const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight, checkCommandHandler, getSelectionText, showAttachment, userInputFocused, userInputBlurred };';
+const frameCode = fs.readFileSync('src/sidebar-frame.js', 'utf8');
+const viewCode = frameCode.slice(frameCode.indexOf('async function applySidebarState'), frameCode.indexOf('function showSidebarConnectionFailure'));
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-    tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + laiMainExports
+    tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + viewCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId, getActiveStreamRequestId, isMessagePersistable;
@@ -1954,18 +1957,18 @@ describe('user prompt Markdown rendering (#41)', () => {
 
 describe('context-menu selection line breaks (#74)', () => {
     let getSelectionText, messageProcessor, chromeWithUrls;
-    let originalGetSelection;
+    let liveSelection;
 
     const setLiveSelection = (text) => {
-        dom.window.getSelection = () => ({ toString: () => text });
+        liveSelection = text;
     };
 
     beforeEach(() => {
-        originalGetSelection = dom.window.getSelection;
+        liveSelection = '';
         global.getLineNumber = () => 'test:1';
         global.showMessage = vi.fn();
         global.getShadowRoot = vi.fn(() => document);
-        global.getSideBar = vi.fn(() => null);
+        global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
         global.addAttachment = vi.fn(async () => { });
         global.updateStatusBar = vi.fn();
         global.getEnhancedPageContent = vi.fn(async () => 'page content');
@@ -1980,12 +1983,15 @@ describe('context-menu selection line breaks (#74)', () => {
         document.body.innerHTML = '<div id="sideBar" class="active"></div><div id="attachContainer"></div><textarea id="laiUserInput"></textarea>';
 
         const exports = executeLaiMainCode(global.document, dom.window, global.manifest, chromeWithUrls, global.getLineNumber, global.isMessagePersistable);
-        getSelectionText = exports.getSelectionText;
-        messageProcessor = exports.messageProcessor;
+        getSelectionText = payload => exports.getSelectionText({ selection: liveSelection.trim() || payload.selection });
+        messageProcessor = payload => exports.messageProcessor({
+            ...payload, selection: liveSelection.trim() || payload.selection,
+            url: 'https://localhost/', title: document.title
+        });
     });
 
     afterEach(() => {
-        dom.window.getSelection = originalGetSelection;
+
         document.body.innerHTML = '';
     });
 
@@ -2153,19 +2159,19 @@ describe('context-menu selection line breaks (#74)', () => {
 
 describe('fenced insertion into the prompt (#75)', () => {
     let messageProcessor, chromeWithUrls;
-    let originalGetSelection;
+    let liveSelection;
     let prompt;
 
     const setLiveSelection = (text) => {
-        global.window.getSelection = () => ({ toString: () => text });
+        liveSelection = text;
     };
 
     beforeEach(() => {
-        originalGetSelection = global.window.getSelection;
+        liveSelection = '';
         global.getLineNumber = () => 'test:1';
         global.showMessage = vi.fn();
         global.getShadowRoot = vi.fn(() => document);
-        global.getSideBar = vi.fn(() => null);
+        global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
         global.addAttachment = vi.fn(async () => { });
         global.updateStatusBar = vi.fn();
         global.getEnhancedPageContent = vi.fn(async () => 'page content');
@@ -2182,11 +2188,14 @@ describe('fenced insertion into the prompt (#75)', () => {
         global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
 
         const exports = executeLaiMainCode(global.document, global.window, global.manifest, chromeWithUrls, global.getLineNumber, global.isMessagePersistable);
-        messageProcessor = exports.messageProcessor;
+        messageProcessor = payload => exports.messageProcessor({
+            ...payload, selection: liveSelection.trim() || payload.selection,
+            url: 'https://localhost/', title: document.title
+        });
     });
 
     afterEach(() => {
-        global.window.getSelection = originalGetSelection;
+
         document.body.innerHTML = '';
     });
 
