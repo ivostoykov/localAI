@@ -13,10 +13,18 @@ function setup(ready = 'complete') {
   const { document } = window;
   Object.defineProperty(document, 'readyState', { configurable: true, value: ready });
   const listeners = vi.spyOn(document, 'addEventListener');
-  const build = vi.fn(() => { const host = document.createElement('local-ai'); host.id = 'localAI'; host.attachShadow({ mode: 'open' }); document.documentElement.appendChild(host); });
-  const deps = { document, window, history: window.history, Event: window.Event, getShadowRoot: () => document.getElementById('localAI')?.shadowRoot, attachElementSelectionListenersToFrames: vi.fn(), clearElementOverDecoration: vi.fn(), highlightElementOverDecoration: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), restoreTabSessionOnStartup: build, manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout };
+  const rootAccessors = code.slice(code.indexOf('let sidebarRoot;'), code.indexOf('function getSideBar()'));
+  const init = code.slice(code.indexOf('async function init()'), code.indexOf('async function getDocumentContentFiltered()'));
+  const { getRootElement, getShadowRoot, build } = new Function('deps',
+    `with (deps) { ${rootAccessors}
+${init}; return { getRootElement, getShadowRoot, build: init }; }`)({
+      document, chrome: { runtime: { id: 'test' } }, buildMainButton: vi.fn(),
+      laiFetchAndBuildSidebarContent: vi.fn(), initSidebar: vi.fn(), laiUpdateMainButtonStyles: vi.fn()
+    });
+  const buildSidebar = vi.fn(build);
+  const deps = { isElementSelectionActive: false, document, window, history: window.history, Event: window.Event, getShadowRoot, getRootElement, closeQuickPromptListMenu: vi.fn(), closeSessionListOnOutsideClick: vi.fn(), closeAllDropDownRibbonMenus: vi.fn(), getSideBar: vi.fn(), getOptions: vi.fn(), isPinned: vi.fn(), laiSwapSidebarWithButton: vi.fn(), clearAllElementDecorations: vi.fn(), attachElementSelectionListenersToFrames: vi.fn(), clearElementOverDecoration: vi.fn(), highlightElementOverDecoration: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), restoreTabSessionOnStartup: buildSidebar, manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout };
   const start = new Function('deps', `with (deps) { ${contextMenuHandler}\n${startup}\n${storage}\nreturn start; }`)(deps);
-  return { window, document, listeners, build, start };
+  return { window, document, listeners, build: buildSidebar, start, getShadowRoot, deps };
 }
 
 const count = spy => ['click', 'keydown', 'mouseover', 'mouseout', 'contextmenu'].map(type => spy.mock.calls.filter(call => call[0] === type).length);
@@ -35,6 +43,82 @@ describe('content start-up', () => {
     window.history.pushState({}, '', '/next');
     expect(push).toHaveBeenCalledTimes(1);
     expect(build).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the shadow root open and leaves extension clicks to its own handlers', async () => {
+    const { window, document, start, getShadowRoot, deps } = setup();
+    await start();
+    const host = document.querySelector('local-ai');
+    expect(getShadowRoot().host).toBe(host);
+    expect(getShadowRoot().mode).toBe('open');
+    const button = document.createElement('button');
+    getShadowRoot().appendChild(button);
+    const action = vi.fn();
+    button.addEventListener('click', action);
+    button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, composed: true }));
+    expect(action).toHaveBeenCalledOnce();
+    expect(deps.closeAllDropDownRibbonMenus).not.toHaveBeenCalled();
+    document.body.click();
+    expect(deps.closeQuickPromptListMenu).toHaveBeenCalledOnce();
+    expect(deps.closeSessionListOnOutsideClick).toHaveBeenCalledOnce();
+    expect(deps.closeAllDropDownRibbonMenus).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { closeOnClickOut: true, pinned: false, closes: true },
+    { closeOnClickOut: true, pinned: true, closes: false },
+    { closeOnClickOut: false, pinned: false, closes: false }
+  ])('dismisses page-click menus with closeOnClickOut=$closeOnClickOut and pinned=$pinned', async ({ closeOnClickOut, pinned, closes }) => {
+    const { document, start, deps } = setup();
+    await start();
+    const sidebar = document.createElement('div');
+    sidebar.classList.add('active');
+    deps.getSideBar.mockReturnValue(sidebar);
+    deps.getOptions.mockResolvedValue({ closeOnClickOut });
+    deps.isPinned.mockReturnValue(pinned);
+
+    document.body.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(deps.closeQuickPromptListMenu).toHaveBeenCalledOnce();
+    expect(deps.closeSessionListOnOutsideClick).toHaveBeenCalledOnce();
+    expect(deps.closeAllDropDownRibbonMenus).toHaveBeenCalledOnce();
+    if (closes) {
+      expect(deps.laiSwapSidebarWithButton).toHaveBeenCalledWith(true);
+    } else {
+      expect(deps.laiSwapSidebarWithButton).not.toHaveBeenCalled();
+    }
+  });
+
+  it('leaves the panel closed when it closes during the page-click options lookup', async () => {
+    const { document, start, deps } = setup();
+    await start();
+    const sidebar = document.createElement('div');
+    sidebar.classList.add('active');
+    deps.getSideBar.mockReturnValue(sidebar);
+    deps.getOptions.mockImplementation(async () => {
+      sidebar.classList.remove('active');
+      return { closeOnClickOut: true };
+    });
+
+    document.body.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(deps.getOptions).toHaveBeenCalledOnce();
+    expect(deps.laiSwapSidebarWithButton).not.toHaveBeenCalled();
+  });
+
+  it('replaces a stale host during init', async () => {
+    const { document, build, getShadowRoot } = setup();
+    const staleHost = document.createElement('local-ai');
+    staleHost.id = 'localAI';
+    staleHost.attachShadow({ mode: 'closed' });
+    document.documentElement.appendChild(staleHost);
+
+    await build();
+
+    expect(staleHost.isConnected).toBe(false);
+    expect(Array.from(document.querySelectorAll('local-ai'))).toEqual([getShadowRoot().host]);
   });
 
   it('rebuilds a missing UI without adding listeners', async () => {

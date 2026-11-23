@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.21] - 2026-11-23 - latest
+## [1.30.22] - 2026-11-23 - latest
+
+### Fixes
+
+- Chat history is rendered only while the panel is open and removed from the page when it closes. Menu and click-out handling has been reworked (#103).
+
+## [1.30.21] - 2026-11-23
 
 ### Fixes
 

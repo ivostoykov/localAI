@@ -62,7 +62,8 @@ async function initSidebar(deadline) {
         feedbackMessage.classList.remove('feedback-message-active')
     });
 
-    shadowRoot.addEventListener('click', async e => await closeAllDropDownRibbonMenus(e));
+    shadowRoot.addEventListener('click', closeAllDropDownRibbonMenus);
+    shadowRoot.addEventListener('click', closeQuickPromptListMenu);
 
     const ribbon = getRibbon();
     if (!ribbon) { console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main ribbon not found!`, ribbon); }
@@ -780,7 +781,9 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
     lastChatElement.appendChild(lastChatlabel)
     lastChatElement.appendChild(lastChatText)
     lastChatElement.appendChild(actionIconsDiv);
-    messageList.appendChild(lastChatElement);
+    if (messageList && !shadowRoot.getElementById('laiSidebar')?.matches(':not(.active)')) {
+        messageList.appendChild(lastChatElement);
+    }
 
     if (type === 'ai') {
         console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Created AI placeholder`, {
@@ -1071,8 +1074,12 @@ function laiSourceTextClicked(e) {
         .catch(err => console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to copy text: ${err.message}`, err));
 }
 
-async function laiSwapSidebarWithButton(forceClose = false) {
+let panelViewRevision = 0;
+
+async function laiSwapSidebarWithButton(forceClose = false, restoreHistory = true) {
+    const previousViewRevision = panelViewRevision;
     const laiOptions = await getOptions();
+    if (previousViewRevision !== panelViewRevision) { return; }
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
@@ -1087,12 +1094,15 @@ async function laiSwapSidebarWithButton(forceClose = false) {
 
     if (!forceClose && isSidebarActive && !laiOptions?.closeOnClickOut) { return; }
 
+    const viewRevision = ++panelViewRevision;
     sideBar.classList.toggle('active');
 
     const isNowActive = sideBar.classList.contains('active');
     mainButton.classList.toggle('invisible', isNowActive); // hide button if sidebar shown
+    if (!isNowActive) { clearChatHistoryUI(); }
     await reportTabBinding({ panelOpen: isNowActive });
-    if (isNowActive) {
+    if (isNowActive && viewRevision === panelViewRevision) {
+        if (restoreHistory) { await restoreTabSessionFromBackground(); }
         sideBar.querySelector('textarea#laiUserInput')?.focus();
     }
 }
@@ -1505,11 +1515,11 @@ function showAdoptedStreamControls() {
     updateStatusBar('Receiving and processing data...');
 }
 
-async function openSidebarPanelIfClosed() {
+async function openSidebarPanelIfClosed(restoreHistory = true) {
     if (!getSideBar()?.classList.contains('active')) {
-        await laiSwapSidebarWithButton();
+        await laiSwapSidebarWithButton(false, restoreHistory);
         if (!getSideBar()?.classList.contains('active')) {
-            await laiSwapSidebarWithButton();
+            await laiSwapSidebarWithButton(false, restoreHistory);
         }
     }
 }
@@ -1559,7 +1569,9 @@ async function restoreTabSessionFromBackground() {
     activeStreamSeq = 0;
     streamResyncInFlight = false;
 
+    const previousViewRevision = panelViewRevision;
     const startup = await fetchTabStartupState();
+    if (previousViewRevision !== panelViewRevision) { return; }
     const binding = startup?.tab;
     const initialSnapshot = startup?.request ?? null;
     if (!binding?.sessionId) {
@@ -1568,6 +1580,7 @@ async function restoreTabSessionFromBackground() {
     }
 
     const session = await getActiveSessionById(binding.sessionId);
+    if (previousViewRevision !== panelViewRevision) { return; }
     if (!session) {
         await reportTabBinding({ sessionId: null });
         await unbindStaleTabSession();
@@ -1576,18 +1589,23 @@ async function restoreTabSessionFromBackground() {
 
     await setActiveSessionId(binding.sessionId);
     await reportTabBinding({ sessionId: binding.sessionId });
-    await renderSessionHistoryMessages(session);
+    if (previousViewRevision !== panelViewRevision) { return; }
     // A bfcache-restored instance can still show the controls of a request that ended
     // while it was frozen; a live request re-enables them on adoption below.
     resetStreamControls();
 
-    if (binding.panelOpen) { await openSidebarPanelIfClosed(); }
+    if (binding.panelOpen) { await openSidebarPanelIfClosed(false); }
+    if (!getSideBar()?.classList.contains('active')) { return; }
+    const viewRevision = panelViewRevision;
+    await renderSessionHistoryMessages(session);
+    if (viewRevision !== panelViewRevision) { return; }
 
     if (initialSnapshot?.status === 'streaming') {
         await addInputCardToUIChatHistory('', 'ai');
         // A fresh snapshot closes the race with chunks that arrived while history was
         // rendering; the request is adopted synchronously with the reply.
         const fresh = await fetchTabStartupState();
+        if (viewRevision !== panelViewRevision) { return; }
         const snapshot = fresh?.request ?? null;
         if (snapshot?.status === 'streaming') {
             ignoredForeignRequestIds.delete(snapshot.requestId);
@@ -1635,6 +1653,8 @@ function getShownChatTurns(messageList) {
  * turns shown beyond the saved ones are local only (aborted or pending) and stay.
  */
 async function catchUpActiveSessionFromStorage() {
+    if (!getSideBar()?.classList.contains('active')) { return; }
+    const viewRevision = panelViewRevision;
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     if (activeStreamRequestId) { return; }
@@ -1648,6 +1668,7 @@ async function catchUpActiveSessionFromStorage() {
         const session = await getActiveSessionById(sessionId);
         if (!session || activeStreamRequestId || await getActiveSessionId() !== sessionId) { return; }
 
+        if (viewRevision !== panelViewRevision) { return; }
         const messageList = shadowRoot.querySelector('#laiChatMessageList');
         if (!messageList) { return; }
 
@@ -1670,6 +1691,7 @@ async function catchUpActiveSessionFromStorage() {
         appendSessionCatchUpSeparator(messageList);
         for (const turn of savedTurns.slice(shownTurns.length)) {
             if (activeStreamRequestId || await getActiveSessionId() !== sessionId) { return; }
+            if (viewRevision !== panelViewRevision) { return; }
             await renderSessionHistoryMessage(turn.message, turn.index);
         }
         messageList.scrollTop = messageList.scrollHeight;
@@ -1821,6 +1843,10 @@ async function messageProcessor(response, sender) {
             start();
         }
         return { error: 'Local AI UI is not ready yet.' };
+    }
+
+    if (response?.action?.startsWith('stream') && !getSideBar()?.classList.contains('active')) {
+        return { requestId: null };
     }
 
     let recipient;

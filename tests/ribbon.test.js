@@ -422,6 +422,8 @@ return { sessionHistoryClicked, popSessionList, sessionListBlockClicked, loadSes
         deps = {
             document: doc,
             getShadowRoot: () => doc,
+            getSideBar: () => ({ classList: { contains: () => true } }),
+            panelViewRevision: 0,
             fetchOpenSessions,
             getAllSessions: vi.fn(async () => sessions),
             restoreHistorySessionClicked,
@@ -434,6 +436,7 @@ return { sessionHistoryClicked, popSessionList, sessionListBlockClicked, loadSes
             resetStatusbar: vi.fn(),
             showMessage,
             closeAllDropDownRibbonMenus: vi.fn(async () => undefined),
+            closeQuickPromptListMenu: vi.fn(),
             manifest: { name: 'Local AI helper' },
             getLineNumber: () => 'test',
             chrome: { runtime: { getURL: path => `chrome-extension://test/${path}` } }
@@ -745,6 +748,8 @@ describe('ribbon.js session restore', () => {
             }),
             parseAndRender: vi.fn(async (text, el) => { el.innerHTML = '<h2>Heading</h2>'; }),
             getShadowRoot: () => doc,
+            getSideBar: () => ({ classList: { contains: () => true } }),
+            panelViewRevision: 0,
             showMessage: vi.fn(),
             manifest: { name: 'Local AI helper' },
             getLineNumber: () => 'test'
@@ -776,6 +781,8 @@ describe('ribbon.js session restore', () => {
             addInputCardToUIChatHistory: vi.fn(async () => doc.createElement('span')),
             parseAndRender: vi.fn(async () => undefined),
             getShadowRoot: () => doc,
+            getSideBar: () => ({ classList: { contains: () => true } }),
+            panelViewRevision: 0,
             showMessage: vi.fn(),
             manifest: { name: 'Local AI helper' },
             getLineNumber: () => 'test'
@@ -998,6 +1005,7 @@ describe('ribbon.js restored user prompts (#41)', () => {
         global.showMessage = vi.fn();
         global.getShadowRoot = vi.fn(() => document);
         global.getSideBar = vi.fn(() => document.body);
+        document.body.classList.add('active');
         global.getOptions = vi.fn(async () => ({}));
         global.getActiveSession = vi.fn(async () => null);
         global.setActiveSession = vi.fn(async () => {});
