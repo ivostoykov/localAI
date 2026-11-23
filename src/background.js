@@ -1,4 +1,5 @@
 
+const isLocalAIBackground = true;
 const backgroundRuntimeUrl = chrome.runtime?.getURL?.('') || '';
 const shouldImportBackgroundScripts = typeof importScripts === 'function' && backgroundRuntimeUrl.startsWith('chrome-extension://');
 

@@ -108,14 +108,14 @@ function checkExtensionState() {
 
 
 async function getAiUrl() {
-    const isServiceWorker = typeof window === 'undefined';
+    const isBackground = typeof isLocalAIBackground !== 'undefined' && isLocalAIBackground;
     const laiOptions = await getOptions();
 
     if (!laiOptions?.aiUrl) {
         let msg = 'Missing API endpoint!';
-        if (isServiceWorker && typeof showUIMessage === 'function') {
+        if (isBackground && typeof showUIMessage === 'function') {
             await showUIMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
-        } else if (!isServiceWorker && typeof showMessage === 'function') {
+        } else if (!isBackground && typeof showMessage === 'function') {
             showMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
         }
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg} missing aiUrl`);
@@ -126,9 +126,9 @@ async function getAiUrl() {
     let url = laiOptions?.aiUrl;
     if (!url) {
         let msg = `Failed to compose the request URL - ${url}`;
-        if (isServiceWorker && typeof showUIMessage === 'function') {
+        if (isBackground && typeof showUIMessage === 'function') {
             await showUIMessage(msg, 'error');
-        } else if (!isServiceWorker && typeof showMessage === 'function') {
+        } else if (!isBackground && typeof showMessage === 'function') {
             showMessage(msg, 'error');
         }
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg};  laiOptions.aiUrl: ${laiOptions?.aiUrl}`);

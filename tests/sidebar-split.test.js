@@ -163,7 +163,7 @@ it('starts the actual sidebar scripts and renders the prompt only after host con
             id: 'test', getManifest: () => ({ name: 'Local AI', version: '1.31.0' }),
             getURL: path => `chrome-extension://test/${path}`, sendMessage
         },
-        tabs: { connect },
+        tabs: { connect, query: vi.fn() },
         storage: {
             onChanged: extensionEvent,
             local: { get: localRead, remove: vi.fn() },
@@ -181,6 +181,7 @@ it('starts the actual sidebar scripts and renders the prompt only after host con
         await vi.waitFor(() => expect(window.document.getElementById('laiSidebar').hidden).toBe(false));
         expect(connect).toHaveBeenCalledExactlyOnceWith(42, { frameId: 0, name: 'localai-sidebar' });
         expect(window.document.getElementById('laiUserInput')).toBeTruthy();
+        expect(sendMessage).toHaveBeenCalledWith({ action: 'updateTabState', panelOpen: true });
     } finally {
         window.close();
     }

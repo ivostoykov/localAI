@@ -1539,6 +1539,8 @@ async function restoreTabSessionFromBackground() {
     if (binding.panelOpen) { await openSidebarPanelIfClosed(false); }
     if (!getSideBar()?.classList.contains('active')) { return; }
     const viewRevision = panelViewRevision;
+    clearAttachments();
+    session.attachments?.forEach(showAttachment);
     await renderSessionHistoryMessages(session);
     if (viewRevision !== panelViewRevision) { return; }
 

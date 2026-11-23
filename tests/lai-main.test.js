@@ -1429,6 +1429,30 @@ describe('tab session restoration (#40)', () => {
         expect(document.getElementById('laiSidebar').classList.contains('active')).toBe(true);
     });
 
+    it('restores a selected element attached while closed without duplicating the icon', async () => {
+        document.body.insertAdjacentHTML('beforeend', '<div id="attachContainer"></div>');
+        const attachment = { id: 'selected', type: 'snippet', content: 'Selected paragraph' };
+        let storedSession = { id: 's1', messages: [], attachments: [] };
+        const binding = { tab: { sessionId: 's1', panelOpen: false }, request: null };
+        global.addAttachment = vi.fn(async item => {
+            storedSession = { ...storedSession, attachments: [item] };
+        });
+        getActiveSessionById.mockImplementation(async () => storedSession);
+        replyToTabState([binding, binding]);
+
+        await messageProcessor({ action: 'attachElement', content: attachment.content });
+        document.getElementById('attachContainer').replaceChildren();
+        await laiSwapSidebarWithButton();
+        await laiSwapSidebarWithButton(true);
+        await laiSwapSidebarWithButton();
+
+        expect(global.addAttachment).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ type: 'snippet', content: expect.stringContaining(attachment.content) })
+        );
+        expect(document.querySelectorAll('#attachContainer img.attached')).toHaveLength(1);
+        expect(document.querySelector('#attachContainer img.attached').title).toContain(attachment.content);
+    });
+
     it('reports the panel state on every open and close', async () => {
         replyToTabState([]);
 
