@@ -17,11 +17,13 @@ importBackgroundScript('jslib/utils.js');
 importBackgroundScript('jslib/model-catalogue.js');
 importBackgroundScript('jslib/stream-request-state.js');
 importBackgroundScript('jslib/tab-state.js');
+importBackgroundScript('jslib/sidebar-frame-registry.js');
 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
 const tabState = new TabStateStore(); // per-tab session binding, background-owned (#40)
 const liveStreamStates = new Map(); // authoritative in-memory streamState per live requestId (#40)
+const sidebarFrameRegistry = new SidebarFrameRegistry(); // one-shot iframe confirmation per tab (#104)
 
 importBackgroundScript('jslib/log.js');
 importBackgroundScript('background-memory.js');
@@ -96,6 +98,8 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${activeInfo.tabId} activated`);
 });
 
+attachSidebarFrameCleanup(sidebarFrameRegistry);
+
 function isOptionsPageSender(sender) {
     const optionsUrl = chrome.runtime.getURL('options.html');
     return typeof sender?.url === 'string' && sender.url.startsWith(optionsUrl);
@@ -138,6 +142,12 @@ async function handleRuntimeMessage(request, sender) {
 
         case 'getOpenSessions':
             return await getOpenSessionsForSender(sender);
+
+        case 'registerSidebarFrame':
+            return await sidebarFrameRegistry.register(sender);
+
+        case 'confirmSidebarFrame':
+            return await sidebarFrameRegistry.confirm(sender);
 
         case 'removeStreamRequestState':
             return await removeStreamRequestStateForSender(request, sender);
