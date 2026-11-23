@@ -5,6 +5,7 @@
 ### Fixes
 
 - Restricted direct page-script access to the chat panel and limited rendered chat history to when the panel is open (#103).
+
 ## [1.30.21] - 2026-11-23
 
 ### Fixes
