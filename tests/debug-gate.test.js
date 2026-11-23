@@ -13,6 +13,7 @@ const loadDumpInFrontConsole = deps => new Function('deps', `with (deps) { ${ext
 const loadConvertFileToText = deps => new Function('deps', `with (deps) { ${extractFunction(backgroundCode, 'convertFileToText')}; return convertFileToText; }`)(deps);
 const loadResolveToolCalls = deps => new Function('deps', `with (deps) { ${extractFunction(backgroundCode, 'resolveToolCalls')}; return resolveToolCalls; }`)(deps);
 const loadDumpInConsole = () => new Function('manifest', 'getLineNumber', `${extractFunction(laiMainCode, 'dumpInConsole')}; return dumpInConsole;`)(global.manifest, () => 'test');
+const loadValidateToolCall = deps => new Function('deps', `with (deps) { ${extractFunction(backgroundCode, 'validateToolCall')}; return validateToolCall; }`)(deps);
 
 const SECRET = 'SECRET-PAYLOAD-VALUE';
 const baseDeps = extra => ({
@@ -118,6 +119,19 @@ describe('debug payload gate', () => {
 
         setDebug(true);
         await resolveToolCalls(toolCall, 'http://tools.local/', { id: 1 });
+        expect(consoleCalls(errorSpy)).toContain(SECRET);
+    });
+
+    it('logs only a summary, not the generated arguments, when a call object is empty with Debug off', async () => {
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const validateToolCall = loadValidateToolCall(baseDeps({ getPromptTools: vi.fn(async () => []) }));
+        const call = { function: { arguments: { city: SECRET } } };
+
+        expect((await validateToolCall(call)).isValid).toBe(false);
+        expect(consoleCalls(errorSpy)).not.toContain(SECRET);
+
+        setDebug(true);
+        expect((await validateToolCall(call)).isValid).toBe(false);
         expect(consoleCalls(errorSpy)).toContain(SECRET);
     });
 

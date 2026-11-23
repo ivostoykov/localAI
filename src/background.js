@@ -800,7 +800,9 @@ async function validateToolCall(call = {}, availableTools) {
     if (!availableTools) { availableTools = await getPromptTools(); }
 
     if (!call?.function?.name || Object.keys(call.function).length < 1) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - call request is null or empty!`, call);
+        const callName = call?.function?.name;
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - call request is null or empty!${callName ? ` Tool: ${callName}` : ''}`);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - call request detail`, call);
         return { isValid: false, reason: "Missing or empty call object!" };
     }
 
@@ -1721,7 +1723,8 @@ async function convertFileToText(fileAsB64) {
     let url = null;
     if(urlStr && URL.canParse(urlStr)) {  url = URL.parse(urlStr);  }
     if (!url) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing file conversion endpoint`, laiOptions);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing file conversion endpoint: tika`);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Missing file conversion endpoint detail`, laiOptions);
         await showUIMessage('Missing document converter endpoint!', 'error');
         return '';
     }

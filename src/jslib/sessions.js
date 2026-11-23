@@ -250,7 +250,8 @@ async function setActiveSession(session, options = {}) {
  */
 async function saveSession(session, beforeSave = null, options = {}) {
     if (!session?.id) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: session object is missing a valid id!`, session);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: session object is missing a valid id! (messages: ${session?.messages?.length ?? 0})`);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession session detail`, session);
         return false;
     }
 
@@ -271,7 +272,8 @@ async function saveSession(session, beforeSave = null, options = {}) {
             return await setAllSessions(sessions);
         } catch (e) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - saveSession error: ${e.message}`, e);
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - the session thrown the error`, session);
+            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - the session thrown the error (id: ${session?.id ?? 'none'}, messages: ${session?.messages?.length ?? 0})`);
+            logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - session detail`, session);
             return false;
         }
     });
@@ -561,11 +563,8 @@ async function setActiveSessionPageData(tabId) {
         try{
             pageContent = await getEnhancedPageContent() ?? null;
             if(!pageContent) {
-                console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content!`, {
-                    url,
-                    readyState: document.readyState,
-                    bodyExists: !!document.body,
-                    bodyLength: document.body?.innerText?.length ?? 0,
+                console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content! url: ${url}; readyState: ${document.readyState}; bodyExists: ${!!document.body}; bodyLength: ${document.body?.innerText?.length ?? 0}`);
+                logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content detail`, {
                     bodyFirstChars: document.body?.innerText?.substring(0, 100) ?? ''
                 });
                 return false;

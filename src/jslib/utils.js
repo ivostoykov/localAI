@@ -118,7 +118,8 @@ async function getAiUrl() {
         } else if (!isServiceWorker && typeof showMessage === 'function') {
             showMessage(`${msg} - ${laiOptions?.aiUrl || 'missing aiUrl'}`, 'error');
         }
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg}`, laiOptions);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${msg} missing aiUrl`);
+        logDiagnostic('error', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getAiUrl options detail`, laiOptions);
         return null;
     }
 
