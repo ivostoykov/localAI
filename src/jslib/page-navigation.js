@@ -123,16 +123,11 @@ function raceNavigationStep(promise, signal, timeoutMs, timeoutMessage) {
     });
 }
 
-async function getNavigationPermission() {
-    const stored = await chrome.storage.sync.get(storageOptionKey);
-    return stored?.[storageOptionKey]?.allowNavigation === true;
-}
-
 async function persistNavigationPermission(session) {
     const stored = await chrome.storage.sync.get(storageOptionKey);
     await throwIfNavigationCancelled(session);
     const options = stored?.[storageOptionKey] || {};
-    await chrome.storage.sync.set({ [storageOptionKey]: { ...options, allowNavigation: true } });
+    await chrome.storage.sync.set({ [storageOptionKey]: { ...options, allowNavigation: true, webAccessIncludesSearch: true } });
 }
 
 const NAVIGATION_CONSENT_PAGE = 'navigation-consent.html';
@@ -177,7 +172,7 @@ async function handleNavigationConsentMessage(request = {}, sender = {}) {
 
     switch (request.action) {
         case 'getNavigationConsentRequest':
-            return { status: 'ok', url: pending.url };
+            return { status: 'ok', ...pending.details };
         case 'navigationConsentKeepAlive':
             return { status: 'ok' };
         case 'navigationConsentResponse':
@@ -245,7 +240,15 @@ async function throwIfNavigationCancelled(session) {
 }
 
 async function requestNavigationConsent(session, url) {
-    if (await getNavigationPermission()) {
+    return await requestWebAccessConsent(session, { kind: 'navigate', url });
+}
+
+async function requestWebAccessConsent(session, details) {
+    const stored = await chrome.storage.sync.get(storageOptionKey);
+    const options = stored?.[storageOptionKey];
+    const isSearch = details.kind === 'search';
+    const legacyNavigationGrant = options?.allowNavigation === true && options.webAccessIncludesSearch !== true;
+    if (options?.allowNavigation === true && (!isSearch || !legacyNavigationGrant)) {
         return { granted: true, choice: 'setting' };
     }
 
@@ -255,7 +258,10 @@ async function requestNavigationConsent(session, url) {
     await throwIfNavigationCancelled(session);
 
     const requestId = crypto.randomUUID();
-    const pending = { requestId, url, windowId: null, tabId: null, settled: false };
+    const pending = {
+        requestId, details: { ...details, legacyNavigationGrant: isSearch && legacyNavigationGrant },
+        windowId: null, tabId: null, settled: false
+    };
     let markOpened;
     pending.opened = new Promise(resolve => { markOpened = resolve; });
     const answer = new Promise(resolve => {
@@ -270,7 +276,7 @@ async function requestNavigationConsent(session, url) {
 
     let response;
     try {
-        await notifyNavigationStatus(session.originTabId, 'Waiting for permission to open a page - see the Local AI pop-up window.');
+        await notifyNavigationStatus(session.originTabId, 'Waiting for web access permission. See the Local AI pop-up window.');
         await throwIfNavigationCancelled(session);
         try {
             Object.assign(pending, await openNavigationConsentWindow(requestId));
@@ -284,7 +290,7 @@ async function requestNavigationConsent(session, url) {
             answer,
             session.signal,
             NAVIGATION_CONSENT_TIMEOUT_MS,
-            'The user did not respond to the navigation request in time.'
+            'The user did not respond to the web access request in time.'
         );
     } catch (err) {
         if (err?.name === 'AbortError') { throw err; }
@@ -315,7 +321,7 @@ async function requestNavigationConsent(session, url) {
         case 'once':
             return { granted: true, choice: 'once' };
         case 'cancel':
-            return { granted: false, reason: 'the user declined the navigation' };
+            return { granted: false, reason: isSearch ? 'the user declined the search' : 'the user declined the navigation' };
         default:
             return { granted: false, reason: 'the user closed the permission window without granting permission' };
     }

@@ -319,15 +319,17 @@ The `Export All` and `Import All` buttons in the General Settings ribbon move yo
 
 Off by default. When on, the panel's console receives the full request messages, model replies, tool call arguments and results, and document-conversion payloads, alongside the usual diagnostics. When off, only summary messages are written: which operation failed, the error name or message, and an HTTP status. Message contents, request and reply bodies, tool arguments and file contents are not serialised, forwarded to the page or written to the console. The setting is read live, so turning it off stops new payloads immediately without reloading the page.
 
-### Allow navigation
+### Always allow web access
 
-Off by default. The built-in `browse_url` tool lets the model open a link in a separate, inactive background tab and read its content; your current tab, its form state and the chat are not changed. While this option is off, a small Local AI pop-up window asks before every page the model wants to open (the chat status bar points to it). The question is asked in an extension window rather than in the chat panel, because the visited page can read and change the panel's content:
+Off by default. When the model uses `search_web` or `browse_url`, a Local AI pop-up asks before sending anything to the search provider or destination site. It shows the exact query and provider or the full URL. Queries and URLs may contain conversation content. One search approval covers reading its result pages.
 
-- `Allow always` opens the page and turns this option on, so later pages open without asking.
-- `Allow this time` opens this one page only; the next page asks again.
-- `Cancel`, `Escape` or closing the window declines; no page is loaded. An unanswered request is declined after two minutes.
+- `Allow once` approves the displayed request.
+- `Always allow` approves the request and enables future searches and link opening without prompts. You can turn it off in Options.
+- `Cancel`, `Escape` or closing the window declines the request. Unanswered requests expire after two minutes.
 
-`Enter` chooses `Allow this time` unless another button has focus. For 0.75 seconds after the window opens or regains focus, its buttons are dimmed with a short notice and clicks and keys are ignored, so typing meant for another window cannot answer it; after that, `Enter` works as described.
+If you previously enabled **Allow navigation**, links continue to open without asking. Searches still ask for permission until you choose **Always allow** or explicitly enable and save **Always allow web access** in Options. Saving unrelated settings preserves the original link-only permission.
+
+`Enter` chooses `Allow once` unless another button has focus. The choices become available 0.75 seconds after the window opens or regains focus.
 
 How the browsing tab behaves:
 

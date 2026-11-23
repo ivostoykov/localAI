@@ -24,9 +24,9 @@ If you're using Firefox >= 158 it probably worth to keep reading.
 
 This will allow add-on to interact with the `activeTab`.
 
-## Reading links (Allow navigation)
+## Web search and reading links
 
-The `browse_url` tool opens pages in a background tab and reads them through the add-on's content script, so it also needs `Access your data for all websites`. The permission question opens as a small add-on pop-up window; if a pop-up blocker or window manager hides it, the request is declined after two minutes.
+The browser add-on needs `Access your data for all websites` to read pages opened by the search and link tools. A Local AI pop-up shows the exact search query and provider or the full link before sending it. You can choose **Allow once**, **Cancel** or **Always allow** for both tools. An unanswered request expires after two minutes. Existing link-only permission still requires approval for searches.
 
 ## Speech Recognition doesn't work in Firefox
 
