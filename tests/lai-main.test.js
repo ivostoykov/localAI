@@ -2077,14 +2077,55 @@ describe('context-menu selection line breaks (#74)', () => {
     });
 
     describe('Explain Selected (explainSelection)', () => {
-        it('receives the selection with its line breaks', async () => {
+        it('receives the selection in its own text block', async () => {
             global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
             const prompt = document.getElementById('laiUserInput');
             setLiveSelection('abbreviated snippet\nsecond line');
 
             await messageProcessor({ action: 'explainSelection', selection: 'abbreviated snippet second line' });
 
-            expect(prompt.value).toBe('Focusing on abbreviations or non common content, explain briefly the meaning of the next snippet:\n- abbreviated snippet\nsecond line');
+            expect(prompt.value).toBe('Explain the meaning of the selected text below. Use the attached page context only as context for its meaning.\n\n```text\nabbreviated snippet\nsecond line\n```\n');
+        });
+
+        it('attaches the page as context, never as the selection', async () => {
+            document.title = 'Abbreviation guide';
+            global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
+            setLiveSelection('CCAT');
+
+            await messageProcessor({ action: 'explainSelection', selection: 'CCAT' });
+
+            const attachment = global.addAttachment.mock.lastCall[0];
+            expect(attachment.filename).toBe('Page context: Abbreviation guide');
+            expect(attachment.content).toBe('PAGE CONTEXT START:\npage content\nPAGE CONTEXT END');
+            expect(attachment.content).not.toContain('SELECTION SNIPPET');
+            expect(global.addAttachment.mock.calls).toHaveLength(1);
+            expect(document.getElementById('laiUserInput').value).toContain('```text\nCCAT\n```');
+        });
+
+        it('falls back to the host when the page has no title', async () => {
+            document.title = '';
+            global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
+            setLiveSelection('CCAT');
+
+            await messageProcessor({ action: 'explainSelection', selection: 'CCAT' });
+
+            expect(global.addAttachment.mock.lastCall[0].filename).toBe('Page context: localhost');
+        });
+
+        it('still explains the selection when page extraction fails', async () => {
+            global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
+            const prompt = document.getElementById('laiUserInput');
+            const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            setLiveSelection('CCAT');
+            global.getEnhancedPageContent = vi.fn(async () => { throw new Error('extraction failed'); });
+
+            await messageProcessor({ action: 'explainSelection', selection: 'CCAT' });
+
+            expect(global.addAttachment).not.toHaveBeenCalled();
+            expect(prompt.value).toContain('```text\nCCAT\n```');
+            expect(prompt.value).not.toContain('attached page context');
+            expect(warnSpy.mock.calls.some(args => String(args[0]).includes('explaining the selection only'))).toBe(true);
+            warnSpy.mockRestore();
         });
 
         it('uses the background selectionText when no live selection exists', async () => {
@@ -2094,7 +2135,7 @@ describe('context-menu selection line breaks (#74)', () => {
 
             await messageProcessor({ action: 'explainSelection', selection: 'iframe\nselection' });
 
-            expect(prompt.value).toContain('- iframe\nselection');
+            expect(prompt.value).toContain('```text\niframe\nselection\n```');
         });
 
         it('does not open a prompt when both selections are empty', async () => {

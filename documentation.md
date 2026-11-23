@@ -155,7 +155,7 @@ On each web page (where the tab has a valid `http` location), there is a `Local 
 
 ![Context menu](media/select_and_send.png)
 
-- **Ask AI to Explain Selected**: Sends the selected text to the AI and requests an explanation.
+- **Explain Selected with Page Context**: Sends the selected text to the AI as the subject of the question, with the page attached as reference context. The question shows the selection in a `text` block; the attachment is labelled `Page context: <page title>` and marked `PAGE CONTEXT START/END`. If the page cannot be extracted, the selection is still explained without the attachment.
 
 - **Send Selected**: Sends the selected text on the page to the AI. You can include multiple selected elements as context for the prompt.
 
