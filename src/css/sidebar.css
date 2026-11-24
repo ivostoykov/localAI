@@ -466,8 +466,8 @@ local-ai *,
     flex-direction: column;
     box-sizing: border-box;
     min-height: 100px;
-    padding-bottom: 5px;
-    bottom: 2px;
+/*    padding-bottom: 5px;
+    bottom: 2px;*/
     position: relative;
     height: 175px;
     transition: all .65s ease-out;
@@ -492,10 +492,10 @@ local-ai *,
     text-wrap: nowrap;
     text-overflow: ellipsis;
     position: sticky;
-    bottom: 1px;
+    /* bottom: 1px; */
     height: 30px;
     border: 1px solid #aaa;
-    padding: 0 3px;
+    /* padding: 0 3px; */
     display: flex;
     flex-direction: row;
     align-items: center;
