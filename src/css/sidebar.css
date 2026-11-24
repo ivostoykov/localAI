@@ -56,7 +56,7 @@ local-ai *,
 .lai-resize-handle {
     position: absolute;
     top: 50%;
-    left: -11px;
+    left: -8px;
     height: 20px;
     width: 10px;
     cursor: ew-resize;

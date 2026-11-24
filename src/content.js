@@ -772,8 +772,7 @@ const sidebarHostCss = `
 .invisible { display: none !important; }
 #laiSidebar:not(.active) { visibility: hidden; pointer-events: none; }
 #laiSidebar iframe { display: block; border: 0; width: 100%; height: 100%; }
-.lai-resize-handle { position: absolute; left: -12px; top: 0; bottom: 0; width: 12px;
-  cursor: ew-resize; touch-action: none; }
+.lai-resize-handle { position: absolute; left: -8px; top: 0; bottom: 0; width: 12px; cursor: ew-resize; touch-action: none; }
 .lai-resize-handle svg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 18px; height: 34px; opacity: .25; pointer-events: none; }
 .lai-resize-handle:hover svg { opacity: 1; }
