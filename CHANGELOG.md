@@ -5,7 +5,7 @@
 ### Fixes
 
 - The panel no longer shows "Local AI could not connect" about 35-40 seconds after opening; it reconnects when the extension background goes idle and restarts (#104).
-- The resize grip on the panel's left edge is visible again (#104).
+- The panel's left edge shows a resize cursor again; the grip no longer overlaps the panel, which in Chrome blocked sending with "The sidebar is not fully visible" (#104).
 - Launcher and ribbon layout adjusted for the framed panel (#104).
 - After the extension is reloaded or updated, tabs that were already open remove their stale panel instead of logging errors; reload the tab to use Local AI again (#104).
 
