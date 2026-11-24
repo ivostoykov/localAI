@@ -53,27 +53,6 @@ local-ai *,
     display: block;
 }
 
-.lai-resize-handle {
-    position: absolute;
-    top: 50%;
-    left: -8px;
-    height: 20px;
-    width: 10px;
-    cursor: ew-resize;
-    z-index: 10000;
-    transform: translateY(-50%);
-}
-
-.lai-resize-handle img {
-    height: 34px;
-    width: 18px;
-    opacity: .25;
-}
-
-.lai-resize-handle img:hover {
-    opacity: 1;
-}
-
 /* System instructions */
 .lsi-sys-instruction-container {
     height: 0;

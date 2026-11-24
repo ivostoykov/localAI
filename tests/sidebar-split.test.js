@@ -230,17 +230,21 @@ it('restores locally after a port disconnect and synchronises with the page', as
     }
 });
 
-it('renders the resize icon inline without an external resource', () => {
+it('keeps the empty resize grip outside the iframe', () => {
     const { window } = new JSDOM('<div id="sidebar"></div>');
     try {
-        const iconCode = hostCode.slice(hostCode.indexOf('const sidebarResizeIcon'), hostCode.indexOf('const sidebarLauncherIcon'));
         const resizeCode = hostCode.slice(hostCode.indexOf('function installResizeHandle'), hostCode.indexOf('async function mountSidebarFrame'));
         const sidebar = window.document.getElementById('sidebar');
-        new Function('document', 'sidebar', `${iconCode}\n${resizeCode}\ninstallResizeHandle(sidebar);`)(window.document, sidebar);
+        new Function('document', 'sidebar', `${resizeCode}\ninstallResizeHandle(sidebar);`)(window.document, sidebar);
 
         const handle = sidebar.querySelector('.lai-resize-handle');
-        expect(handle.querySelector('svg')).toBeTruthy();
-        expect(handle.querySelector('[src], [href], [xlink\\:href]')).toBeNull();
+        expect(handle.childElementCount).toBe(0);
+
+        const hostCss = hostCode.match(/const sidebarHostCss = `([\s\S]*?)`;/)[1];
+        const gripCss = hostCss.match(/\.lai-resize-handle\s*\{([^}]+)\}/)[1];
+        const left = Number(gripCss.match(/\bleft:\s*(-?\d+)px/)[1]);
+        const width = Number(gripCss.match(/\bwidth:\s*(\d+)px/)[1]);
+        expect(left).toBe(-width);
     } finally {
         window.close();
     }
