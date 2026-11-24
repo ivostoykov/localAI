@@ -183,3 +183,65 @@ it('starts the actual sidebar scripts and renders the prompt only after host con
         window.close();
     }
 });
+
+it('restores locally after a port disconnect and synchronises with the page', async () => {
+    vi.useFakeTimers();
+    try {
+        const [initialHost, initialFrame] = connectPair();
+        const [host, frame] = connectPair();
+        const operations = [];
+        const state = { open: true };
+        makeChannel(initialHost, () => state);
+        makeChannel(host, action => {
+            operations.push(action);
+            if (action === 'getHostState' || action === 'ready') { return state; }
+            throw new Error('Unknown page operation.');
+        });
+        const restore = vi.fn(async () => { operations.push('restore'); });
+        const connect = vi.fn().mockReturnValueOnce(initialFrame).mockReturnValueOnce(frame);
+        const onFailed = vi.fn();
+        const synchronise = new Function('chrome', 'createSidebarChannel', 'restoreTabSessionFromBackground', 'onFailed', `
+            let sidebarGeneration = 0;
+            let sidebarChannel, sidebarDraft;
+            const getAiUserCommands = async () => {};
+            const initSidebar = async () => {};
+            const applySidebarState = async () => {};
+            const processSidebarRequest = () => {};
+            ${read('src/jslib/sidebar-reconnect.js')}
+            ${frameCode.slice(frameCode.indexOf('function connectSidebarPort'), frameCode.indexOf('function installSidebarListeners'))}
+            const sidebarReconnector = createSidebarReconnector({
+                isConfirmed: async () => true,
+                connect: () => connectAndSynchronise({ initial: false }),
+                onFailed
+            });
+            return connectAndSynchronise;
+        `)({ runtime: { connect } }, makeChannel, restore, onFailed);
+
+        await synchronise({ initial: true });
+        initialFrame.onDisconnect.emit();
+        await vi.advanceTimersByTimeAsync(250);
+
+        expect(connect).toHaveBeenCalledTimes(2);
+        expect(restore).toHaveBeenCalledOnce();
+        expect(operations).toEqual(['restore', 'getHostState', 'ready']);
+        expect(onFailed).not.toHaveBeenCalled();
+    } finally {
+        vi.useRealTimers();
+    }
+});
+
+it('renders the resize icon inline without an external resource', () => {
+    const { window } = new JSDOM('<div id="sidebar"></div>');
+    try {
+        const iconCode = hostCode.slice(hostCode.indexOf('const sidebarResizeIcon'), hostCode.indexOf('const sidebarLauncherIcon'));
+        const resizeCode = hostCode.slice(hostCode.indexOf('function installResizeHandle'), hostCode.indexOf('async function mountSidebarFrame'));
+        const sidebar = window.document.getElementById('sidebar');
+        new Function('document', 'sidebar', `${iconCode}\n${resizeCode}\ninstallResizeHandle(sidebar);`)(window.document, sidebar);
+
+        const handle = sidebar.querySelector('.lai-resize-handle');
+        expect(handle.querySelector('svg')).toBeTruthy();
+        expect(handle.querySelector('[src], [href], [xlink\\:href]')).toBeNull();
+    } finally {
+        window.close();
+    }
+});

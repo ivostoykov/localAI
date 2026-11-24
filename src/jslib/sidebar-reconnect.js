@@ -34,19 +34,12 @@ function createSidebarReconnector({
             return;
         }
 
-        let confirmed = false;
         try {
-            confirmed = !!(await isConfirmed());
-        } catch {
-            confirmed = false;
-        }
-        if (!confirmed) {
-            inFlight = false;
-            onFailed();
-            return;
-        }
-
-        try {
+            if (!await isConfirmed()) {
+                inFlight = false;
+                onFailed();
+                return;
+            }
             await connect();
             inFlight = false;
         } catch {

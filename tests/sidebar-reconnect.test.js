@@ -64,16 +64,21 @@ describe('createSidebarReconnector', () => {
         expect(onFailed).toHaveBeenCalledTimes(1);
     });
 
-    it('treats a rejected confirmation as unconfirmed', async () => {
+    it('retries a transient confirmation error within the host teardown window', async () => {
         const { reconnector, waits, connect, isConfirmed, onFailed } = createHarness();
-        isConfirmed.mockRejectedValue(new Error('background gone'));
+        isConfirmed.mockRejectedValueOnce(new Error('background starting'));
 
         reconnector.schedule();
         waits[0].resolve();
         await flush();
 
         expect(connect).not.toHaveBeenCalled();
-        expect(onFailed).toHaveBeenCalledTimes(1);
+        expect(waits.map(entry => entry.ms)).toEqual([250, 1000]);
+        waits[1].resolve();
+        await flush();
+
+        expect(connect).toHaveBeenCalledOnce();
+        expect(onFailed).not.toHaveBeenCalled();
     });
 
     it('resets the attempt counter after a successful reconnect', async () => {
