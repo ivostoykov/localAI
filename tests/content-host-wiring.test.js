@@ -112,6 +112,7 @@ describe('content host guard wiring', () => {
         vi.useFakeTimers();
         const port = {};
         const deps = {
+            isExtensionContextValid: () => true,
             sidebarPort: port,
             sidebarChannel: {},
             sidebarReady: true,
@@ -137,9 +138,66 @@ describe('content host guard wiring', () => {
         vi.useRealTimers();
     });
 
+    it.each(['disconnect', 'retry timer', 'guard remount'])('retires an orphaned sidebar during %s', trigger => {
+        vi.useFakeTimers();
+        try {
+            const runtime = { id: 'test' };
+            const port = {};
+            const host = document.createElement('div');
+            document.body.append(host);
+            const hostGuard = { start: vi.fn(), stop: vi.fn() };
+            const frameTimeout = vi.fn();
+            const deps = {
+                globalThis: { chrome: { runtime } },
+                console: { debug: vi.fn() },
+                createHostGuard: vi.fn(() => hostGuard),
+                getRootElement: () => host.isConnected ? host : null,
+                isHostTamperedNow: () => true,
+                remountSidebarHost: vi.fn(),
+                sidebarPort: port,
+                sidebarChannel: {},
+                sidebarReady: true,
+                isElementSelectionActive: false,
+                sidebarFrame: { isConnected: true },
+                sidebarFrameTimer: setTimeout(frameTimeout, 6001),
+                sidebarPortRetryTimer: undefined,
+                clearAllElementDecorations: vi.fn(),
+                teardownSidebarFrame: vi.fn()
+            };
+            const source = 'let hostGuard; let sidebarRetired = false;'
+                + functionCode('isExtensionContextValid')
+                + functionCode('retireOrphanedSidebar')
+                + functionCode('startHostGuard')
+                + functionCode('handleSidebarPortDisconnect');
+            const { startHostGuard, handleSidebarPortDisconnect } =
+                load(source, ['startHostGuard', 'handleSidebarPortDisconnect'])(deps);
+            startHostGuard();
+            if (trigger === 'retry timer') { handleSidebarPortDisconnect(port); }
+
+            delete runtime.id;
+            if (trigger === 'guard remount') {
+                deps.createHostGuard.mock.calls[0][0].remount();
+            } else if (trigger === 'disconnect') {
+                handleSidebarPortDisconnect(port);
+            }
+            vi.advanceTimersByTime(6001);
+            expect(host.isConnected).toBe(false);
+
+            handleSidebarPortDisconnect(port);
+            expect(hostGuard.stop).toHaveBeenCalledOnce();
+            expect(deps.console.debug).toHaveBeenCalledOnce();
+            expect(frameTimeout).not.toHaveBeenCalled();
+            expect(deps.teardownSidebarFrame).not.toHaveBeenCalled();
+            expect(deps.remountSidebarHost).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('tears the panel down immediately when the iframe is gone', () => {
         const port = {};
         const deps = {
+            isExtensionContextValid: () => true,
             sidebarPort: port,
             sidebarChannel: {},
             sidebarReady: true,
@@ -159,7 +217,7 @@ describe('content host guard wiring', () => {
 
     it('ignores a disconnect from a port that was already replaced', () => {
         const stale = {};
-        const deps = { sidebarPort: {}, sidebarChannel: {}, sidebarReady: true, isElementSelectionActive: true, clearAllElementDecorations: vi.fn() };
+        const deps = { isExtensionContextValid: () => true, sidebarPort: {}, sidebarChannel: {}, sidebarReady: true, isElementSelectionActive: true, clearAllElementDecorations: vi.fn() };
         const { handleSidebarPortDisconnect } = load(functionCode('handleSidebarPortDisconnect'), ['handleSidebarPortDisconnect'])(deps);
 
         handleSidebarPortDisconnect(stale);
@@ -284,6 +342,7 @@ describe('content host guard wiring', () => {
         const port = {};
         const frame = { isConnected: false, remove: vi.fn() };
         const deps = {
+            isExtensionContextValid: () => true,
             sidebarPort: port,
             sidebarChannel: {},
             sidebarReady: true,

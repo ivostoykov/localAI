@@ -790,6 +790,7 @@ let sidebarReady = false;
 let sidebarMount;
 let sidebarFrameTimer;
 let sidebarFrameCanRetry = false;
+let sidebarRetired = false;
 
 function withHostGuardSuspended(operation) {
   hostGuardSuspended = true;
@@ -802,6 +803,20 @@ function isHostTamperedNow() {
   return !hostGuardSuspended && isHostTamperedByDefault(getRootElement());
 }
 
+function isExtensionContextValid() {
+  return Boolean(globalThis.chrome?.runtime?.id);
+}
+
+function retireOrphanedSidebar() {
+  if (sidebarRetired) { return; }
+  sidebarRetired = true;
+  hostGuard?.stop();
+  clearTimeout(sidebarPortRetryTimer);
+  clearTimeout(sidebarFrameTimer);
+  getRootElement()?.remove();
+  console.debug('Local AI was reloaded. Reload this tab to use the sidebar again.');
+}
+
 function startHostGuard() {
   if (hostGuard?.isBlocked?.()) {
     hostGuard.stop();
@@ -812,6 +827,7 @@ function startHostGuard() {
   hostGuard = createHostGuard({
     getHost: () => getRootElement(),
     remount: () => {
+      if (!isExtensionContextValid()) { retireOrphanedSidebar(); return; }
       void remountSidebarHost().catch(error => console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Failed to recreate the sidebar host: ${error.message}`, error));
     },
     notifyBlocked: () => {
@@ -1007,6 +1023,7 @@ function teardownSidebarFrame({ keepOpen = false } = {}) {
 }
 
 function handleSidebarPortDisconnect(port) {
+  if (!isExtensionContextValid()) { retireOrphanedSidebar(); return; }
   if (sidebarPort !== port) { return; }
   sidebarPort = undefined;
   sidebarChannel = undefined;
@@ -1025,6 +1042,7 @@ function handleSidebarPortDisconnect(port) {
   // The background broker may have stopped with the service worker. Keep the
   // iframe mounted so it can reconnect; a real teardown still closes the panel.
   sidebarPortRetryTimer = setTimeout(() => {
+    if (!isExtensionContextValid()) { retireOrphanedSidebar(); return; }
     if (sidebarPort) { return; }
     teardownSidebarFrame();
   }, 6000);
