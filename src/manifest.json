@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "Local AI helper",
     "short_name": "localAI",
-    "version": "1.31.0",
+    "version": "1.31.1",
     "options_page": "options.html",
     "permissions": [
         "activeTab",
