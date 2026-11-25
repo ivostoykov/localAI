@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.2] - unreleased
+
+### Fixes
+
+- Includes 1.30.26: a streamed reply no longer pulls the chat back to the bottom after you scroll up (#120).
+
 ## [1.31.1] - unreleased
 
 ### Fixes
@@ -19,7 +25,13 @@
 - In Chrome, Enter and Delete All are blocked while the panel is covered. Firefox lacks the visibility detection used for this check (#104).
 - The panel attempts to reconnect when the extension background restarts (#104).
 
-## [1.30.25] - 2026-11-23 - latest
+## [1.30.26] - 2026-11-25 - latest
+
+### Fixes
+
+- A streamed reply no longer pulls the chat back to the bottom after you scroll up; it follows again once you return to the bottom, and the finished reply keeps your position (#120).
+
+## [1.30.25] - 2026-11-23
 
 ### Changes
 

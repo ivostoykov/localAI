@@ -57,7 +57,7 @@ const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingP
 const frameCode = fs.readFileSync('src/sidebar-frame.js', 'utf8');
 const viewCode = frameCode.slice(frameCode.indexOf('async function applySidebarState'), frameCode.indexOf('function showSidebarConnectionFailure'));
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-    tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + '\nlet sidebarVisibility; let sidebarDraft;\n' + viewCode + laiMainExports
+    tabStateCode + '\nlet userScrolled = false;\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + '\nlet sidebarVisibility; let sidebarDraft;\n' + viewCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId, getActiveStreamRequestId, isMessagePersistable;
@@ -97,6 +97,99 @@ describe('lai-main.js', () => {
         copyChatElementContentAsMarkdown = exports.copyChatElementContentAsMarkdown;
         addInputCardToUIChatHistory = exports.addInputCardToUIChatHistory;
         laiShowCopyHint = exports.laiShowCopyHint;
+    });
+
+    describe('stream scroll following', () => {
+        let chatList, recipient, scrollHeight, scrollChatHistoryContainer, getUserScrolled;
+
+        beforeEach(async () => {
+            const sidebar = document.createElement('section').attachShadow({ mode: 'open' });
+            sidebar.innerHTML = '<div id="feedbackMessage"></div><textarea id="laiUserInput"></textarea>' +
+                '<div class="lai-user-area"></div><div class="lai-resize-handle"></div>' +
+                '<div id="laiChatMessageList"><span></span></div>';
+            chatList = sidebar.querySelector('#laiChatMessageList');
+            recipient = chatList.firstElementChild;
+            scrollHeight = 500;
+            let scrollTop = 400;
+            Object.defineProperties(chatList, {
+                clientHeight: { value: 100 },
+                scrollHeight: { get: () => scrollHeight },
+                scrollTop: {
+                    get: () => scrollTop,
+                    set: value => { scrollTop = Math.min(value, scrollHeight - chatList.clientHeight); }
+                }
+            });
+
+            const stubs = {
+                getOptions: async () => ({}),
+                getRootElement: () => sidebar,
+                getShadowRoot: () => sidebar,
+                getRibbon: () => sidebar,
+                getLineNumber: () => 'test:1',
+                chrome: { runtime: { id: 'test' } },
+                ...Object.fromEntries([
+                    'closeAllDropDownRibbonMenus', 'closeQuickPromptListMenu', 'userInputClicked',
+                    'userInputBlurred', 'showUserInputRibbon', 'hideUserInputRibbon',
+                    'onUserInputDragEnter', 'onUserInputDragLeave', 'initRibbon',
+                    'hidePopups', 'laiSetImg', 'setModelNameLabel', 'buildMenuDropdowns',
+                    'debugBtnInit', 'pageFilterBtnInit', 'resetStatusbar'
+                ].map(name => [name, vi.fn()]))
+            };
+            const loadSidebar = new Function('document', 'manifest', ...Object.keys(stubs),
+                'let userScrolled = false;\n' + laiMainCode +
+                '; return { initSidebar, scrollChatHistoryContainer, getParseAndRenderOptions, getUserScrolled: () => userScrolled };'
+            );
+            const sidebarCode = loadSidebar(document, global.manifest, ...Object.values(stubs));
+            await sidebarCode.initSidebar(Date.now() + 1000);
+            sidebarCode.getParseAndRenderOptions(recipient);
+            ({ scrollChatHistoryContainer, getUserScrolled } = sidebarCode);
+        });
+
+        function userScrollTo(top) {
+            chatList.scrollTop = top;
+            chatList.dispatchEvent(new window.Event('scroll'));
+        }
+
+        it('detects upward scrolling after a programmatic scroll that did not move the list', () => {
+            scrollChatHistoryContainer();
+            userScrollTo(250);
+
+            expect(getUserScrolled()).toBe(true);
+            scrollHeight = 600;
+            scrollChatHistoryContainer();
+            expect(chatList.scrollTop).toBe(250);
+        });
+
+        it('keeps following when content grows before a programmatic scroll event arrives', () => {
+            scrollHeight = 600;
+            scrollChatHistoryContainer();
+            scrollHeight = 700;
+            chatList.dispatchEvent(new window.Event('scroll'));
+
+            expect(getUserScrolled()).toBe(false);
+            scrollChatHistoryContainer();
+            expect(chatList.scrollTop).toBe(600);
+        });
+
+        it('resumes following when the reader scrolls within 10 pixels of the bottom', () => {
+            userScrollTo(250);
+            expect(getUserScrolled()).toBe(true);
+
+            userScrollTo(390);
+            expect(getUserScrolled()).toBe(false);
+            scrollHeight = 600;
+            scrollChatHistoryContainer();
+            expect(chatList.scrollTop).toBe(500);
+        });
+
+        it('keeps the reader’s position when rendering completes', () => {
+            userScrollTo(250);
+            expect(getUserScrolled()).toBe(true);
+
+            scrollHeight = 600;
+            recipient.dispatchEvent(new window.Event('renderComplete'));
+            expect(chatList.scrollTop).toBe(250);
+        });
     });
 
     describe('stream preview helpers', () => {
