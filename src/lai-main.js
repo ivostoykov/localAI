@@ -4,6 +4,7 @@ let activeStreamRequestId = null;
 let activeStreamSeq = 0;
 let streamResyncInFlight = false;
 let sessionCatchUpInFlight = false;
+let lastAutoScrollTop = null;
 const ignoredForeignRequestIds = new Set();
 const rateLinkFirefoxUrl = 'https://addons.mozilla.org/en-GB/firefox/addon/local-ai-helper/';
 const rateLinkChromiumUrl = 'https://chromewebstore.google.com/detail/local-ai-helper/mplpnjanhjddepeecpmjbglbiccdhnfp';
@@ -109,13 +110,13 @@ async function initSidebar(deadline) {
     setWatermarkLinkHrefs(shadowRoot, manifest);
     laiChatMessageList.addEventListener('click', hidePopups, false);
     laiChatMessageList.addEventListener('scroll', (e) => {
-        if (laiChatMessageList.dataset.scrollType === 'auto') {
-            delete laiChatMessageList.dataset.scrollType;
-            return;
+        const { scrollHeight, scrollTop, clientHeight } = laiChatMessageList;
+        const fromBottom = scrollHeight - scrollTop - clientHeight;
+        if (fromBottom <= 10) {
+            userScrolled = false;
+        } else if (lastAutoScrollTop === null || scrollTop < lastAutoScrollTop - 1) {
+            userScrolled = true;
         }
-
-        const fromBottom = laiChatMessageList.scrollHeight - laiChatMessageList.scrollTop - laiChatMessageList.clientHeight;
-        userScrolled = fromBottom > 10 ? true : false;
         const chatList = e.target;
         const itemRibbon = chatList.querySelector('.lai-action-icons:not(.lai-action-icons-hidden)');
         if (!itemRibbon) { return; }
@@ -653,7 +654,7 @@ async function onPromptTextAreaKeyDown(e) {
             return;
         }
 
-        // update UI
+        userScrolled = false;
         await renderUserPromptCard(userInput);
         await addInputCardToUIChatHistory('', 'ai');
 
@@ -874,6 +875,7 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
     lastChatText.addEventListener('click', function (e) { laiSourceTextClicked(e); });
 
     messageList.scrollTop = messageList.scrollHeight;
+    lastAutoScrollTop = messageList.scrollTop;
 
     return lastChatText;
 }
@@ -1718,13 +1720,12 @@ function scrollChatHistoryContainer(e) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
         return;
     }
-    laiChatMessageList.dataset.scrollType = 'auto';
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+    lastAutoScrollTop = laiChatMessageList.scrollTop;
 }
 
 function renderCompleteFired(e) {
-    const laiChatMessageList = e.target.closest('#laiChatMessageList');
-    laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+    scrollChatHistoryContainer(e);
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Render completed`, {
         renderedChildCount: e.target?.childNodes?.length,
         renderedTextLength: e.target?.innerText?.length ?? 0,

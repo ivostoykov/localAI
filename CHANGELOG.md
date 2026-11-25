@@ -1,6 +1,12 @@
 # Local AI - Changelog
 
-## [1.30.25] - 2026-11-23 - latest
+## [1.30.26] - 2026-11-25 - latest
+
+### Fixes
+
+- A streamed reply no longer pulls the chat back to the bottom after you scroll up; it follows again once you return to the bottom, and the finished reply keeps your position (#120).
+
+## [1.30.25] - 2026-11-23
 
 ### Changes
 
