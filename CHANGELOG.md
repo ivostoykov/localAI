@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.3] - unreleased
+
+### Fixes
+
+- Reconnecting the sidebar keeps your reading position when the current session is already open (#104).
+
 ## [1.31.2] - unreleased
 
 ### Fixes

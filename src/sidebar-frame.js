@@ -110,7 +110,7 @@ async function connectAndSynchronise({ initial }) {
         await getAiUserCommands();
         await initSidebar(Date.now() + 3000);
     } else {
-        await restoreTabSessionFromBackground();
+        await restoreTabSessionFromBackground({ reconnect: true });
     }
     await applySidebarState(await channel.request('getHostState'));
     await applySidebarState(await channel.request('ready'));

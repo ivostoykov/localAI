@@ -1001,9 +1001,12 @@ async function renderSessionHistoryMessage(msg, index = -1) {
     return true;
 }
 
-async function renderSessionHistoryMessages(session) {
+async function renderSessionHistoryMessages(session, { preserveScroll = false } = {}) {
     if (!getSideBar()?.classList.contains('active')) { return; }
     const viewRevision = panelViewRevision;
+    const messageList = getShadowRoot().querySelector('#laiChatMessageList');
+    const scrollTop = preserveScroll && userScrolled ? messageList.scrollTop : null;
+    if (!preserveScroll) { userScrolled = false; }
     clearChatHistoryUI();
 
     for (const [i, msg] of (session?.messages ?? []).entries()) {
@@ -1012,9 +1015,13 @@ async function renderSessionHistoryMessages(session) {
         await renderSessionHistoryMessage(msg, i);
     }
 
-    const shadowRoot = getShadowRoot();
-    const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
-    laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+    if (viewRevision !== panelViewRevision) { return; }
+    if (scrollTop !== null) {
+        messageList.scrollTop = scrollTop;
+        userScrolled = true;
+    } else {
+        scrollChatHistoryContainer();
+    }
 }
 
 async function startSessionRename(row, sessionId) {

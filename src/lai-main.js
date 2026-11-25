@@ -858,8 +858,10 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
 
     lastChatText.addEventListener('click', function (e) { laiSourceTextClicked(e); });
 
-    messageList.scrollTop = messageList.scrollHeight;
-    lastAutoScrollTop = messageList.scrollTop;
+    if (!userScrolled) {
+        messageList.scrollTop = messageList.scrollHeight;
+        lastAutoScrollTop = messageList.scrollTop;
+    }
 
     return lastChatText;
 }
@@ -1388,7 +1390,7 @@ async function finaliseActiveStreamFromSnapshot(snapshot) {
     if (!snapshot || snapshot.status === 'complete') {
         const sessionId = await getActiveSessionId();
         const session = sessionId ? await getActiveSessionById(sessionId) : null;
-        if (session) { await renderSessionHistoryMessages(session); }
+        if (session) { await renderSessionHistoryMessages(session, { preserveScroll: true }); }
     } else if (snapshot.status === 'aborted') {
         await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
     } else if (snapshot.status === 'error') {
@@ -1507,10 +1509,11 @@ async function unbindStaleTabSession() {
  * Runs once the sidebar UI exists, and again after a bfcache restore (pageshow with
  * event.persisted) so a stale instance cannot show or write an outdated session.
  */
-async function restoreTabSessionFromBackground() {
+async function restoreTabSessionFromBackground({ reconnect = false } = {}) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
+    const previousRequestId = activeStreamRequestId;
     activeStreamRequestId = null;
     activeStreamSeq = 0;
     streamResyncInFlight = false;
@@ -1533,6 +1536,9 @@ async function restoreTabSessionFromBackground() {
         return;
     }
 
+    const sameOpenSession = getSideBar()?.classList.contains('active') &&
+        await getActiveSessionId() === binding.sessionId;
+    if (previousViewRevision !== panelViewRevision) { return; }
     await setActiveSessionId(binding.sessionId);
     await reportTabBinding({ sessionId: binding.sessionId });
     if (previousViewRevision !== panelViewRevision) { return; }
@@ -1545,11 +1551,23 @@ async function restoreTabSessionFromBackground() {
     const viewRevision = panelViewRevision;
     clearAttachments();
     session.attachments?.forEach(showAttachment);
-    await renderSessionHistoryMessages(session);
+    const streaming = initialSnapshot?.status === 'streaming';
+    const pendingCard = reconnect && sameOpenSession && streaming && previousRequestId === initialSnapshot.requestId
+        ? shadowRoot.querySelector('#laiChatMessageList > .lai-ai-input:last-child')
+        : null;
+    const terminalReplyNeedsCard = initialSnapshot && !streaming && initialSnapshot.status !== 'complete';
+    const canReconcile = reconnect && sameOpenSession &&
+        (pendingCard || (!previousRequestId && !terminalReplyNeedsCard));
+    let keptPendingCard = false;
+    if (canReconcile) {
+        keptPendingCard = await reconcileShownChatTurns(session, viewRevision, pendingCard);
+    } else {
+        await renderSessionHistoryMessages(session, { preserveScroll: sameOpenSession });
+    }
     if (viewRevision !== panelViewRevision) { return; }
 
-    if (initialSnapshot?.status === 'streaming') {
-        await addInputCardToUIChatHistory('', 'ai');
+    if (streaming) {
+        if (!keptPendingCard) { await addInputCardToUIChatHistory('', 'ai'); }
         // A fresh snapshot closes the race with chunks that arrived while history was
         // rendering; the request is adopted synchronously with the reply.
         const fresh = await fetchTabStartupState();
@@ -1582,8 +1600,8 @@ function appendSessionCatchUpSeparator(messageList) {
 }
 
 // Separators are view-only markers, so only .lai-chat-history cards count as turns.
-function getShownChatTurns(messageList) {
-    return Array.from(messageList?.querySelectorAll('.lai-chat-history') || []).map(card => {
+function getShownChatTurns(messageList, pendingCard) {
+    return Array.from(messageList.querySelectorAll('.lai-chat-history')).filter(card => card !== pendingCard).map(card => {
         const textElement = card.querySelector('.lai-input-text');
         if (!textElement) { return { role: null, content: '' }; }
         const isUserTurn = card.classList.contains('lai-user-input');
@@ -1617,35 +1635,47 @@ async function catchUpActiveSessionFromStorage() {
         if (!session || activeStreamRequestId || await getActiveSessionId() !== sessionId) { return; }
 
         if (viewRevision !== panelViewRevision) { return; }
-        const messageList = shadowRoot.querySelector('#laiChatMessageList');
-        if (!messageList) { return; }
-
-        const savedTurns = (session.messages ?? [])
-            .map((message, index) => ({ message, index }))
-            .filter(({ message }) => isRenderableSessionMessage(message));
-        const shownTurns = getShownChatTurns(messageList);
-
-        const commonLength = Math.min(shownTurns.length, savedTurns.length);
-        const commonMatches = shownTurns.slice(0, commonLength).every((turn, i) =>
-            turn.role === savedTurns[i].message.role && turn.content === savedTurns[i].message.content);
-
-        if (!commonMatches) {
-            await renderSessionHistoryMessages(session);
-            return;
-        }
-
-        if (shownTurns.length >= savedTurns.length) { return; }
-
-        appendSessionCatchUpSeparator(messageList);
-        for (const turn of savedTurns.slice(shownTurns.length)) {
-            if (activeStreamRequestId || await getActiveSessionId() !== sessionId) { return; }
-            if (viewRevision !== panelViewRevision) { return; }
-            await renderSessionHistoryMessage(turn.message, turn.index);
-        }
-        messageList.scrollTop = messageList.scrollHeight;
+        await reconcileShownChatTurns(session, viewRevision);
     } finally {
         sessionCatchUpInFlight = false;
     }
+}
+
+async function reconcileShownChatTurns(session, viewRevision, pendingCard = null) {
+    const messageList = getShadowRoot()?.querySelector('#laiChatMessageList');
+    if (!messageList) { return false; }
+
+    const savedTurns = (session.messages ?? [])
+        .map((message, index) => ({ message, index }))
+        .filter(({ message }) => isRenderableSessionMessage(message));
+    const shownTurns = getShownChatTurns(messageList, pendingCard);
+    const commonLength = Math.min(shownTurns.length, savedTurns.length);
+    const commonMatches = shownTurns.slice(0, commonLength).every((turn, i) =>
+        turn.role === savedTurns[i].message.role && turn.content === savedTurns[i].message.content);
+
+    if (!commonMatches || (pendingCard && shownTurns.length < savedTurns.length)) {
+        await renderSessionHistoryMessages(session, { preserveScroll: true });
+        return false;
+    }
+
+    if (shownTurns.length >= savedTurns.length) { return Boolean(pendingCard); }
+
+    const scrollTop = userScrolled ? messageList.scrollTop : null;
+    appendSessionCatchUpSeparator(messageList);
+    for (const turn of savedTurns.slice(shownTurns.length)) {
+        if (activeStreamRequestId || await getActiveSessionId() !== session.id) { return false; }
+        if (viewRevision !== panelViewRevision) { return false; }
+        await renderSessionHistoryMessage(turn.message, turn.index);
+    }
+    if (viewRevision === panelViewRevision) {
+        if (scrollTop !== null) {
+            messageList.scrollTop = scrollTop;
+            userScrolled = true;
+        } else {
+            scrollChatHistoryContainer();
+        }
+    }
+    return false;
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {

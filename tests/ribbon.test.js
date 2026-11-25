@@ -720,6 +720,7 @@ describe('ribbon.js session restore', () => {
     const laiMainCode = fs.readFileSync(path.join(__dirname, '../src/lai-main.js'), 'utf-8');
     const markdownSourceCode = laiMainCode.match(/function setMarkdownSource\([\s\S]*?\n}\n/)[0]
         + laiMainCode.match(/function getMarkdownSource\([\s\S]*?\n}\n/)[0];
+    const scrollChatHistoryContainerCode = laiMainCode.match(/function scrollChatHistoryContainer\([\s\S]*?\n}\n/)[0];
     const renderUserPromptCardCode = laiMainCode.match(/async function renderUserPromptCard\([\s\S]*?\n}\n/)[0];
 
     it('keeps the stored Markdown of restored messages for Copy as Markdown', async () => {
@@ -756,7 +757,7 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked, getMarkdownSource } = new Function('deps',
-            `with (deps) { ${markdownSourceCode}\n${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
+            `with (deps) { ${markdownSourceCode}\n${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\nlet userScrolled = false, lastAutoScrollTop = null;\n${scrollChatHistoryContainerCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1');
@@ -789,7 +790,7 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked } = new Function('deps',
-            `with (deps) { ${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
+            `with (deps) { ${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\nlet userScrolled = false, lastAutoScrollTop = null;\n${scrollChatHistoryContainerCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1', { silent: true });
@@ -992,7 +993,7 @@ describe('ribbon.js restored user prompts (#41)', () => {
         solomdCode + '; return parseAndRender;'
     )(global.document, global.window.DocumentFragment, global.window.CustomEvent, global.window.Node, global.navigator);
     const executeRestore = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-        tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\nlet aiUserCommands = [];\n' +
+        tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\nlet aiUserCommands = [], userScrolled = false;\n' +
         isRenderableSessionMessageCode + '\n' + renderSessionHistoryMessageCode + '\n' + renderSessionHistoryMessagesCode + '\n' +
         laiMainCode +
         '; return { renderUserPromptCard, editUserInput, renderSessionHistoryMessages };'

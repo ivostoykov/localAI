@@ -1565,11 +1565,12 @@ describe('sidebar session catch-up on focus (#61)', () => {
     const renderSessionHistoryMessagesCode = ribbonCode.match(/async function renderSessionHistoryMessages\([\s\S]*?\n}\n/)[0];
 
     const executeCatchUp = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-        tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' +
+        tabStateCode + '\nlet userScrolled = false;\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' +
         isRenderableSessionMessageCode + '\n' + renderSessionHistoryMessageCode + '\n' + renderSessionHistoryMessagesCode + '\n' +
-        laiMainCode + '; return { catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId };'
+        laiMainCode + '; return { restoreTabSessionFromBackground, setUserScrolled: value => userScrolled = value, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId };'
     );
 
+    let restoreTabSessionFromBackground, setUserScrolled;
     let catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory;
     let setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId, getActiveStreamRequestId;
     let storedSessions;
@@ -1606,10 +1607,96 @@ describe('sidebar session catch-up on focus (#61)', () => {
         global.getActiveSessionById = vi.fn(async id => storedSessions[id] ?? null);
 
         ({
-            catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard,
+            restoreTabSessionFromBackground, setUserScrolled, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard,
             addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex,
             setActiveStreamRequestId, getActiveStreamRequestId
         } = executeCatchUp(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, undefined));
+    });
+
+    describe('after reconnecting the sidebar port', () => {
+        const messages = [
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ];
+        const messageList = () => document.getElementById('laiChatMessageList');
+        const reconnect = async (sessionId = 's1', request = null) => {
+            global.chrome.runtime.sendMessage = vi.fn(async message =>
+                message.action === 'getTabState' ? { tab: { sessionId, panelOpen: true }, request } : null
+            );
+            await restoreTabSessionFromBackground({ reconnect: true });
+        };
+
+        beforeEach(async () => {
+            global.setActiveSessionId = vi.fn(async id => { activeSessionId = id; });
+            global.resetStatusbar = vi.fn();
+            global.updateStatusBar = vi.fn();
+            storedSessions.s1 = sessionWith(messages);
+            Object.defineProperty(messageList(), 'scrollHeight', { value: 500 });
+            await renderSessionHistoryMessages(storedSessions.s1);
+            messageList().scrollTop = 150;
+            setUserScrolled(true);
+        });
+
+        it('keeps the existing cards and scroll position for identical turns', async () => {
+            const [prompt, reply] = cards();
+
+            await reconnect();
+
+            expect(cards()[0] === prompt).toBe(true);
+            expect(cards()[1] === reply).toBe(true);
+            expect(messageList().scrollTop).toBe(150);
+        });
+
+        it('appends newly saved turns and preserves the reading position', async () => {
+            const [prompt, reply] = cards();
+            storedSessions.s1 = sessionWith([...messages, { role: 'user', content: 'next question' }]);
+
+            await reconnect();
+
+            expect(cards()).toHaveLength(3);
+            expect(cards()[0] === prompt).toBe(true);
+            expect(cards()[1] === reply).toBe(true);
+            expect(cards()[2].textContent).toContain('next question');
+            expect(messageList().scrollTop).toBe(150);
+        });
+
+        it('replaces cards and scrolls to the bottom for a different session with identical turns', async () => {
+            const [prompt] = cards();
+            storedSessions.s2 = { id: 's2', messages };
+
+            await reconnect('s2');
+
+            expect(cards()).toHaveLength(2);
+            expect(cards()[0] === prompt).toBe(false);
+            expect(activeSessionId).toBe('s2');
+            expect(messageList().scrollTop).toBe(500);
+        });
+
+        it('replaces mismatched turns without moving the reader', async () => {
+            const [, reply] = cards();
+            storedSessions.s1 = sessionWith([messages[0], { role: 'assistant', content: 'updated answer' }]);
+
+            await reconnect();
+
+            expect(cards()[1] === reply).toBe(false);
+            expect(cards()[1].textContent).toContain('updated answer');
+            expect(messageList().scrollTop).toBe(150);
+        });
+
+        it('adopts a live snapshot in the existing reply card without duplicating it', async () => {
+            await addInputCardToUIChatHistory('', 'ai');
+            const pendingReply = cards().at(-1);
+            messageList().scrollTop = 150;
+            setActiveStreamRequestId('r1');
+
+            await reconnect('s1', { requestId: 'r1', status: 'streaming', content: 'Resumed', seq: 4 });
+
+            expect(cards()).toHaveLength(3);
+            expect(cards().at(-1) === pendingReply).toBe(true);
+            expect(pendingReply.textContent).toContain('Resumed');
+            expect(getActiveStreamRequestId()).toBe('r1');
+            expect(messageList().scrollTop).toBe(150);
+        });
     });
 
     it('does not read or render newly stored turns while the panel is closed', async () => {

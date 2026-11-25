@@ -222,7 +222,7 @@ it('restores locally after a port disconnect and synchronises with the page', as
         await vi.advanceTimersByTimeAsync(250);
 
         expect(connect).toHaveBeenCalledTimes(2);
-        expect(restore).toHaveBeenCalledOnce();
+        expect(restore).toHaveBeenCalledExactlyOnceWith({ reconnect: true });
         expect(operations).toEqual(['restore', 'getHostState', 'ready']);
         expect(onFailed).not.toHaveBeenCalled();
     } finally {
