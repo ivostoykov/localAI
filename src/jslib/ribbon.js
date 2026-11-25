@@ -1004,7 +1004,8 @@ async function renderSessionHistoryMessage(msg, index = -1) {
 async function renderSessionHistoryMessages(session, { preserveScroll = false } = {}) {
     if (!getSideBar()?.classList.contains('active')) { return; }
     const viewRevision = panelViewRevision;
-    const messageList = getShadowRoot().querySelector('#laiChatMessageList');
+    const messageList = getShadowRoot()?.querySelector('#laiChatMessageList');
+    if (!messageList) { return; }
     const scrollTop = preserveScroll && userScrolled ? messageList.scrollTop : null;
     if (!preserveScroll) { userScrolled = false; }
     clearChatHistoryUI();

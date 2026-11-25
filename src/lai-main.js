@@ -1536,7 +1536,7 @@ async function restoreTabSessionFromBackground({ reconnect = false } = {}) {
         return;
     }
 
-    const sameOpenSession = getSideBar()?.classList.contains('active') &&
+    const reconnectingOpenSession = reconnect && getSideBar()?.classList.contains('active') &&
         await getActiveSessionId() === binding.sessionId;
     if (previousViewRevision !== panelViewRevision) { return; }
     await setActiveSessionId(binding.sessionId);
@@ -1552,17 +1552,17 @@ async function restoreTabSessionFromBackground({ reconnect = false } = {}) {
     clearAttachments();
     session.attachments?.forEach(showAttachment);
     const streaming = initialSnapshot?.status === 'streaming';
-    const pendingCard = reconnect && sameOpenSession && streaming && previousRequestId === initialSnapshot.requestId
+    const pendingCard = reconnectingOpenSession && streaming && previousRequestId === initialSnapshot.requestId
         ? shadowRoot.querySelector('#laiChatMessageList > .lai-ai-input:last-child')
         : null;
     const terminalReplyNeedsCard = initialSnapshot && !streaming && initialSnapshot.status !== 'complete';
-    const canReconcile = reconnect && sameOpenSession &&
+    const canReconcile = reconnectingOpenSession &&
         (pendingCard || (!previousRequestId && !terminalReplyNeedsCard));
     let keptPendingCard = false;
     if (canReconcile) {
         keptPendingCard = await reconcileShownChatTurns(session, viewRevision, pendingCard);
     } else {
-        await renderSessionHistoryMessages(session, { preserveScroll: sameOpenSession });
+        await renderSessionHistoryMessages(session, { preserveScroll: reconnectingOpenSession });
     }
     if (viewRevision !== panelViewRevision) { return; }
 

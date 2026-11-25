@@ -26,7 +26,10 @@ async function applySidebarState(state) {
     const revision = ++panelViewRevision;
     sidebar.classList.toggle('active', state.open);
     sidebar.hidden = !state.open;
-    if (!state.open) { clearChatHistoryUI(); }
+    if (!state.open) {
+        userScrolled = false;
+        clearChatHistoryUI();
+    }
     await reportTabBinding({ panelOpen: state.open });
     if (state.open && revision === panelViewRevision) {
         if (state.restoreHistory !== false) {

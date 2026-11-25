@@ -1567,10 +1567,10 @@ describe('sidebar session catch-up on focus (#61)', () => {
     const executeCatchUp = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
         tabStateCode + '\nlet userScrolled = false;\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' +
         isRenderableSessionMessageCode + '\n' + renderSessionHistoryMessageCode + '\n' + renderSessionHistoryMessagesCode + '\n' +
-        laiMainCode + '; return { restoreTabSessionFromBackground, setUserScrolled: value => userScrolled = value, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId };'
+        laiMainCode + '\nlet sidebarVisibility, sidebarDraft;\n' + viewCode + '; return { applySidebarState, getUserScrolled: () => userScrolled, restoreTabSessionFromBackground, setUserScrolled: value => userScrolled = value, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId };'
     );
 
-    let restoreTabSessionFromBackground, setUserScrolled;
+    let applySidebarState, getUserScrolled, restoreTabSessionFromBackground, setUserScrolled;
     let catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory;
     let setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId, getActiveStreamRequestId;
     let storedSessions;
@@ -1607,13 +1607,13 @@ describe('sidebar session catch-up on focus (#61)', () => {
         global.getActiveSessionById = vi.fn(async id => storedSessions[id] ?? null);
 
         ({
-            restoreTabSessionFromBackground, setUserScrolled, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard,
+            applySidebarState, getUserScrolled, restoreTabSessionFromBackground, setUserScrolled, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard,
             addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex,
             setActiveStreamRequestId, getActiveStreamRequestId
         } = executeCatchUp(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, undefined));
     });
 
-    describe('after reconnecting the sidebar port', () => {
+    describe('opening and reconnecting the sidebar', () => {
         const messages = [
             { role: 'user', content: 'first question' },
             { role: 'assistant', content: 'first answer' }
@@ -1635,6 +1635,22 @@ describe('sidebar session catch-up on focus (#61)', () => {
             await renderSessionHistoryMessages(storedSessions.s1);
             messageList().scrollTop = 150;
             setUserScrolled(true);
+        });
+
+        it('scrolls to the bottom after closing and reopening the same session', async () => {
+            global.chrome.runtime.sendMessage = vi.fn(async message =>
+                message.action === 'getTabState' ? { tab: { sessionId: 's1', panelOpen: true } } : null
+            );
+
+            await applySidebarState({ open: false });
+            const scrolledAfterClose = getUserScrolled();
+            // JSDOM does not reset the scroll offset when the list is emptied.
+            messageList().scrollTop = 0;
+            await applySidebarState({ open: true });
+
+            expect(messageList().scrollTop).toBe(500);
+            expect(scrolledAfterClose).toBe(false);
+            expect(getUserScrolled()).toBe(false);
         });
 
         it('keeps the existing cards and scroll position for identical turns', async () => {
