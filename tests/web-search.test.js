@@ -267,7 +267,7 @@ describe('web-search.js', () => {
             expect(chrome.tabs.remove).not.toHaveBeenCalled();
             expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(9, expect.objectContaining({
                 action: 'showMessage', messageType: 'warning'
-            }));
+            }), { frameId: 0 });
         });
 
         it('swallows a tab close failure', async () => {

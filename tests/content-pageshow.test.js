@@ -9,21 +9,12 @@ const contentCode = fs.readFileSync(path.join(__dirname, '../src/content.js'), '
 const handlerCode = contentCode.match(/function handleTabSessionPageShow\([\s\S]*?\n}\n/)[0];
 const catchUpCode = contentCode.match(/function handleTabSessionCatchUp\([\s\S]*?\n}\n/)[0];
 const visibilityHandlerCode = contentCode.match(/function handleTabSessionVisibilityChange\([\s\S]*?\n}\n/)[0];
-const startupCode = contentCode.match(/async function restoreTabSessionOnStartup\([\s\S]*?\n}\n/)[0];
-
-const load = deps => new Function('deps', `with (deps) { ${handlerCode}\n${catchUpCode}\n${visibilityHandlerCode}\n${startupCode}; return { handleTabSessionPageShow, handleTabSessionCatchUp, handleTabSessionVisibilityChange, restoreTabSessionOnStartup }; }`)(deps);
-
+const load = deps => new Function('deps', `with (deps) { ${handlerCode}\n${catchUpCode}\n${visibilityHandlerCode}; return { handleTabSessionPageShow, handleTabSessionCatchUp, handleTabSessionVisibilityChange }; }`)(deps);
 const createDeps = (overrides = {}) => ({
-    manifest: { name: 'Local AI helper' },
-    getLineNumber: () => 'test',
-    init: vi.fn(async () => undefined),
-    restoreTabSessionFromBackground: vi.fn(async () => undefined),
-    catchUpActiveSessionFromStorage: vi.fn(async () => undefined),
+    notifySidebar: vi.fn(),
     document: { visibilityState: 'visible' },
-    console: { error: vi.fn() },
     ...overrides
 });
-
 
 describe('content.js tab session synchronisation (#40)', () => {
     it('registers the pageshow listener at script scope', () => {
@@ -35,7 +26,7 @@ describe('content.js tab session synchronisation (#40)', () => {
 
         load(deps).handleTabSessionPageShow({ persisted: true });
 
-        expect(deps.restoreTabSessionFromBackground).toHaveBeenCalledTimes(1);
+        expect(deps.notifySidebar).toHaveBeenCalledExactlyOnceWith('catchUp', { restore: true });
     });
 
     it('does nothing for an ordinary page show', () => {
@@ -45,27 +36,9 @@ describe('content.js tab session synchronisation (#40)', () => {
         handleTabSessionPageShow({ persisted: false });
         handleTabSessionPageShow(undefined);
 
-        expect(deps.restoreTabSessionFromBackground).not.toHaveBeenCalled();
+        expect(deps.notifySidebar).not.toHaveBeenCalled();
     });
 
-    it('logs a failed re-synchronisation instead of throwing', async () => {
-        const deps = createDeps({ restoreTabSessionFromBackground: vi.fn(async () => { throw new Error('gone'); }) });
-
-        expect(() => load(deps).handleTabSessionPageShow({ persisted: true })).not.toThrow();
-        await vi.waitFor(() => expect(deps.console.error).toHaveBeenCalled());
-    });
-
-    it('restores the tab session only after the sidebar UI is built', async () => {
-        const order = [];
-        const deps = createDeps({
-            init: vi.fn(async () => { order.push('init'); }),
-            restoreTabSessionFromBackground: vi.fn(async () => { order.push('restore'); })
-        });
-
-        await load(deps).restoreTabSessionOnStartup();
-
-        expect(order).toEqual(['init', 'restore']);
-    });
 });
 
 describe('content.js focus catch-up trigger (#61)', () => {
@@ -79,7 +52,7 @@ describe('content.js focus catch-up trigger (#61)', () => {
 
         load(deps).handleTabSessionVisibilityChange();
 
-        expect(deps.catchUpActiveSessionFromStorage).toHaveBeenCalledTimes(1);
+        expect(deps.notifySidebar).toHaveBeenCalledExactlyOnceWith('catchUp');
     });
 
     it('does nothing when the document becomes hidden', () => {
@@ -87,7 +60,7 @@ describe('content.js focus catch-up trigger (#61)', () => {
 
         load(deps).handleTabSessionVisibilityChange();
 
-        expect(deps.catchUpActiveSessionFromStorage).not.toHaveBeenCalled();
+        expect(deps.notifySidebar).not.toHaveBeenCalled();
     });
 
     it('catches up on window focus', () => {
@@ -95,13 +68,7 @@ describe('content.js focus catch-up trigger (#61)', () => {
 
         load(deps).handleTabSessionCatchUp();
 
-        expect(deps.catchUpActiveSessionFromStorage).toHaveBeenCalledTimes(1);
+        expect(deps.notifySidebar).toHaveBeenCalledExactlyOnceWith('catchUp');
     });
 
-    it('logs a failed catch-up instead of throwing', async () => {
-        const deps = createDeps({ catchUpActiveSessionFromStorage: vi.fn(async () => { throw new Error('gone'); }) });
-
-        expect(() => load(deps).handleTabSessionCatchUp()).not.toThrow();
-        await vi.waitFor(() => expect(deps.console.error).toHaveBeenCalled());
-    });
 });

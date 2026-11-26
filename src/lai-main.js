@@ -1,5 +1,3 @@
-let restartCounter = 0;
-const RESTART_LIMIT = 5; //TODO add the limit as in param and remove these 2 vars
 let activeStreamRequestId = null;
 let activeStreamSeq = 0;
 let streamResyncInFlight = false;
@@ -137,19 +135,6 @@ async function initSidebar(deadline) {
         }
     });
 
-    const resizeHandle = shadowRoot.querySelector('.lai-resize-handle');
-    laiSetImg(resizeHandle.querySelector('img'));
-
-    resizeHandle.addEventListener('mousedown', e => laiResizeContainer(e));
-
-    if (laiOptions.loadHistoryOnStart) {
-        try {
-            if(shadowRoot){  shadowRoot?.click();  }
-        } catch (er) {
-            console.error(er)
-        }
-    }
-
     shadowRoot.querySelectorAll('img.mic').forEach(img => {
         img.closest('div.mic-container').addEventListener('click', micClicked);
         laiSetImg(img);
@@ -207,8 +192,7 @@ async function createNewSessionClicked(e, shadowRoot) {
 
 async function onCloseSidebarClick(e, shadowRoot) {
     const pinImg = getShadowRoot()?.querySelector('img[data-type="black_pushpin"]');
-
-    if (isPinned()) { pinImg?.click(); }
+    if (isPinned() && pinImg) { await laiPushpinClicked({ target: pinImg }); }
     await laiSwapSidebarWithButton(true);
 }
 
@@ -254,7 +238,6 @@ function laiShowSystemInstructions(e) {
 
 async function laiPushpinClicked(e) {
     const el = e.target;
-    const laiOptions = await getOptions();
     const container = el.closest('div');
     let isPinned = false;
 
@@ -265,7 +248,7 @@ async function laiPushpinClicked(e) {
         }
     });
 
-    laiOptions.closeOnClickOut = !isPinned;
+    await sidebarChannel.request('setPinned', { pinned: isPinned });
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
     shadowRoot.getElementById('laiUserInput')?.focus();
@@ -646,6 +629,7 @@ async function onPromptTextAreaKeyDown(e) {
             showMessage('It looks like there is no propt yet.', 'warning');
             return;
         }
+        if (typeof sidebarActionAllowed === 'function' && !sidebarActionAllowed()) { return; }
 
         const userInput = await stripDebugCommands(elTarget.value.trim()) ?? "";
         if(!userInput) {
@@ -874,8 +858,10 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
 
     lastChatText.addEventListener('click', function (e) { laiSourceTextClicked(e); });
 
-    messageList.scrollTop = messageList.scrollHeight;
-    lastAutoScrollTop = messageList.scrollTop;
+    if (!userScrolled) {
+        messageList.scrollTop = messageList.scrollHeight;
+        lastAutoScrollTop = messageList.scrollTop;
+    }
 
     return lastChatText;
 }
@@ -1079,48 +1065,7 @@ function laiSourceTextClicked(e) {
 let panelViewRevision = 0;
 
 async function laiSwapSidebarWithButton(forceClose = false, restoreHistory = true) {
-    const previousViewRevision = panelViewRevision;
-    const laiOptions = await getOptions();
-    if (previousViewRevision !== panelViewRevision) { return; }
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) { return; }
-
-    const sideBar = shadowRoot.getElementById('laiSidebar');
-    const mainButton = shadowRoot.getElementById('laiMainButton');
-    if (!sideBar || !mainButton) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Sidebar or button not found!`);
-        return;
-    }
-
-    const isSidebarActive = sideBar.classList.contains('active');
-
-    if (!forceClose && isSidebarActive && !laiOptions?.closeOnClickOut) { return; }
-
-    const viewRevision = ++panelViewRevision;
-    sideBar.classList.toggle('active');
-
-    const isNowActive = sideBar.classList.contains('active');
-    mainButton.classList.toggle('invisible', isNowActive); // hide button if sidebar shown
-    if (!isNowActive) { clearChatHistoryUI(); }
-    await reportTabBinding({ panelOpen: isNowActive });
-    if (isNowActive && viewRevision === panelViewRevision) {
-        if (restoreHistory) { await restoreTabSessionFromBackground(); }
-        sideBar.querySelector('textarea#laiUserInput')?.focus();
-    }
-}
-
-async function laiUpdateMainButtonStyles() {
-    const shadowRoot = getShadowRoot();
-    if (!shadowRoot) return;
-
-    const laiOptions = await getOptions();
-    const btn = shadowRoot.getElementById('laiMainButton');
-    if (!btn) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Main button not found!`);
-        return;
-    }
-
-    btn.classList.toggle('invisible', !laiOptions?.showEmbeddedButton);
+    await applySidebarState(await sidebarChannel.request('setOpen', { open: !forceClose, restoreHistory }));
 }
 
 function laiOnRibbonButtonClick(e) {
@@ -1200,6 +1145,7 @@ async function queryAI(userInput) {
         streamResyncInFlight = false;
         await reportTabBinding({ sessionId });
         updateStatusBar('Prompt sent to the model, awaiting response...');
+        if (typeof clearSidebarDraft === 'function') { await clearSidebarDraft(); }
         const response = await chrome.runtime.sendMessage(requestData);
         if (chrome.runtime.lastError) { throw new Error(`${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
 
@@ -1444,7 +1390,7 @@ async function finaliseActiveStreamFromSnapshot(snapshot) {
     if (!snapshot || snapshot.status === 'complete') {
         const sessionId = await getActiveSessionId();
         const session = sessionId ? await getActiveSessionById(sessionId) : null;
-        if (session) { await renderSessionHistoryMessages(session); }
+        if (session) { await renderSessionHistoryMessages(session, { preserveScroll: true }); }
     } else if (snapshot.status === 'aborted') {
         await finaliseStreamRecipient(recipient, { action: 'streamAbort' });
     } else if (snapshot.status === 'error') {
@@ -1563,10 +1509,11 @@ async function unbindStaleTabSession() {
  * Runs once the sidebar UI exists, and again after a bfcache restore (pageshow with
  * event.persisted) so a stale instance cannot show or write an outdated session.
  */
-async function restoreTabSessionFromBackground() {
+async function restoreTabSessionFromBackground({ reconnect = false } = {}) {
     const shadowRoot = getShadowRoot();
     if (!shadowRoot) { return; }
 
+    const previousRequestId = activeStreamRequestId;
     activeStreamRequestId = null;
     activeStreamSeq = 0;
     streamResyncInFlight = false;
@@ -1589,6 +1536,9 @@ async function restoreTabSessionFromBackground() {
         return;
     }
 
+    const reconnectingOpenSession = reconnect && getSideBar()?.classList.contains('active') &&
+        await getActiveSessionId() === binding.sessionId;
+    if (previousViewRevision !== panelViewRevision) { return; }
     await setActiveSessionId(binding.sessionId);
     await reportTabBinding({ sessionId: binding.sessionId });
     if (previousViewRevision !== panelViewRevision) { return; }
@@ -1599,11 +1549,25 @@ async function restoreTabSessionFromBackground() {
     if (binding.panelOpen) { await openSidebarPanelIfClosed(false); }
     if (!getSideBar()?.classList.contains('active')) { return; }
     const viewRevision = panelViewRevision;
-    await renderSessionHistoryMessages(session);
+    clearAttachments();
+    session.attachments?.forEach(showAttachment);
+    const streaming = initialSnapshot?.status === 'streaming';
+    const pendingCard = reconnectingOpenSession && streaming && previousRequestId === initialSnapshot.requestId
+        ? shadowRoot.querySelector('#laiChatMessageList > .lai-ai-input:last-child')
+        : null;
+    const terminalReplyNeedsCard = initialSnapshot && !streaming && initialSnapshot.status !== 'complete';
+    const canReconcile = reconnectingOpenSession &&
+        (pendingCard || (!previousRequestId && !terminalReplyNeedsCard));
+    let keptPendingCard = false;
+    if (canReconcile) {
+        keptPendingCard = await reconcileShownChatTurns(session, viewRevision, pendingCard);
+    } else {
+        await renderSessionHistoryMessages(session, { preserveScroll: reconnectingOpenSession });
+    }
     if (viewRevision !== panelViewRevision) { return; }
 
-    if (initialSnapshot?.status === 'streaming') {
-        await addInputCardToUIChatHistory('', 'ai');
+    if (streaming) {
+        if (!keptPendingCard) { await addInputCardToUIChatHistory('', 'ai'); }
         // A fresh snapshot closes the race with chunks that arrived while history was
         // rendering; the request is adopted synchronously with the reply.
         const fresh = await fetchTabStartupState();
@@ -1636,8 +1600,8 @@ function appendSessionCatchUpSeparator(messageList) {
 }
 
 // Separators are view-only markers, so only .lai-chat-history cards count as turns.
-function getShownChatTurns(messageList) {
-    return Array.from(messageList?.querySelectorAll('.lai-chat-history') || []).map(card => {
+function getShownChatTurns(messageList, pendingCard) {
+    return Array.from(messageList.querySelectorAll('.lai-chat-history')).filter(card => card !== pendingCard).map(card => {
         const textElement = card.querySelector('.lai-input-text');
         if (!textElement) { return { role: null, content: '' }; }
         const isUserTurn = card.classList.contains('lai-user-input');
@@ -1671,35 +1635,47 @@ async function catchUpActiveSessionFromStorage() {
         if (!session || activeStreamRequestId || await getActiveSessionId() !== sessionId) { return; }
 
         if (viewRevision !== panelViewRevision) { return; }
-        const messageList = shadowRoot.querySelector('#laiChatMessageList');
-        if (!messageList) { return; }
-
-        const savedTurns = (session.messages ?? [])
-            .map((message, index) => ({ message, index }))
-            .filter(({ message }) => isRenderableSessionMessage(message));
-        const shownTurns = getShownChatTurns(messageList);
-
-        const commonLength = Math.min(shownTurns.length, savedTurns.length);
-        const commonMatches = shownTurns.slice(0, commonLength).every((turn, i) =>
-            turn.role === savedTurns[i].message.role && turn.content === savedTurns[i].message.content);
-
-        if (!commonMatches) {
-            await renderSessionHistoryMessages(session);
-            return;
-        }
-
-        if (shownTurns.length >= savedTurns.length) { return; }
-
-        appendSessionCatchUpSeparator(messageList);
-        for (const turn of savedTurns.slice(shownTurns.length)) {
-            if (activeStreamRequestId || await getActiveSessionId() !== sessionId) { return; }
-            if (viewRevision !== panelViewRevision) { return; }
-            await renderSessionHistoryMessage(turn.message, turn.index);
-        }
-        messageList.scrollTop = messageList.scrollHeight;
+        await reconcileShownChatTurns(session, viewRevision);
     } finally {
         sessionCatchUpInFlight = false;
     }
+}
+
+async function reconcileShownChatTurns(session, viewRevision, pendingCard = null) {
+    const messageList = getShadowRoot()?.querySelector('#laiChatMessageList');
+    if (!messageList) { return false; }
+
+    const savedTurns = (session.messages ?? [])
+        .map((message, index) => ({ message, index }))
+        .filter(({ message }) => isRenderableSessionMessage(message));
+    const shownTurns = getShownChatTurns(messageList, pendingCard);
+    const commonLength = Math.min(shownTurns.length, savedTurns.length);
+    const commonMatches = shownTurns.slice(0, commonLength).every((turn, i) =>
+        turn.role === savedTurns[i].message.role && turn.content === savedTurns[i].message.content);
+
+    if (!commonMatches || (pendingCard && shownTurns.length < savedTurns.length)) {
+        await renderSessionHistoryMessages(session, { preserveScroll: true });
+        return false;
+    }
+
+    if (shownTurns.length >= savedTurns.length) { return Boolean(pendingCard); }
+
+    const scrollTop = userScrolled ? messageList.scrollTop : null;
+    appendSessionCatchUpSeparator(messageList);
+    for (const turn of savedTurns.slice(shownTurns.length)) {
+        if (activeStreamRequestId || await getActiveSessionId() !== session.id) { return false; }
+        if (viewRevision !== panelViewRevision) { return false; }
+        await renderSessionHistoryMessage(turn.message, turn.index);
+    }
+    if (viewRevision === panelViewRevision) {
+        if (scrollTop !== null) {
+            messageList.scrollTop = scrollTop;
+            userScrolled = true;
+        } else {
+            scrollChatHistoryContainer();
+        }
+    }
+    return false;
 }
 
 function createAbortHandler(controller, abortBtn, rootEl) {
@@ -1759,7 +1735,7 @@ function getParseAndRenderOptions(rootEl) {
 }
 
 function getSelectionText(response) {
-    const liveSelection = (window.getSelection()?.toString() ?? '').trim();
+    const liveSelection = (response?.selection ?? '').trim();
     return cleanSelection(liveSelection || response?.selection || '');
 }
 
@@ -1769,53 +1745,26 @@ function wrapInTextFence(text) {
     return `${fence}text\n${text}\n${fence}\n`;
 }
 
-function onRuntimeMessage(response, sender, sendResponse) {
-    // Handle messages that don't require shadowRoot first
-    if (response && response?.action === 'ping') {
-        sendResponse({ pong: true });
-        return true;
-    }
-
-    if (response?.action === 'dumpInConsole') {
+async function messageProcessor(response) {
+    if (response.action === 'dumpInConsole') {
         dumpInConsole(response.message, response.obj, response.type);
         return;
     }
-
-    messageProcessor(response, sender)
-        .then(result => {
-            sendResponse(result ?? { result: true });
-        })
-        .catch(error => {
-            console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error handling runtime message:`, error);
-            sendResponse({ error: error?.message || String(error) });
-        });
-
-    return true;
-}
-
-async function messageProcessor(response, sender) {
-
-    if (response?.action === 'callContentExtractor') {
-        return { result: await handleContentExtractorCall(response) };
-    }
-
-    if (response?.action === 'getContextMenuImageBounds') {
-        return getContextMenuImageBounds();
-    }
-    if (response?.action === 'scrollContextMenuImageIntoView') {
-        return scrollContextMenuImageIntoView();
-    }
-    if (response?.action === 'hideLocalAIForImageCapture') {
-        return hideLocalAIForImageCapture(response.rect);
-    }
-    if (response?.action === 'restoreLocalAIAfterImageCapture') {
-        return restoreLocalAIAfterImageCapture();
-    }
-    if (response?.action === 'waitForImageCaptureFrame') {
-        return new Promise(resolve => requestAnimationFrame(resolve));
-    }
-    if (response?.action === 'attachCroppedContextMenuImage') {
+    if (response.action === 'attachCroppedContextMenuImage') {
         await attachCroppedContextMenuImage(response.base64);
+        return { result: true };
+    }
+    if (response.action === 'attachElement') {
+        const attachment = {
+            id: crypto.randomUUID(),
+            type: 'snippet',
+            content: `SNIPPET START:\n${response.content}\nSNIPPET END`,
+            filename: 'Selected Element'
+        };
+        await addAttachment(attachment);
+        showAttachment(attachment);
+        showMessage('Element picked up successfully.', 'info');
+        updateStatusBar('Selected content added to the context.');
         return { result: true };
     }
 
@@ -1831,21 +1780,7 @@ async function messageProcessor(response, sender) {
         return { requestId: null };
     }
 
-    // All other actions require shadowRoot
     const shadowRoot = getShadowRoot();
-    if (!shadowRoot) {
-        console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Dropping runtime message because shadowRoot is missing`, {
-            action: response?.action,
-            restartCounter,
-            readyState: document.readyState
-        });
-        if (restartCounter < RESTART_LIMIT) {
-            restartCounter++;
-            start();
-        }
-        return { error: 'Local AI UI is not ready yet.' };
-    }
-
     if (response?.action?.startsWith('stream') && !getSideBar()?.classList.contains('active')) {
         return { requestId: null };
     }
@@ -1901,9 +1836,6 @@ async function messageProcessor(response, sender) {
             laiHandleStreamActions("Stream Error", recipient);
             activeStreamRequestId = null;
             break;
-        case "toggleSidebar":
-            await laiSwapSidebarWithButton(true);
-            break;
         case "activePageSelection":
             const cleanedSelection = getSelectionText(response);
             if (!cleanedSelection) {
@@ -1917,7 +1849,7 @@ async function messageProcessor(response, sender) {
                 type: "snippet",
                 content: cleanedSelection,
                 filename: 'Selected Text',
-                sourceUrl: location.href
+                sourceUrl: response.url
             };
             await addAttachment(newActivePageSelectionAttachment);
             showAttachment(newActivePageSelectionAttachment);
@@ -1941,13 +1873,13 @@ async function messageProcessor(response, sender) {
             insertPromptInput.focus();
             break;
         case "activePageContent":
-            const pageContent = await cleanPageContent();
+            const pageContent = response.content;
             let newActivePageContentAttachment = {
                 id: crypto.randomUUID(),
                 type: "snippet",
                 content: pageContent,
                 filename: 'Page Content',
-                sourceUrl: location.href
+                sourceUrl: response.url
             };
             await addAttachment(newActivePageContentAttachment);
             showAttachment(newActivePageContentAttachment);
@@ -1957,18 +1889,12 @@ async function messageProcessor(response, sender) {
         case 'explainSelection':
             await ask2ExplainSelection(response);
             break;
-        case "toggleSelectElement":
-            isElementSelectionActive = response.selection;
-            if (!isElementSelectionActive) { clearAllElementDecorations(); }
-            break;
         case "showMessage":
             if (response.message) { showMessage(response.message, response.messageType); }
             break;
         case "updateStatusbar":
             if (response.message) { updateStatusBar(response.message); }
             break;
-        case "callContentExtractor":
-            return { result: await handleContentExtractorCall(response) };
         default:
             laiHandleStreamActions(`Unknown action: ${response.action}`, recipient);
             break;
@@ -2030,48 +1956,6 @@ function laiGetRecipient() {
     return recipient;
 }
 
-async function handleContentExtractorCall(response) {
-    const { functionName, argument } = response;
-    let result;
-
-    switch (functionName) {
-        case 'getPageStructureSummary':
-            const summaryObj = await getPageStructureSummary();
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getPageStructureSummary returned:`, summaryObj);
-            result = JSON.stringify(summaryObj, null, 2);
-            console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - JSON.stringify result:`, result);
-            break;
-        case 'getPageTables':
-            result = await getPageTables(argument);
-            break;
-        case 'getPageLists':
-            result = await getPageLists(argument);
-            break;
-        case 'getPageCodeBlocks':
-            result = await getPageCodeBlocks(argument);
-            break;
-        case 'getPageMetadataFormatted':
-            result = getPageMetadataFormatted();
-            break;
-        case 'getEnhancedPageContent':
-            result = await getEnhancedPageContent();
-            break;
-        case 'getMainContentOnly':
-            result = await getMainContentOnly();
-            break;
-        default:
-            throw new Error(`Unknown content extractor function: ${functionName}`);
-    }
-
-    console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Content extractor result ready`, {
-        functionName,
-        resultType: typeof result,
-        resultLength: result?.length
-    });
-
-    return result;
-}
-
 async function ask2ExplainSelection(response) {
     if (!response) {
         showMessage('Nothing received to explain!', 'warning');
@@ -2099,19 +1983,19 @@ async function ask2ExplainSelection(response) {
 
     let cleanPageText = '';
     try {
-        cleanPageText = (await getEnhancedPageContent()) || '';
+        cleanPageText = (await sidebarChannel.request('readPage', { kind: 'getEnhancedPageContent' })) || '';
     } catch (error) {
         logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not extract page context; explaining the selection only`, error?.message);
     }
 
     if (cleanPageText) {
-        const pageContextLabel = document.title?.trim() || location.hostname || 'current page';
+        const pageContextLabel = response.title?.trim() || new URL(response.url).hostname || 'current page';
         const theAttachment = {
             id: crypto.randomUUID(),
             type: "snippet",
             content: `PAGE CONTEXT START:\n${cleanPageText}\nPAGE CONTEXT END`,
             filename: `Page context: ${pageContextLabel}`,
-            sourceUrl: location.href
+            sourceUrl: response.url
         };
         await addAttachment(theAttachment);
         showAttachment(theAttachment);
@@ -2130,48 +2014,6 @@ async function ask2ExplainSelection(response) {
     const contextNote = cleanPageText ? ' Use the attached page context only as context for its meaning.' : '';
     userInput.value = `Explain the meaning of the selected text below.${contextNote}\n\n${wrapInTextFence(selection)}`;
     userInput?.dispatchEvent(enterEvent);
-}
-
-function laiResizeContainer(e) {
-    e.preventDefault();
-    const resizableDiv = e.target.closest('.lai-fixed-parent');
-    const sidebar = resizableDiv.closest('.active');
-    let isResizing = true;
-    let prevX = e.clientX;
-    let originalWidth = resizableDiv.getBoundingClientRect().width;
-
-    function onMouseMove(e) {
-        if (!isResizing) { return; }
-        sidebar?.classList.add('dragging');
-        const newX = e.clientX;
-        const deltaX = newX - prevX;
-
-        let newWidth = originalWidth - deltaX;
-
-        newWidth = Math.min(newWidth, window.innerWidth);
-
-        newWidth = Math.max(newWidth, 10);
-
-        resizableDiv.style.width = `${newWidth}px`;
-
-        if (newWidth >= window.innerWidth || newWidth <= 10) {
-            stopResizing();
-        }
-    }
-
-    function onMouseUp() {
-        sidebar?.classList.remove('dragging');
-        stopResizing();
-    }
-
-    function stopResizing() {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        isResizing = false;
-    }
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
 }
 
 function getRegExpMatches(regex, userInput) {
@@ -2479,7 +2321,7 @@ async function reconcileActiveSessionWithStorage(changes, areaName) {
     return true;
 }
 
-chrome?.storage?.onChanged?.addListener(reconcileActiveSessionWithStorage);
+
 
 function adjustFontSize(elm, direction) {
     if (direction === 0) { return; }

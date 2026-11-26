@@ -4,6 +4,16 @@ if(typeof manifest === 'undefined'){
 
 // Each sidebar (content-script instance) owns its active session; it is never shared through storage (#29).
 var laiActiveSessionId = null;
+
+// The iframe uses this to rebind its draft store when the active session changes.
+function notifyActiveSessionChanged(sessionId) {
+    if (typeof document === 'undefined' || typeof CustomEvent !== 'function' || !document?.dispatchEvent) { return; }
+    try {
+        document.dispatchEvent(new CustomEvent('laiActiveSessionChanged', { detail: { sessionId } }));
+    } catch (error) {
+        console.debug('>>> Failed to announce the active session change', error);
+    }
+}
 // Serialises read-modify-write of the session catalogue within one script realm (the background serves every tab).
 var laiSessionMutationQueue = Promise.resolve();
 
@@ -121,7 +131,10 @@ function notifyTabBindingChanged(sessionId) {
 async function deleteActiveSessionId() {
     const hadSession = !!laiActiveSessionId;
     laiActiveSessionId = null;
-    if (hadSession) { notifyTabBindingChanged(null); }
+    if (hadSession) {
+        notifyTabBindingChanged(null);
+        notifyActiveSessionChanged(null);
+    }
 }
 
 async function clearLegacyActiveSessionId() {
@@ -232,7 +245,7 @@ async function setActiveSessionId(sessionId) {
         }
         const changed = laiActiveSessionId !== sessionId;
         laiActiveSessionId = sessionId;
-        if (changed) { notifyTabBindingChanged(sessionId); }
+        if (changed) { notifyTabBindingChanged(sessionId); notifyActiveSessionChanged(sessionId); }
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - setActiveSessionId error: ${error.message}`, error);
     }
@@ -480,7 +493,7 @@ async function requestPageDataFromTab(tabId) {
         const response = await chrome.tabs.sendMessage(tabId, {
             action: 'capturePageData',
             tabId: tabId
-        });
+        }, { frameId: 0 });
 
         if (response?.success) {
             console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Page data captured for tab ${tabId}`);
@@ -534,71 +547,6 @@ async function getActiveSessionPageData(tabId) {
     }
 
     return pageData;
-}
-
-async function setActiveSessionPageData(tabId) {
-    try {
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Called setActiveSessionPageData`, {
-            tabId,
-            url: location.href,
-            readyState: document.readyState,
-            bodyExists: !!document.body,
-            bodyLength: document.body?.innerText?.length ?? 0
-        });
-
-        await waitForDOMToSettle(1000, 120000);
-
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - After waitForDOMToSettle`, {
-            readyState: document.readyState,
-            bodyLength: document.body?.innerText?.length ?? 0
-        });
-
-        const url = location.href;
-        const waitfor = Date.now() + 3000;
-        while(Date.now() < waitfor){
-            await new Promise(resolve => setTimeout(resolve, Math.min(500, waitfor - Date.now())));
-            if(typeof getEnhancedPageContent === "function"){  break;  }
-        }
-        let pageContent
-        try{
-            pageContent = await getEnhancedPageContent() ?? null;
-            if(!pageContent) {
-                console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content! url: ${url}; readyState: ${document.readyState}; bodyExists: ${!!document.body}; bodyLength: ${document.body?.innerText?.length ?? 0}`);
-                logDiagnostic('warn', `>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Empty page content detail`, {
-                    bodyFirstChars: document.body?.innerText?.substring(0, 100) ?? ''
-                });
-                return false;
-            }
-        }
-        catch(theError){
-            console.warn(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - getEnhancedPageContent is not available yet`, theError);
-            return false;
-        }
-
-
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Successfully extracted page content`, {
-            url,
-            contentLength: pageContent.length,
-            contentFirstChars: pageContent.substring(0, 100)
-        });
-
-        const pageHash = await generatePageHash(url, pageContent);
-        console.debug(`>>> ${manifest?.name} - [${getLineNumber()}] - current hash`, pageHash);
-        const key = tabId ? `${activePageStorageKey}:${tabId}` : activePageStorageKey;
-        const title = document?.title || 'Untitled';
-        await chrome.storage.local.set({ [key]: {url, title, pageContent, pageHash} });
-
-        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Successfully stored page data`, {
-            key,
-            url,
-            contentLength: pageContent.length
-        });
-        return true;
-    } catch (error) {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Error`, {
-            error, tabId, url: location.href, readyState: document.readyState });
-        return false;
-    }
 }
 
 async function removeActiveSessionPageData(tabId) {

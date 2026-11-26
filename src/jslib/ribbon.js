@@ -153,9 +153,6 @@ async function initRibbon() {
     shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
 
     shadowRoot?.getElementById('laiAbort')?.addEventListener('click', async e => await laiAbortRequest(e), false);
-    if (laiOptions && laiOptions.openPanelOnLoad) {
-        await openSidebarPanelIfClosed(false);
-    }
 
     shadowRoot?.getElementById('laiSessionHistoryMenu')?.querySelectorAll('img').forEach(el => laiSetImg(el));
 
@@ -212,7 +209,7 @@ function onModelOptionsChanged(changes, areaName) {
     scheduleModelCapabilityRefresh();
     return true;
 }
-chrome?.storage?.onChanged?.addListener(onModelOptionsChanged);
+
 
 async function closeAllDropDownRibbonMenus(e) {
     const shadowRoot = getShadowRoot();
@@ -1004,9 +1001,13 @@ async function renderSessionHistoryMessage(msg, index = -1) {
     return true;
 }
 
-async function renderSessionHistoryMessages(session) {
+async function renderSessionHistoryMessages(session, { preserveScroll = false } = {}) {
     if (!getSideBar()?.classList.contains('active')) { return; }
     const viewRevision = panelViewRevision;
+    const messageList = getShadowRoot()?.querySelector('#laiChatMessageList');
+    if (!messageList) { return; }
+    const scrollTop = preserveScroll && userScrolled ? messageList.scrollTop : null;
+    if (!preserveScroll) { userScrolled = false; }
     clearChatHistoryUI();
 
     for (const [i, msg] of (session?.messages ?? []).entries()) {
@@ -1015,9 +1016,13 @@ async function renderSessionHistoryMessages(session) {
         await renderSessionHistoryMessage(msg, i);
     }
 
-    const shadowRoot = getShadowRoot();
-    const laiChatMessageList = shadowRoot.querySelector('#laiChatMessageList');
-    laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
+    if (viewRevision !== panelViewRevision) { return; }
+    if (scrollTop !== null) {
+        messageList.scrollTop = scrollTop;
+        userScrolled = true;
+    } else {
+        scrollChatHistoryContainer();
+    }
 }
 
 async function startSessionRename(row, sessionId) {
@@ -1076,6 +1081,7 @@ function setSessionRowAccessibleNames(row, title) {
 async function deleteAllHistorySessionsClicked(e) {
     e.stopPropagation();
     e.stopImmediatePropagation();
+    if (typeof sidebarActionAllowed === 'function' && !sidebarActionAllowed()) { return; }
     const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
     try {
         await recycleAllSessions();

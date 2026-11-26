@@ -33,6 +33,7 @@ const contentCleanerCode = fs.readFileSync(
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 global.document = dom.window.document;
 global.window = dom.window;
+global.sidebarChannel = { request: async (action, payload) => action === "readPage" ? global.getEnhancedPageContent() : payload };
 global.manifest = {
     name: 'Local AI helper',
     version: '1.29.17'
@@ -53,8 +54,10 @@ const isMessagePersistableCode = utilsCode.match(/function isMessagePersistable\
 
 // Extract the functions we want to test
 const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId, setActiveStreamSeq: value => activeStreamSeq = value, getActiveStreamSeq: () => activeStreamSeq, isMessagePersistable, setMarkdownSource, getMarkdownSource, copyChatElementContent, copyChatElementContentAsMarkdown, addInputCardToUIChatHistory, laiShowCopyHint, restoreTabSessionFromBackground, laiAbortRequest, laiSwapSidebarWithButton, openSidebarPanelIfClosed, reportTabBinding, fetchTabStartupState, acknowledgeTabRequestSnapshot, getStreamResyncInFlight: () => streamResyncInFlight, checkCommandHandler, getSelectionText, showAttachment, userInputFocused, userInputBlurred };';
+const frameCode = fs.readFileSync('src/sidebar-frame.js', 'utf8');
+const viewCode = frameCode.slice(frameCode.indexOf('async function applySidebarState'), frameCode.indexOf('function showSidebarConnectionFailure'));
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-    tabStateCode + '\nlet userScrolled = false;\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + laiMainExports
+    tabStateCode + '\nlet userScrolled = false;\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + '\nlet sidebarVisibility; let sidebarDraft;\n' + viewCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId, getActiveStreamRequestId, isMessagePersistable;
@@ -1519,6 +1522,30 @@ describe('tab session restoration (#40)', () => {
         expect(document.getElementById('laiSidebar').classList.contains('active')).toBe(true);
     });
 
+    it('restores a selected element attached while closed without duplicating the icon', async () => {
+        document.body.insertAdjacentHTML('beforeend', '<div id="attachContainer"></div>');
+        const attachment = { id: 'selected', type: 'snippet', content: 'Selected paragraph' };
+        let storedSession = { id: 's1', messages: [], attachments: [] };
+        const binding = { tab: { sessionId: 's1', panelOpen: false }, request: null };
+        global.addAttachment = vi.fn(async item => {
+            storedSession = { ...storedSession, attachments: [item] };
+        });
+        getActiveSessionById.mockImplementation(async () => storedSession);
+        replyToTabState([binding, binding]);
+
+        await messageProcessor({ action: 'attachElement', content: attachment.content });
+        document.getElementById('attachContainer').replaceChildren();
+        await laiSwapSidebarWithButton();
+        await laiSwapSidebarWithButton(true);
+        await laiSwapSidebarWithButton();
+
+        expect(global.addAttachment).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ type: 'snippet', content: expect.stringContaining(attachment.content) })
+        );
+        expect(document.querySelectorAll('#attachContainer img.attached')).toHaveLength(1);
+        expect(document.querySelector('#attachContainer img.attached').title).toContain(attachment.content);
+    });
+
     it('reports the panel state on every open and close', async () => {
         replyToTabState([]);
 
@@ -1538,11 +1565,12 @@ describe('sidebar session catch-up on focus (#61)', () => {
     const renderSessionHistoryMessagesCode = ribbonCode.match(/async function renderSessionHistoryMessages\([\s\S]*?\n}\n/)[0];
 
     const executeCatchUp = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-        tabStateCode + '\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' +
+        tabStateCode + '\nlet userScrolled = false;\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' +
         isRenderableSessionMessageCode + '\n' + renderSessionHistoryMessageCode + '\n' + renderSessionHistoryMessagesCode + '\n' +
-        laiMainCode + '; return { catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId };'
+        laiMainCode + '\nlet sidebarVisibility, sidebarDraft;\n' + viewCode + '; return { applySidebarState, getUserScrolled: () => userScrolled, restoreTabSessionFromBackground, setUserScrolled: value => userScrolled = value, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId };'
     );
 
+    let applySidebarState, getUserScrolled, restoreTabSessionFromBackground, setUserScrolled;
     let catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory;
     let setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId, getActiveStreamRequestId;
     let storedSessions;
@@ -1579,10 +1607,112 @@ describe('sidebar session catch-up on focus (#61)', () => {
         global.getActiveSessionById = vi.fn(async id => storedSessions[id] ?? null);
 
         ({
-            catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard,
+            applySidebarState, getUserScrolled, restoreTabSessionFromBackground, setUserScrolled, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard,
             addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex,
             setActiveStreamRequestId, getActiveStreamRequestId
         } = executeCatchUp(global.document, global.window, global.manifest, global.chrome, global.getLineNumber, undefined));
+    });
+
+    describe('opening and reconnecting the sidebar', () => {
+        const messages = [
+            { role: 'user', content: 'first question' },
+            { role: 'assistant', content: 'first answer' }
+        ];
+        const messageList = () => document.getElementById('laiChatMessageList');
+        const reconnect = async (sessionId = 's1', request = null) => {
+            global.chrome.runtime.sendMessage = vi.fn(async message =>
+                message.action === 'getTabState' ? { tab: { sessionId, panelOpen: true }, request } : null
+            );
+            await restoreTabSessionFromBackground({ reconnect: true });
+        };
+
+        beforeEach(async () => {
+            global.setActiveSessionId = vi.fn(async id => { activeSessionId = id; });
+            global.resetStatusbar = vi.fn();
+            global.updateStatusBar = vi.fn();
+            storedSessions.s1 = sessionWith(messages);
+            Object.defineProperty(messageList(), 'scrollHeight', { value: 500 });
+            await renderSessionHistoryMessages(storedSessions.s1);
+            messageList().scrollTop = 150;
+            setUserScrolled(true);
+        });
+
+        it('scrolls to the bottom after closing and reopening the same session', async () => {
+            global.chrome.runtime.sendMessage = vi.fn(async message =>
+                message.action === 'getTabState' ? { tab: { sessionId: 's1', panelOpen: true } } : null
+            );
+
+            await applySidebarState({ open: false });
+            const scrolledAfterClose = getUserScrolled();
+            // JSDOM does not reset the scroll offset when the list is emptied.
+            messageList().scrollTop = 0;
+            await applySidebarState({ open: true });
+
+            expect(messageList().scrollTop).toBe(500);
+            expect(scrolledAfterClose).toBe(false);
+            expect(getUserScrolled()).toBe(false);
+        });
+
+        it('keeps the existing cards and scroll position for identical turns', async () => {
+            const [prompt, reply] = cards();
+
+            await reconnect();
+
+            expect(cards()[0] === prompt).toBe(true);
+            expect(cards()[1] === reply).toBe(true);
+            expect(messageList().scrollTop).toBe(150);
+        });
+
+        it('appends newly saved turns and preserves the reading position', async () => {
+            const [prompt, reply] = cards();
+            storedSessions.s1 = sessionWith([...messages, { role: 'user', content: 'next question' }]);
+
+            await reconnect();
+
+            expect(cards()).toHaveLength(3);
+            expect(cards()[0] === prompt).toBe(true);
+            expect(cards()[1] === reply).toBe(true);
+            expect(cards()[2].textContent).toContain('next question');
+            expect(messageList().scrollTop).toBe(150);
+        });
+
+        it('replaces cards and scrolls to the bottom for a different session with identical turns', async () => {
+            const [prompt] = cards();
+            storedSessions.s2 = { id: 's2', messages };
+
+            await reconnect('s2');
+
+            expect(cards()).toHaveLength(2);
+            expect(cards()[0] === prompt).toBe(false);
+            expect(activeSessionId).toBe('s2');
+            expect(messageList().scrollTop).toBe(500);
+        });
+
+        it('replaces mismatched turns without moving the reader', async () => {
+            const [, reply] = cards();
+            storedSessions.s1 = sessionWith([messages[0], { role: 'assistant', content: 'updated answer' }]);
+
+            await reconnect();
+
+            expect(cards()[1] === reply).toBe(false);
+            expect(cards()[1].textContent).toContain('updated answer');
+            expect(messageList().scrollTop).toBe(150);
+        });
+
+        it('adopts a live snapshot in the existing reply card without duplicating it', async () => {
+            await addInputCardToUIChatHistory('', 'ai');
+            const pendingReply = cards().at(-1);
+            messageList().scrollTop = 150;
+            setActiveStreamRequestId('r1');
+
+            await reconnect('s1', { requestId: 'r1', status: 'streaming', content: 'Resumed', seq: 4 });
+
+            expect(cards()).toHaveLength(3);
+            expect(cards().at(-1) === pendingReply).toBe(true);
+            expect(pendingReply.textContent).toContain('Resumed');
+            expect(getActiveStreamRequestId()).toBe('r1');
+            expect(messageList().scrollTop).toBe(150);
+        });
     });
 
     it('does not read or render newly stored turns while the panel is closed', async () => {
@@ -2047,18 +2177,18 @@ describe('user prompt Markdown rendering (#41)', () => {
 
 describe('context-menu selection line breaks (#74)', () => {
     let getSelectionText, messageProcessor, chromeWithUrls;
-    let originalGetSelection;
+    let liveSelection;
 
     const setLiveSelection = (text) => {
-        dom.window.getSelection = () => ({ toString: () => text });
+        liveSelection = text;
     };
 
     beforeEach(() => {
-        originalGetSelection = dom.window.getSelection;
+        liveSelection = '';
         global.getLineNumber = () => 'test:1';
         global.showMessage = vi.fn();
         global.getShadowRoot = vi.fn(() => document);
-        global.getSideBar = vi.fn(() => null);
+        global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
         global.addAttachment = vi.fn(async () => { });
         global.updateStatusBar = vi.fn();
         global.getEnhancedPageContent = vi.fn(async () => 'page content');
@@ -2073,12 +2203,15 @@ describe('context-menu selection line breaks (#74)', () => {
         document.body.innerHTML = '<div id="sideBar" class="active"></div><div id="attachContainer"></div><textarea id="laiUserInput"></textarea>';
 
         const exports = executeLaiMainCode(global.document, dom.window, global.manifest, chromeWithUrls, global.getLineNumber, global.isMessagePersistable);
-        getSelectionText = exports.getSelectionText;
-        messageProcessor = exports.messageProcessor;
+        getSelectionText = payload => exports.getSelectionText({ selection: liveSelection.trim() || payload.selection });
+        messageProcessor = payload => exports.messageProcessor({
+            ...payload, selection: liveSelection.trim() || payload.selection,
+            url: 'https://localhost/', title: document.title
+        });
     });
 
     afterEach(() => {
-        dom.window.getSelection = originalGetSelection;
+
         document.body.innerHTML = '';
     });
 
@@ -2246,19 +2379,19 @@ describe('context-menu selection line breaks (#74)', () => {
 
 describe('fenced insertion into the prompt (#75)', () => {
     let messageProcessor, chromeWithUrls;
-    let originalGetSelection;
+    let liveSelection;
     let prompt;
 
     const setLiveSelection = (text) => {
-        global.window.getSelection = () => ({ toString: () => text });
+        liveSelection = text;
     };
 
     beforeEach(() => {
-        originalGetSelection = global.window.getSelection;
+        liveSelection = '';
         global.getLineNumber = () => 'test:1';
         global.showMessage = vi.fn();
         global.getShadowRoot = vi.fn(() => document);
-        global.getSideBar = vi.fn(() => null);
+        global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
         global.addAttachment = vi.fn(async () => { });
         global.updateStatusBar = vi.fn();
         global.getEnhancedPageContent = vi.fn(async () => 'page content');
@@ -2275,11 +2408,14 @@ describe('fenced insertion into the prompt (#75)', () => {
         global.getSideBar = vi.fn(() => document.getElementById('sideBar'));
 
         const exports = executeLaiMainCode(global.document, global.window, global.manifest, chromeWithUrls, global.getLineNumber, global.isMessagePersistable);
-        messageProcessor = exports.messageProcessor;
+        messageProcessor = payload => exports.messageProcessor({
+            ...payload, selection: liveSelection.trim() || payload.selection,
+            url: 'https://localhost/', title: document.title
+        });
     });
 
     afterEach(() => {
-        global.window.getSelection = originalGetSelection;
+
         document.body.innerHTML = '';
     });
 

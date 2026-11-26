@@ -3,7 +3,7 @@ import fs from 'fs';
 import { JSDOM } from 'jsdom';
 
 const code = fs.readFileSync('src/content.js', 'utf8');
-const startup = code.slice(code.indexOf('let startRetry'), code.indexOf('\nasync function restoreTabSessionOnStartup'));
+const startup = code.slice(code.indexOf('let startRetry'), code.indexOf('\nfunction rememberContextMenuImageTarget'));
 const storage = code.match(/async function updateTabPageContentStorage\(\) \{[\s\S]*?\n\}/)[0];
 const contextMenuHandler = code.match(/function rememberContextMenuImageTarget\(event\) \{[\s\S]*?\n\}/)[0];
 
@@ -19,10 +19,10 @@ function setup(ready = 'complete') {
     `with (deps) { ${rootAccessors}
 ${init}; return { getRootElement, getShadowRoot, build: init }; }`)({
       document, chrome: { runtime: { id: 'test' } }, buildMainButton: vi.fn(),
-      laiFetchAndBuildSidebarContent: vi.fn(), initSidebar: vi.fn(), laiUpdateMainButtonStyles: vi.fn()
+      sidebarHostCss: ''
     });
   const buildSidebar = vi.fn(build);
-  const deps = { isElementSelectionActive: false, document, window, history: window.history, Event: window.Event, getShadowRoot, getRootElement, closeQuickPromptListMenu: vi.fn(), closeSessionListOnOutsideClick: vi.fn(), closeAllDropDownRibbonMenus: vi.fn(), getSideBar: vi.fn(), getOptions: vi.fn(), isPinned: vi.fn(), laiSwapSidebarWithButton: vi.fn(), clearAllElementDecorations: vi.fn(), attachElementSelectionListenersToFrames: vi.fn(), clearElementOverDecoration: vi.fn(), highlightElementOverDecoration: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), restoreTabSessionOnStartup: buildSidebar, manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout };
+  const deps = { isElementSelectionActive: false, document, window, history: window.history, Event: window.Event, getShadowRoot, getRootElement, closeQuickPromptListMenu: vi.fn(), closeSessionListOnOutsideClick: vi.fn(), closeAllDropDownRibbonMenus: vi.fn(), getSideBar: vi.fn(), getOptions: vi.fn(async () => ({})), isPinned: vi.fn(), laiSwapSidebarWithButton: vi.fn(), clearAllElementDecorations: vi.fn(), attachElementSelectionListenersToFrames: vi.fn(), clearElementOverDecoration: vi.fn(), highlightElementOverDecoration: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), init: buildSidebar, chrome: { runtime: { sendMessage: vi.fn() } }, notifySidebar: vi.fn(), sidebarPinned: false, setSidebarOpen: vi.fn(), manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout };
   const start = new Function('deps', `with (deps) { ${contextMenuHandler}\n${startup}\n${storage}\nreturn start; }`)(deps);
   return { window, document, listeners, build: buildSidebar, start, getShadowRoot, deps };
 }
@@ -45,23 +45,22 @@ describe('content start-up', () => {
     expect(build).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the shadow root open and leaves extension clicks to its own handlers', async () => {
+  it('keeps the shadow root closed and leaves extension clicks to its own handlers', async () => {
     const { window, document, start, getShadowRoot, deps } = setup();
     await start();
     const host = document.querySelector('local-ai');
     expect(getShadowRoot().host).toBe(host);
-    expect(getShadowRoot().mode).toBe('open');
+    expect(getShadowRoot().mode).toBe('closed');
+    expect(host.shadowRoot).toBeNull();
     const button = document.createElement('button');
     getShadowRoot().appendChild(button);
     const action = vi.fn();
     button.addEventListener('click', action);
     button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, composed: true }));
     expect(action).toHaveBeenCalledOnce();
-    expect(deps.closeAllDropDownRibbonMenus).not.toHaveBeenCalled();
+    expect(deps.notifySidebar).not.toHaveBeenCalled();
     document.body.click();
-    expect(deps.closeQuickPromptListMenu).toHaveBeenCalledOnce();
-    expect(deps.closeSessionListOnOutsideClick).toHaveBeenCalledOnce();
-    expect(deps.closeAllDropDownRibbonMenus).toHaveBeenCalledOnce();
+    expect(deps.notifySidebar).toHaveBeenCalledExactlyOnceWith('dismissMenus');
   });
 
   it.each([
@@ -75,18 +74,16 @@ describe('content start-up', () => {
     sidebar.classList.add('active');
     deps.getSideBar.mockReturnValue(sidebar);
     deps.getOptions.mockResolvedValue({ closeOnClickOut });
-    deps.isPinned.mockReturnValue(pinned);
+    deps.sidebarPinned = pinned;
 
     document.body.click();
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(deps.closeQuickPromptListMenu).toHaveBeenCalledOnce();
-    expect(deps.closeSessionListOnOutsideClick).toHaveBeenCalledOnce();
-    expect(deps.closeAllDropDownRibbonMenus).toHaveBeenCalledOnce();
+    expect(deps.notifySidebar).toHaveBeenCalledExactlyOnceWith('dismissMenus');
     if (closes) {
-      expect(deps.laiSwapSidebarWithButton).toHaveBeenCalledWith(true);
+      expect(deps.setSidebarOpen).toHaveBeenCalledWith(false);
     } else {
-      expect(deps.laiSwapSidebarWithButton).not.toHaveBeenCalled();
+      expect(deps.setSidebarOpen).not.toHaveBeenCalled();
     }
   });
 
@@ -104,8 +101,8 @@ describe('content start-up', () => {
     document.body.click();
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(deps.getOptions).toHaveBeenCalledOnce();
-    expect(deps.laiSwapSidebarWithButton).not.toHaveBeenCalled();
+    expect(deps.getOptions).toHaveBeenCalledTimes(2);
+    expect(deps.setSidebarOpen).not.toHaveBeenCalled();
   });
 
   it('replaces a stale host during init', async () => {

@@ -1,5 +1,36 @@
 # Local AI - Changelog
 
+## [1.31.3] - 2026-11-26
+
+### Fixes
+
+- Reconnecting the sidebar keeps your reading position when the current session is already open (#104).
+
+## [1.31.2] - 2026-11-26
+
+### Fixes
+
+- Includes 1.30.26: a streamed reply no longer pulls the chat back to the bottom after you scroll up (#120).
+
+## [1.31.1] - 2026-11-26
+
+### Fixes
+
+- The panel no longer shows "Local AI could not connect" about 35-40 seconds after opening; it reconnects when the extension background goes idle and restarts (#104).
+- The panel's left edge shows a resize cursor again; the grip no longer overlaps the panel, which in Chrome blocked sending with "The sidebar is not fully visible" (#104).
+- Launcher and ribbon layout adjusted for the framed panel (#104).
+- After the extension is reloaded or updated, tabs that were already open remove their stale panel instead of logging errors; reload the tab to use Local AI again (#104).
+
+## [1.31.0] - 2026-11-26
+
+### Changes
+
+- The sidebar now opens in its own extension frame, keeping chat history and typing separate from the web page (#104).
+- The sidebar frame is the only extension resource that web pages can load. Chrome gives it a dynamic URL (#102).
+- Local AI recreates the panel if a page removes or hides it and keeps your unsent prompt. Repeated removals delay retries and eventually stop them, with a `!` on the toolbar icon (#104).
+- In Chrome, Enter and Delete All are blocked while the panel is covered. Firefox lacks the visibility detection used for this check (#104).
+- The panel attempts to reconnect when the extension background restarts (#104).
+
 ## [1.30.26] - 2026-11-25 - latest
 
 ### Fixes

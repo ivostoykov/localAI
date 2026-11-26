@@ -124,7 +124,7 @@ async function handleImageFile(file) {
                 type: 'image',
                 filename: file.name,
                 contentType: imageInfo.mimeType,
-                sourceUrl: location.href
+                sourceUrl: (await sidebarChannel.request("getHostState")).url
             };
 
             await addAttachment(attachment);
@@ -188,7 +188,7 @@ async function handleGenericFile(file) {
             filename: file.name,
             contentType: file.type || 'application/octet-stream',
             content: cleanedContent,
-            sourceUrl: location.href
+            sourceUrl: (await sidebarChannel.request("getHostState")).url
         };
 
         await addAttachment(attachment);
@@ -216,7 +216,7 @@ async function handlePlainTextFile(file) {
             filename: file.name,
             contentType: file.type || 'text/plain',
             content: cleanedText,
-            sourceUrl: location.href
+            sourceUrl: (await sidebarChannel.request("getHostState")).url
         };
 
         await addAttachment(attachment);

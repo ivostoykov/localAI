@@ -313,7 +313,7 @@ describe('page-navigation.js', () => {
             const [{ url, type }] = chrome.windows.create.mock.calls[0];
             expect(type).toBe('popup');
             expect(url).toBe(`chrome-extension://test-extension/navigation-consent.html?requestId=${lastRequestId()}`);
-            expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'updateStatusbar' }));
+            expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'updateStatusbar' }), { frameId: 0 });
             expect(chrome.tabs.sendMessage).not.toHaveBeenCalledWith(1, expect.objectContaining({ action: 'requestNavigationConsent' }));
             expect(helpers.windows.size).toBe(0);
             expect(nav.pendingNavigationConsents.size).toBe(0);
@@ -349,6 +349,7 @@ describe('page-navigation.js', () => {
             const forgeries = [
                 { url: 'https://origin.example/form', tab: { id: 1, windowId: 9 } },
                 { id: 'other-extension' },
+                { frameId: 7, url: 'chrome-extension://test-extension/sidebar.html' },
                 { url: `chrome-extension://test-extension/options.html?requestId=${requestId}` },
                 { url: 'chrome-extension://test-extension/navigation-consent.html?requestId=other' },
                 { tab: { id: win.tabId + 1, windowId: win.id } },
@@ -544,7 +545,7 @@ describe('page-navigation.js', () => {
             const promise = nav.requestNavigationConsent(session, 'https://a.example/');
             promise.catch(() => {});
             await vi.waitFor(() => expect(lookup.release).toBeTypeOf('function'));
-            expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'updateStatusbar' }));
+            expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ action: 'updateStatusbar' }), { frameId: 0 });
 
             controller.abort('User aborted last request.');
             lookup.release();

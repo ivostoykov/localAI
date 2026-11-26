@@ -10,7 +10,7 @@ const tabStateCode = fs.readFileSync(path.join(root, 'src/jslib/tab-state.js'), 
 const backgroundCode = fs.readFileSync(path.join(root, 'src/background.js'), 'utf-8');
 const sessionsCode = fs.readFileSync(path.join(root, 'src/jslib/sessions.js'), 'utf-8');
 
-const loadTabStateModule = new Function('chrome', `${tabStateCode}; return { TabStateStore, reportTabBinding, fetchTabStartupState, fetchOpenSessions, acknowledgeTabRequestSnapshot };`);
+const loadTabStateModule = new Function('chrome', 'isLocalAIBackground', `${tabStateCode}; return { TabStateStore, reportTabBinding, fetchTabStartupState, fetchOpenSessions, acknowledgeTabRequestSnapshot };`);
 
 const extractFunction = (name) => backgroundCode.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0];
 const backgroundHandlersCode = ['updateTabBindingForSender', 'getTabRequestSnapshotForSender', 'readTabStartupStateForSender', 'removeStreamRequestStateForSender']
@@ -264,9 +264,9 @@ describe('tab state follow-ups (#40 review)', () => {
         expect(third).toEqual({ tab: null, request: null });
     });
 
-    it('sends nothing from the background context, where chrome.tabs exists', async () => {
+    it('sends nothing from an explicitly marked background context', async () => {
         const sendMessage = vi.fn(async () => undefined);
-        const { reportTabBinding } = loadTabStateModule({ runtime: { sendMessage }, tabs: { query: vi.fn() } });
+        const { reportTabBinding } = loadTabStateModule({ runtime: { sendMessage }, tabs: { query: vi.fn() } }, true);
 
         await reportTabBinding({ sessionId: 's1' });
 
@@ -280,6 +280,17 @@ describe('tab state follow-ups (#40 review)', () => {
         await reportTabBinding({ sessionId: 's1' });
 
         expect(sendMessage).toHaveBeenCalledWith({ action: 'updateTabState', sessionId: 's1' });
+    });
+
+    it('reports tab binding from an extension iframe with the tabs API', async () => {
+        const sendMessage = vi.fn(async () => undefined);
+        const { reportTabBinding } = loadTabStateModule({ runtime: { sendMessage }, tabs: { query: vi.fn() } });
+
+        await reportTabBinding({ sessionId: 'sidebar-session', panelOpen: true });
+
+        expect(sendMessage).toHaveBeenCalledExactlyOnceWith({
+            action: 'updateTabState', sessionId: 'sidebar-session', panelOpen: true
+        });
     });
 
     describe('session identity changes report the binding from sessions.js', () => {
@@ -338,15 +349,15 @@ describe('tab state follow-ups (#40 review)', () => {
 describe('tab-state wiring (#40)', () => {
     const readJson = file => JSON.parse(fs.readFileSync(path.join(root, file), 'utf-8'));
 
-    it('lists tab-state.js in every background and content script list', () => {
+    it('lists tab-state.js in every background and the sidebar document', () => {
         expect(backgroundCode).toMatch(/importBackgroundScript\('jslib\/tab-state\.js'\)/);
 
         const firefox = readJson('Firefox/manifest.json');
         expect(firefox.background.scripts).toContain('jslib/tab-state.js');
-        expect(firefox.content_scripts[0].js).toContain('jslib/tab-state.js');
+        expect(fs.readFileSync('src/sidebar.html', 'utf8')).toContain('jslib/tab-state.js');
 
         for (const manifest of ['src/manifest.json', 'Chrome/manifest.json']) {
-            expect(readJson(manifest).content_scripts[0].js).toContain('jslib/tab-state.js');
+            expect(readJson(manifest).content_scripts[0].js).not.toContain('jslib/tab-state.js');
         }
     });
 

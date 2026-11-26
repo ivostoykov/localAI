@@ -91,6 +91,7 @@
     background: #efefef;
     height: 100%;
     min-height: 85px;
+    width: 100%;
 }
 
 .ribbon-label {
@@ -271,7 +272,7 @@
 }
 
 .model-label-container{
-    top: -8px;
+    top: -4px;
     display: flex;
     align-items: center;
 }

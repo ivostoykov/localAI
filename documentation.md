@@ -45,7 +45,11 @@ The red cross near the ear allows temporarily hiding the head—only for the cur
 
 Click the icon to open the main UI.
 
-Closing the panel removes its rendered chat history from the page. Reopening it restores the saved session. Clicking inside the panel can dismiss an open menu while keeping the panel open. Clicking the page dismisses the menu and also closes the panel if click-out closing is enabled and the panel is unpinned. While the panel is open, scripts on the host page can access the rendered chat and observe prompt keyboard events.
+The panel runs inside an extension frame that keeps chat history and prompt keystrokes separate from the host page. Closing the panel clears its rendered history. Reopening it restores the saved session. Clicking inside the panel can dismiss an open menu while keeping the panel open. Clicking the page dismisses the menu and also closes the panel if click-out closing is enabled and the panel is unpinned.
+
+If a page removes or hides the panel, Local AI tries to recreate it and restores your unsent prompt. Repeated removals delay retries. A `!` on the toolbar icon means automatic retries have stopped. Click the toolbar icon to reopen the panel.
+
+In Chrome, Enter and Delete All are blocked while the panel is covered. Firefox lacks the visibility detection needed for that check.
 
 <img src="media/UI.gif" height="600" />
 

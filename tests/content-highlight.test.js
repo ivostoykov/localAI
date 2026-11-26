@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 
 const code = fs.readFileSync('src/content.js', 'utf8');
 const extract = name => code.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0];
-const startup = code.slice(code.indexOf('let startRetry'), code.indexOf('\nasync function restoreTabSessionOnStartup'));
+const startup = code.slice(code.indexOf('let startRetry'), code.indexOf('\nfunction rememberContextMenuImageTarget'));
 
 async function setup({ loaded = true, dispatchLoad = true } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="top" style="border: 1px solid red"></div><iframe></iframe></body></html>', { url: 'https://example.com' });
@@ -17,10 +17,10 @@ async function setup({ loaded = true, dispatchLoad = true } = {}) {
   const inside = frame.contentDocument.createElement('div');
   inside.style.border = '1px solid red';
   frame.contentDocument.body.appendChild(inside);
-  const deps = { document, window, history: window.history, Event: window.Event, getShadowRoot: () => null, getRootElement: () => null, closeSessionListOnOutsideClick: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), restoreTabSessionOnStartup: vi.fn(), manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout, showMessage: vi.fn(), closeQuickPromptListMenu: vi.fn(), closeAllDropDownRibbonMenus: vi.fn(), getSideBar: () => null };
+  const deps = { getOptions: vi.fn(), rememberContextMenuImageTarget: vi.fn(), document, window, history: window.history, Event: window.Event, getShadowRoot: () => null, getRootElement: () => null, closeSessionListOnOutsideClick: vi.fn(), removeLocalStorageObject: vi.fn(), getMyTabId: vi.fn(), getAiUserCommands: vi.fn(), init: vi.fn(), chrome: { runtime: { sendMessage: vi.fn() } }, notifySidebar: vi.fn(), sendToSidebar: vi.fn(), getHostState: () => ({open: false}), manifest: {}, getLineNumber: () => 0, laiFetchStyles: () => [], console, setTimeout, showMessage: vi.fn(), closeQuickPromptListMenu: vi.fn(), closeAllDropDownRibbonMenus: vi.fn(), getSideBar: () => null };
   const optional = ['highlightElementOverDecoration', 'restoreElementDecoration', 'frameElementSelectionClicked'].filter(n => code.includes(`function ${n}(`)).map(extract).join('\n');
   const track = code.includes('const highlightedElements =') ? 'const highlightedElements = new Map();' : '';
-  const api = new Function('deps', `with (deps) { let isElementSelectionActive = false; ${track}\n${startup}\n${['attachElementSelectionListenersToFrames', 'updateTabPageContentStorage', 'clearElementOverDecoration', 'clearAllElementDecorations', 'getSelectedClickedElement'].map(extract).join('\n')}\n${optional}\nreturn { start, setActive: value => { isElementSelectionActive = value; } }; }`)(deps);
+  const api = new Function('deps', `with (deps) { let isElementSelectionActive = false; ${track}\n${startup}\n${['attachElementSelectionListenersToFrames', 'updateTabPageContentStorage', 'clearElementOverDecoration', 'clearAllElementDecorations', 'getSelectedClickedElement', 'handleSidebarEscape'].map(extract).join('\n')}\n${optional}\nreturn { start, setActive: value => { isElementSelectionActive = value; } }; }`)(deps);
   await api.start();
   if (dispatchLoad) { frame.dispatchEvent(new window.Event('load')); }
   return { window, document, frame, frameListeners, inside, top: document.getElementById('top'), ...api };
@@ -78,14 +78,10 @@ describe('element highlight', () => {
 });
 
 describe('selection toggle', () => {
-  it('clears highlights when selection is switched off', () => {
-    const main = fs.readFileSync('src/lai-main.js', 'utf8');
-    const branch = main.match(/case "toggleSelectElement":[\s\S]*?break;/)[0];
+  it('clears highlights when selection is switched off', async () => {
     const clear = vi.fn();
-    const run = new Function('response', 'clearAllElementDecorations', `let isElementSelectionActive = true; switch (response.action) { ${branch} } return isElementSelectionActive;`);
-    expect(run({ action: 'toggleSelectElement', selection: false }, clear)).toBe(false);
-    expect(clear).toHaveBeenCalledOnce();
-    run({ action: 'toggleSelectElement', selection: true }, clear);
+    const dispatch = new Function('clearAllElementDecorations', `let isElementSelectionActive = true; ${extract('processHostMessage')} return processHostMessage;`)(clear);
+    await dispatch({ action: 'toggleSelectElement', selection: false });
     expect(clear).toHaveBeenCalledOnce();
   });
 });

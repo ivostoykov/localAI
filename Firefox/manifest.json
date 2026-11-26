@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local AI helper",
-    "version": "1.30.26",
+    "version": "1.31.3",
   "options_page": "options.html",
   "permissions": [
     "activeTab",
@@ -18,6 +18,9 @@
       "jslib/model-catalogue.js",
       "jslib/stream-request-state.js",
       "jslib/tab-state.js",
+      "jslib/sidebar-frame-registry.js",
+      "jslib/draft-store.js",
+      "jslib/sidebar-badge.js",
       "background-memory.js",
       "jslib/sessions.js",
       "jslib/session-repository.js",
@@ -35,18 +38,14 @@
       "js": [
         "jslib/constants.js",
         "jslib/utils.js",
-        "jslib/tab-state.js",
         "jslib/sessions.js",
         "jslib/log.js",
         "jslib/content-cleaner.js",
         "jslib/li-extractor.js",
         "jslib/content-extractor.js",
-        "jslib/files.js",
-        "jslib/solomd2html.js",
-        "jslib/ribbon.js",
-        "jslib/stt.js",
-        "jslib/user_input_ribbon.js",
-        "lai-main.js",
+        "jslib/host-guard.js",
+        "jslib/page-snapshot.js",
+        "jslib/sidebar-port.js",
         "content.js"
       ],
       "run_at": "document_start"
@@ -59,20 +58,7 @@
     "128": "img/icon128.png"
   },
   "web_accessible_resources": [
-    {
-      "resources": [
-        "sidebar.html",
-        "css/button.css",
-        "css/ribbon.css",
-        "css/sidebar.css",
-        "jslib/user_input_ribbon.js",
-        "css/aioutput.css",
-        "css/templates.css",
-        "lai-main.js",
-        "img/*.svg"
-      ],
-      "matches": ["<all_urls>"]
-    }
+    {"resources": ["sidebar.html"], "matches": ["<all_urls>"]}
   ],
   "browser_specific_settings": {
     "gecko": {

@@ -1,4 +1,5 @@
 
+const isLocalAIBackground = true;
 const backgroundRuntimeUrl = chrome.runtime?.getURL?.('') || '';
 const shouldImportBackgroundScripts = typeof importScripts === 'function' && backgroundRuntimeUrl.startsWith('chrome-extension://');
 
@@ -17,11 +18,18 @@ importBackgroundScript('jslib/utils.js');
 importBackgroundScript('jslib/model-catalogue.js');
 importBackgroundScript('jslib/stream-request-state.js');
 importBackgroundScript('jslib/tab-state.js');
+importBackgroundScript('jslib/sidebar-frame-registry.js');
+importBackgroundScript('jslib/draft-store.js');
+importBackgroundScript('jslib/sidebar-badge.js');
 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
 const tabState = new TabStateStore(); // per-tab session binding, background-owned (#40)
 const liveStreamStates = new Map(); // authoritative in-memory streamState per live requestId (#40)
+const sidebarFrameRegistry = new SidebarFrameRegistry(); // one-shot iframe confirmation per tab (#104)
+const sidebarBadgeApi = chrome.action;
+
+chrome.runtime.onConnect.addListener(createSidebarPortBroker(sidebarFrameRegistry, chrome.tabs));
 
 importBackgroundScript('jslib/log.js');
 importBackgroundScript('background-memory.js');
@@ -48,7 +56,7 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
 chrome.action.onClicked.addListener(async (tab) => {
     if (tab?.url?.startsWith('http')) {
         try {
-            await chrome.tabs.sendMessage(tab?.id, { action: "toggleSidebar" });
+            await chrome.tabs.sendMessage(tab?.id, { action: "toggleSidebar" }, { frameId: 0 });
             if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         } catch (e) {
             console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${e.message}`, e);
@@ -68,6 +76,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     controllers.delete(tabId);
     await streamRequestState?.removeForTab(tabId);
     await tabState?.remove(tabId);
+    await removeDraftsForTab(chrome.storage.session, tabId);
     await handleNavigationTabRemoved(tabId);
     await removeActiveSessionPageData(tabId);
 
@@ -95,6 +104,9 @@ chrome.windows.onRemoved.addListener(handleNavigationConsentWindowRemoved);
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${activeInfo.tabId} activated`);
 });
+
+attachSidebarFrameCleanup(sidebarFrameRegistry);
+attachSidebarBadgeCleanup(sidebarBadgeApi, chrome.tabs);
 
 function isOptionsPageSender(sender) {
     const optionsUrl = chrome.runtime.getURL('options.html');
@@ -133,11 +145,38 @@ async function handleRuntimeMessage(request, sender) {
         case 'updateTabState':
             return await updateTabBindingForSender(request, sender);
 
+        case 'getSidebarVisibility':
+            return { open: tabId != null && (await tabState.get(tabId))?.panelOpen === true };
+
         case 'getTabState':
             return await readTabStartupStateForSender(sender);
 
         case 'getOpenSessions':
             return await getOpenSessionsForSender(sender);
+
+        case 'registerSidebarFrame':
+            return await sidebarFrameRegistry.register(sender);
+
+        case 'confirmSidebarFrame': {
+            const confirmation = await sidebarFrameRegistry.confirm(sender);
+            if (['no-registration', 'expired'].includes(confirmation.reason)) {
+                // The frame has no tab ID on failure. Only the background can
+                // address the top content script using the validated sender.
+                void chrome.tabs.sendMessage(tabId, { action: 'retrySidebarFrame' }, { frameId: 0 }).catch(console.debug);
+            }
+            return confirmation;
+        }
+
+        case 'isSidebarFrameConfirmed':
+            return { confirmed: await sidebarFrameRegistry.isConfirmedSender(sender) };
+
+        case 'sidebarBlocked':
+            await setSidebarBlockedBadge(sidebarBadgeApi, tabId);
+            return { ok: true };
+
+        case 'clearSidebarBlocked':
+            await clearSidebarBlockedBadge(sidebarBadgeApi, tabId);
+            return { ok: true };
 
         case 'removeStreamRequestState':
             return await removeStreamRequestStateForSender(request, sender);
@@ -257,20 +296,20 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
             case "sendSelectedText":
                 if (!info.selectionText.length) { return; }
                 if (!tab?.id) { return; }
-                await chrome.tabs.sendMessage(tab?.id, { action: "activePageSelection", selection: info.selectionText });
+                await chrome.tabs.sendMessage(tab?.id, { action: "activePageSelection", selection: info.selectionText }, { frameId: 0 });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
                 break;
             case "inserSelectedInPrompt":
                 if (!info.selectionText.length) { return; }
                 if (!tab?.id) { return; }
-                await chrome.tabs.sendMessage(tab?.id, { action: "inserSelectedInPrompt", selection: info.selectionText });
+                await chrome.tabs.sendMessage(tab?.id, { action: "inserSelectedInPrompt", selection: info.selectionText }, { frameId: 0 });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
                 break;
             case "askAiExplanation":
                 await askAIExplanation(info, tab);
                 break;
             case "sendPageContent":
-                await chrome.tabs.sendMessage(tab?.id, { action: "activePageContent" });
+                await chrome.tabs.sendMessage(tab?.id, { action: "activePageContent" }, { frameId: 0 });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
                 break;
             case "selectAndSendElement":
@@ -278,7 +317,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
                     console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Expected tab?.id; received ${tab?.id}`, tab);
                     return;
                 }
-                await chrome.tabs.sendMessage(tab?.id, { action: "toggleSelectElement", selection: true });
+                await chrome.tabs.sendMessage(tab?.id, { action: "toggleSelectElement", selection: true }, { frameId: 0 });
                 if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
                 break;
             case "attachImage":
@@ -396,14 +435,14 @@ async function attachContextMenuImage(tab) {
 
     let bounds;
     try {
-        bounds = await chrome.tabs.sendMessage(tab.id, { action: 'getContextMenuImageBounds' });
+        bounds = await chrome.tabs.sendMessage(tab.id, { action: 'getContextMenuImageBounds' }, { frameId: 0 });
         if (!bounds?.rect) {
             await notifyFailure('Could not attach image: right-click the image again and retry.');
             return;
         }
         if (bounds.rect.x < 0 || bounds.rect.y < 0 || bounds.rect.right > bounds.viewportWidth || bounds.rect.bottom > bounds.viewportHeight) {
-            await chrome.tabs.sendMessage(tab.id, { action: 'scrollContextMenuImageIntoView' });
-            bounds = await chrome.tabs.sendMessage(tab.id, { action: 'getContextMenuImageBounds' });
+            await chrome.tabs.sendMessage(tab.id, { action: 'scrollContextMenuImageIntoView' }, { frameId: 0 });
+            bounds = await chrome.tabs.sendMessage(tab.id, { action: 'getContextMenuImageBounds' }, { frameId: 0 });
         }
         if (!bounds?.rect || !bounds.viewportWidth || !bounds.rect.width || !bounds.rect.height) {
             await notifyFailure('Could not attach image: the image has no visible size.');
@@ -413,9 +452,9 @@ async function attachContextMenuImage(tab) {
         let hidden = false;
         let imageBitmap;
         try {
-            const overlap = await chrome.tabs.sendMessage(tab.id, { action: 'hideLocalAIForImageCapture', rect: bounds.rect });
+            const overlap = await chrome.tabs.sendMessage(tab.id, { action: 'hideLocalAIForImageCapture', rect: bounds.rect }, { frameId: 0 });
             hidden = overlap?.hidden === true;
-            if (hidden) { await chrome.tabs.sendMessage(tab.id, { action: 'waitForImageCaptureFrame' }); }
+            if (hidden) { await chrome.tabs.sendMessage(tab.id, { action: 'waitForImageCaptureFrame' }, { frameId: 0 }); }
             const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
             imageBitmap = await createImageBitmap(await (await fetch(dataUrl)).blob());
             const scale = imageBitmap.width / bounds.viewportWidth;
@@ -438,14 +477,14 @@ async function attachContextMenuImage(tab) {
             for (let i = 0; i < bytes.length; i += 0x8000) {
                 binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
             }
-            await chrome.tabs.sendMessage(tab.id, { action: 'attachCroppedContextMenuImage', base64: btoa(binary) });
+            await chrome.tabs.sendMessage(tab.id, { action: 'attachCroppedContextMenuImage', base64: btoa(binary) }, { frameId: 0 });
         } catch (err) {
             await notifyFailure(`Could not capture image: ${err.message}`);
         } finally {
             imageBitmap?.close();
             if (hidden) {
                 try {
-                    await chrome.tabs.sendMessage(tab.id, { action: 'restoreLocalAIAfterImageCapture' });
+                    await chrome.tabs.sendMessage(tab.id, { action: 'restoreLocalAIAfterImageCapture' }, { frameId: 0 });
                 } catch (err) {
                     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Could not restore Local AI UI:`, err);
                 }
@@ -594,7 +633,7 @@ async function sendStreamChunkToUi(senderTabId, payload = {}, debugEnabled = fal
             contentDelta: payload?.contentDelta || '',
             thinkingDelta: payload?.thinkingDelta || '',
             rawChunk: debugEnabled ? (payload?.rawChunk || '') : ''
-        });
+        }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
         if (!isUiReceiverUnavailableError(error)) { throw error; }
@@ -732,7 +771,7 @@ async function applyAutomaticModelOptions(requestData = {}, modelName = '') {
 async function handleResponse(responseData = '', senderTabId, requestId = '', senderTab = null) {
     try {
         if (!responseData) {
-            const delivery = await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd", requestId });
+            const delivery = await chrome.tabs.sendMessage(senderTabId, { action: "streamEnd", requestId }, { frameId: 0 });
             if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
             return delivery;
         }
@@ -742,7 +781,7 @@ async function handleResponse(responseData = '', senderTabId, requestId = '', se
             action: "streamEnd",
             requestId,
             response: JSON.stringify(responseData)
-        });
+        }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         return delivery;
     } catch (error) {
@@ -761,7 +800,7 @@ async function handleStreamEnd(responseData = '', senderTabId, rawResponse = '',
             requestId,
             response: JSON.stringify(responseData),
             rawResponse: debugEnabled ? rawResponse : ''
-        });
+        }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         return delivery;
     } catch (error) {
@@ -773,7 +812,7 @@ async function handleStreamEnd(responseData = '', senderTabId, rawResponse = '',
 
 async function askAIExplanation(info, tab) {
     try {
-        await chrome.tabs.sendMessage(tab?.id, { action: "explainSelection", selection: info.selectionText });
+        await chrome.tabs.sendMessage(tab?.id, { action: "explainSelection", selection: info.selectionText }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (e) {
         await showUIMessage(e.message, 'error');
@@ -1147,7 +1186,7 @@ async function throwIfRequestCancelled(controller, tabId) {
 
 async function sendStreamAbort(tabId, requestId = '') {
     try {
-        const delivery = await chrome.tabs.sendMessage(tabId, { action: "streamAbort", requestId });
+        const delivery = await chrome.tabs.sendMessage(tabId, { action: "streamAbort", requestId }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
         return delivery;
     } catch (e1) {
@@ -1165,7 +1204,7 @@ function createStreamRequestId(requestId) {
 
 async function sendStreamError(tabId, requestId, error) {
     try {
-        const delivery = await chrome.tabs.sendMessage(tabId, { action: 'streamError', requestId, error: error.toString() });
+        const delivery = await chrome.tabs.sendMessage(tabId, { action: 'streamError', requestId, error: error.toString() }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(chrome.runtime.lastError.message); }
         return delivery;
     } catch (deliveryError) {
@@ -1789,7 +1828,7 @@ async function showUIMessage(message, type = '', tab) {
     if (!tab) { tab = await getCurrentTab(); }
     if (!/^http/i.test(tab?.url)) { return; }
     try {
-        await chrome.tabs.sendMessage(tab?.id, { "action": "showMessage", message: message, messageType: type });
+        await chrome.tabs.sendMessage(tab?.id, { "action": "showMessage", message: message, messageType: type }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (err) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${err.message}`, err);
@@ -1803,7 +1842,7 @@ async function updateUIStatusBar(message, tab) {
         return;
     }
     try {
-        await chrome.tabs.sendMessage(tab?.id, { "action": "updateStatusbar", message: message });
+        await chrome.tabs.sendMessage(tab?.id, { "action": "updateStatusbar", message: message }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);
@@ -1826,7 +1865,7 @@ async function dumpInFrontConsole(message, obj, type = 'log', tabId) {
         }
         // The summary stays available with debugging off; only the payload is held back.
         const serialisedObj = isDebugEnabled() ? JSON.stringify(obj ?? {}) : '';
-        await chrome.tabs.sendMessage(tabId, { "action": "dumpInConsole", message: message, obj: serialisedObj, type: type });
+        await chrome.tabs.sendMessage(tabId, { "action": "dumpInConsole", message: message, obj: serialisedObj, type: type }, { frameId: 0 });
         if (chrome.runtime.lastError) { throw new Error(`[${getLineNumber()}] - chrome.runtime.lastError: ${chrome.runtime.lastError.message}`); }
     } catch (error) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - ${error.message}`, error);

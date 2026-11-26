@@ -222,7 +222,7 @@ describe('session tab tools (#62)', () => {
         expect(await env.read('2')).toBe('Tab: Page 2 — https://example.com/2\nOther page content');
         expect(env.chrome.tabs.sendMessage).toHaveBeenCalledWith(2, {
             action: 'callContentExtractor', functionName: 'getEnhancedPageContent', argument: null
-        });
+        }, { frameId: 0 });
         env.chrome.tabs.sendMessage.mockResolvedValue({ result: 'Changed content' });
         expect(await env.read(2)).toContain('\nChanged content');
         expect(env.deps.browseUrl).not.toHaveBeenCalled();

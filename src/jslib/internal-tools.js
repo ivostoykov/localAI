@@ -116,7 +116,7 @@ async function readSessionTabPage(reference, tabId, context = {}) {
                 action: 'callContentExtractor',
                 functionName: 'getEnhancedPageContent',
                 argument: null
-            }),
+            }, { frameId: 0 }),
             new Promise(resolve => { timeout = setTimeout(() => resolve(null), 10000); })
         ]);
         if (response?.error || typeof response?.result !== 'string' || !response.result.trim()) {
@@ -335,7 +335,7 @@ async function callContentScriptExtractor(tabId, functionName, argument = null) 
             action: 'callContentExtractor',
             functionName: functionName,
             argument: argument
-        });
+        }, { frameId: 0 });
 
         console.debug(`>>> ${manifest?.name ?? ''} - [internal-tools.js] - Received response:`, response);
         console.debug(`>>> ${manifest?.name ?? ''} - [internal-tools.js] - response?.result type:`, typeof response?.result, 'length:', response?.result?.length);

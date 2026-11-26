@@ -1,3 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Local AI</title>
+<link rel="stylesheet" href="css/sidebar.css">
+<link rel="stylesheet" href="css/ribbon.css">
+<link rel="stylesheet" href="css/aioutput.css">
+<link rel="stylesheet" href="css/templates.css">
+<link rel="stylesheet" href="css/sidebar-frame.css">
+<script defer src="jslib/constants.js"></script>
+<script defer src="jslib/utils.js"></script>
+<script defer src="jslib/tab-state.js"></script>
+<script defer src="jslib/sessions.js"></script>
+<script defer src="jslib/log.js"></script>
+<script defer src="jslib/content-cleaner.js"></script>
+<script defer src="jslib/files.js"></script>
+<script defer src="jslib/solomd2html.js"></script>
+<script defer src="jslib/ribbon.js"></script>
+<script defer src="jslib/stt.js"></script>
+<script defer src="jslib/user_input_ribbon.js"></script>
+<script defer src="jslib/draft-store.js"></script>
+<script defer src="jslib/visibility-gate.js"></script>
+<script defer src="jslib/sidebar-draft.js"></script>
+<script defer src="jslib/sidebar-reconnect.js"></script>
+<script defer src="jslib/sidebar-visibility.js"></script>
+<script defer src="jslib/sidebar-port.js"></script>
+<script defer src="jslib/sidebar-ui.js"></script>
+<script defer src="lai-main.js"></script>
+<script defer src="sidebar-frame.js"></script>
+</head>
+<body>
+<p id="sidebarFailure" hidden>Local AI could not connect. Reopen the panel to retry.</p>
+<main id="laiSidebar" class="lai-fixed-parent" hidden>
 <div id="dropzone" class="dropzone invisible">Drop Here</div>
 
 <header class="lai-header">
@@ -169,7 +203,7 @@
 </div>
 <div id="feedbackMessage" class="feedback-message">&nbsp;</div>
 <div id="laiCopyHint" class="lai-copy-hint invisible">Copied!</div>
-<div class="lai-resize-handle"><img src="" alt="resize" data-type="resize"></div>
+
 <div id="commandListContainer" class="invisible user-command-list">
     <div class="user-command-list-ribbon">
         <div id="cmdListNew" class="help-new-btn" title="Close"><img src="" alt="Create new command"
@@ -243,3 +277,6 @@
         <div class="bottom-cmd">List All</div>
     </div>
 </template>
+</main>
+</body>
+</html>
