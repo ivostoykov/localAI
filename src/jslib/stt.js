@@ -83,6 +83,10 @@ function stopSidebarSpeech() {
 }
 
 function updateSidebarSpeech(update) {
+    if (update.type === 'access') {
+        showMessage(update.message, 'info');
+        return { received: true };
+    }
     if (update.id !== stt?.id) { return { received: false }; }
     if (update.type !== 'heartbeat') { stt.update(update); }
     return { received: true };

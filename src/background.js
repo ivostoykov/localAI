@@ -109,7 +109,10 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
     }
 });
 
-chrome.windows.onRemoved.addListener(handleNavigationConsentWindowRemoved);
+chrome.windows.onRemoved.addListener(windowId => {
+    handleNavigationConsentWindowRemoved(windowId);
+    void speechSession?.removeWindow(windowId);
+});
 
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Tab ${activeInfo.tabId} activated`);
@@ -153,6 +156,7 @@ async function handleRuntimeMessage(request, sender) {
         case 'startSpeech':
         case 'stopSpeech':
         case 'speechHostEvent':
+        case 'microphoneAccessResult':
             return speechSession
                 ? await speechSession.handle(request, sender)
                 : { available: false };

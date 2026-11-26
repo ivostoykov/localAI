@@ -1,6 +1,7 @@
 function createSpeechSessionController(browser, isConfirmedSender) {
     const hostUrl = browser.runtime.getURL('speech-host.html');
     const grantUrl = browser.runtime.getURL('microphone-access.html');
+    const grantKey = 'speechMicrophoneAccess';
     let active;
     let queue = Promise.resolve();
 
@@ -53,8 +54,66 @@ function createSpeechSessionController(browser, isConfirmedSender) {
         return { ok: false, message };
     }
 
+    async function openGrantWindow(session) {
+        const storage = browser.storage.session;
+        const pending = (await storage.get(grantKey))[grantKey];
+        if (pending) {
+            try {
+                await browser.windows.update(pending.windowId, { focused: true });
+                return;
+            } catch (error) {
+                logSpeechError('Could not focus the previous microphone access window: ' + error.message);
+                await storage.remove(grantKey);
+            }
+        }
+
+        const requestId = crypto.randomUUID();
+        const url = grantUrl + '?requestId=' + encodeURIComponent(requestId);
+        const win = await browser.windows.create({ url, type: 'popup', width: 560, height: 360, focused: true });
+        try {
+            const tabId = win.tabs?.[0]?.id ?? (await browser.tabs.query({ windowId: win.id }))[0]?.id;
+            if (!Number.isInteger(tabId)) { throw new Error('The microphone access window has no tab.'); }
+            await storage.set({ [grantKey]: { requestId, url, windowId: win.id, tabId, session } });
+        } catch (error) {
+            await browser.windows.remove(win.id).catch(error => logSpeechError(error.message));
+            throw error;
+        }
+    }
+
+    async function notifyGrantResult(session, message) {
+        if (!await isConfirmedSender(session.sender)) {
+            logSpeechError('The sidebar that requested microphone access is no longer available.');
+            return;
+        }
+        await notify(session, { type: 'access', message });
+    }
+
+    async function handleGrantResponse(request, sender) {
+        const storage = browser.storage.session;
+        const pending = (await storage.get(grantKey))[grantKey];
+        if (!pending || request.requestId !== pending.requestId || sender?.id !== browser.runtime.id
+            || sender.url !== pending.url || sender.tab?.id !== pending.tabId
+            || sender.tab.windowId !== pending.windowId || sender.frameId !== 0) {
+            return fail('Rejected microphone access response from an unrecognised page.');
+        }
+        if (request.result === 'failed') {
+            logSpeechError('Microphone access was not granted: ' + request.error);
+            return { ok: true };
+        }
+        if (request.result !== 'granted') { return fail('Unrecognised microphone access result.'); }
+
+        const { session, windowId } = pending;
+        await storage.remove(grantKey);
+        await browser.windows.remove(windowId).catch(error => logSpeechError(error.message));
+        await browser.windows.update(session.windowId, { focused: true }).catch(error => logSpeechError(error.message));
+        await browser.tabs.update(session.tabId, { active: true }).catch(error => logSpeechError(error.message));
+        await notifyGrantResult(session, 'Microphone enabled. Click the microphone to dictate.');
+        return { ok: true };
+    }
+
     async function handle(request, sender) {
         if (request.action === 'speechAvailability') { return { available: available() }; }
+        if (request.action === 'microphoneAccessResult') { return handleGrantResponse(request, sender); }
         if (request.action === 'speechHostEvent') {
             if (sender.id !== browser.runtime.id || sender.url !== hostUrl || sender.tab) {
                 return fail('Speech event came from an unrecognised host.');
@@ -84,12 +143,12 @@ function createSpeechSessionController(browser, isConfirmedSender) {
                     let message = 'Speech recognition failed: ' + request.code;
                     logSpeechError(message);
                     if (request.code === 'not-allowed') {
-                        message = 'Allow microphone access in the Local AI tab, then click the microphone again.';
+                        message = 'Allow microphone access in the Local AI pop-up, then click the microphone again.';
                         try {
-                            await browser.tabs.create({ url: grantUrl });
+                            await openGrantWindow(active);
                         } catch (error) {
                             logSpeechError(error.message);
-                            message = 'Could not open the microphone access tab. Try clicking the microphone again.';
+                            message = 'Could not open the microphone access window. Try clicking the microphone again.';
                         }
                     }
                     await finish({ type: 'error', message });
@@ -130,7 +189,10 @@ function createSpeechSessionController(browser, isConfirmedSender) {
         }
 
         await finish(active && { type: 'end', message: 'Speech input started in another sidebar.' });
-        active = { tabId, frameId, documentId, id };
+        active = {
+            tabId, frameId, documentId, id, windowId: sender.tab.windowId,
+            sender: { id: sender.id, url: sender.url, tab: { id: tabId }, frameId, documentId }
+        };
         try {
             await browser.offscreen.createDocument({
                 url: 'speech-host.html',
@@ -148,6 +210,15 @@ function createSpeechSessionController(browser, isConfirmedSender) {
 
     return {
         handle(request, sender) { return enqueue(() => handle(request, sender)); },
+        removeWindow(windowId) {
+            return enqueue(async () => {
+                const storage = browser.storage.session;
+                const pending = (await storage.get(grantKey))[grantKey];
+                if (pending?.windowId !== windowId) { return; }
+                await storage.remove(grantKey);
+                await notifyGrantResult(pending.session, 'Microphone access was not granted.');
+            });
+        },
         removeTab(tabId) {
             if (!available()) { return; }
             return enqueue(async () => {
