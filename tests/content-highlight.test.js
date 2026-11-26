@@ -6,12 +6,18 @@ const code = fs.readFileSync('src/content.js', 'utf8');
 const extract = name => code.match(new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}\\n`))[0];
 const startup = code.slice(code.indexOf('let startRetry'), code.indexOf('\nfunction rememberContextMenuImageTarget'));
 
-async function setup({ loaded = true, dispatchLoad = true } = {}) {
+async function setup({ loaded = true, dispatchLoad = true, crossOrigin = false } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="top" style="border: 1px solid red"></div><iframe></iframe></body></html>', { url: 'https://example.com' });
   const { window } = dom;
   const { document } = window;
   Object.defineProperty(document, 'readyState', { value: 'complete' });
   const frame = document.querySelector('iframe');
+  if (crossOrigin) {
+    Object.defineProperty(frame, 'contentWindow', {
+      configurable: true,
+      get() { throw new window.DOMException('Blocked a frame from accessing a cross-origin frame.', 'SecurityError'); }
+    });
+  }
   Object.defineProperty(frame.contentDocument, 'readyState', { configurable: true, value: loaded ? 'complete' : 'loading' });
   const frameListeners = vi.spyOn(frame.contentDocument, 'addEventListener');
   const inside = frame.contentDocument.createElement('div');
@@ -51,6 +57,24 @@ describe('element highlight', () => {
     const handlers = frameListeners.mock.calls.filter(([type]) => type === 'click').map(([, handler]) => handler);
     expect(handlers.length).toBe(2);
     expect(new Set(handlers).size).toBe(1);
+  });
+  it('skips a cross-origin frame without a warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const { frameListeners } = await setup({ crossOrigin: true });
+    expect(warn).not.toHaveBeenCalled();
+    expect(debug.mock.calls.some(([message]) => /cross-origin frame/i.test(String(message)))).toBe(true);
+    expect(frameListeners).not.toHaveBeenCalled();
+    warn.mockRestore();
+    debug.mockRestore();
+  });
+  it('keeps listeners on a same-origin frame without a warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { frameListeners } = await setup();
+    const types = frameListeners.mock.calls.map(([type]) => type);
+    expect(warn).not.toHaveBeenCalled();
+    expect(types).toEqual(expect.arrayContaining(['mouseover', 'mouseout', 'click']));
+    warn.mockRestore();
   });
   it('restores the original border after repeated hover and mouseout', async () => {
     const { top, setActive } = await setup(); setActive(true);

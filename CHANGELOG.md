@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.5] - 2026-11-26
+
+### Fixes
+
+- Pages with cross-origin frames no longer report an "Access denied to frame!" extension error for each frame (#124).
+
 ## [1.31.4] - 2026-11-26
 
 ### Fixes
