@@ -1,5 +1,16 @@
 # Local AI - Changelog
 
+## [1.31.6] - 2026-11-26
+
+### Fixes
+
+- Dictation works again in Chrome, including on sites that block the microphone. Speech recognition runs in Local AI's own background page; on first use a Local AI tab asks for microphone access (#122).
+- Speech errors are logged as well as shown (#122).
+
+### Changes
+
+- The microphone is hidden in browsers without supported speech recognition, such as Firefox (#122).
+
 ## [1.31.5] - 2026-11-26
 
 ### Fixes
