@@ -271,10 +271,24 @@ describe('web-search.js', () => {
 
         it('does not extract from a completion of the previous page', async () => {
             vi.useFakeTimers();
+            vi.spyOn(chrome.tabs, 'get').mockResolvedValue({ id: TAB_ID, url: 'https://example.com/one' });
             chrome.tabs.update.mockImplementation(async tabId => {
                 await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'https://example.com/one' });
             });
-            const promise = fetchPageSummary(TAB_ID, 'https://example.com/two', 'https://example.com/one');
+            const promise = fetchPageSummary(TAB_ID, 'https://example.com/two');
+            await vi.advanceTimersByTimeAsync(20000);
+            const { content } = await promise;
+            expect(content).toBe('');
+            expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+        });
+
+        it('does not extract from the completion of a redirected previous page', async () => {
+            vi.useFakeTimers();
+            vi.spyOn(chrome.tabs, 'get').mockResolvedValue({ id: TAB_ID, url: 'https://example.com/landing' });
+            chrome.tabs.update.mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'https://example.com/landing' });
+            });
+            const promise = fetchPageSummary(TAB_ID, 'https://example.com/requested');
             await vi.advanceTimersByTimeAsync(20000);
             const { content } = await promise;
             expect(content).toBe('');
@@ -282,12 +296,13 @@ describe('web-search.js', () => {
         });
 
         it('extracts after the new page completes', async () => {
+            vi.spyOn(chrome.tabs, 'get').mockResolvedValue({ id: TAB_ID, url: 'https://example.com/one' });
             chrome.tabs.update.mockImplementation(async tabId => {
                 await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'https://example.com/one' });
                 await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'https://example.com/two' });
             });
             chrome.tabs.sendMessage.mockResolvedValue({ result: 'second page' });
-            const { content } = await fetchPageSummary(TAB_ID, 'https://example.com/two', 'https://example.com/one');
+            const { content } = await fetchPageSummary(TAB_ID, 'https://example.com/two');
             expect(content).toBe('second page');
         });
     });

@@ -31,8 +31,10 @@ function waitForTabLoad(tabId, previousUrl, timeoutMs = 20000) {
         async function listener(updatedTabId, changeInfo, tab) {
             if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
             const completedUrl = changeInfo.url || tab?.url || await readTabUrl(tabId);
-            // A completion for the page the tab was already on, or for its initial blank document, is not the requested load.
-            if (completedUrl === BLANK_PAGE_URL || completedUrl === previousUrl) return;
+            if (completedUrl) {
+                // A completion for the page the tab was already on, or for its initial blank document, is not the requested load.
+                if (completedUrl === BLANK_PAGE_URL || completedUrl === previousUrl) return;
+            }
             clearTimeout(timer);
             chrome.tabs.onUpdated.removeListener(listener);
             resolve();
@@ -102,10 +104,10 @@ async function isCaptchaOrConsentPage(tabId) {
     }
 }
 
-async function fetchPageSummary(searchTabId, url, previousUrl) {
+async function fetchPageSummary(searchTabId, url) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Fetching page summary:`, url);
     try {
-        const loadPromise = waitForTabLoad(searchTabId, previousUrl);
+        const loadPromise = waitForTabLoad(searchTabId, await readTabUrl(searchTabId));
         await chrome.tabs.update(searchTabId, { url });
         await loadPromise;
         const response = await chrome.tabs.sendMessage(searchTabId, {
@@ -160,7 +162,7 @@ async function searchWeb(query, session) {
     try {
         await throwIfNavigationCancelled(session);
         try {
-            const loadPromise = waitForTabLoad(searchTabId, BLANK_PAGE_URL);
+            const loadPromise = waitForTabLoad(searchTabId, await readTabUrl(searchTabId));
             await chrome.tabs.update(searchTabId, { url: serpUrl });
             await loadPromise;
         } catch (err) {
@@ -192,11 +194,9 @@ async function searchWeb(query, session) {
         }
 
         const summaries = [];
-        let previousUrl = serpUrl;
         for (const url of resultUrls) {
             await throwIfNavigationCancelled(session);
-            const { content } = await fetchPageSummary(searchTabId, url, previousUrl);
-            previousUrl = url;
+            const { content } = await fetchPageSummary(searchTabId, url);
             if (content?.trim()) {
                 const summary = content.length > SEARCH_SUMMARY_MAX_CHARS
                     ? `${content.slice(0, SEARCH_SUMMARY_MAX_CHARS)}\n[TRUNCATED: first ${SEARCH_SUMMARY_MAX_CHARS} of ${content.length} characters shown]`
