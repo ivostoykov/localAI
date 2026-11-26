@@ -172,6 +172,10 @@ function attachElementSelectionListenersToFrames() {
         doc.addEventListener('mouseout', clearElementOverDecoration, true);
         doc.addEventListener('click', frameElementSelectionClicked, true);
       } catch (e) {
+        if (e?.name === 'SecurityError') {
+          console.debug('Skipped cross-origin frame', e.message);
+          return;
+        }
         console.warn('Access denied to frame!', e);
       }
     };

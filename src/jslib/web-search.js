@@ -5,26 +5,39 @@
  */
 
 const SEARCH_SUMMARY_MAX_CHARS = 2000;
+const BLANK_PAGE_URL = 'about:blank';
 
 async function createSearchTab() {
-    const tab = await chrome.tabs.create({ active: false, url: 'about:blank' });
+    const tab = await chrome.tabs.create({ active: false, url: BLANK_PAGE_URL });
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Created search tab`, tab.id);
     return tab.id;
 }
 
-function waitForTabLoad(tabId, timeoutMs = 20000) {
+async function readTabUrl(tabId) {
+    try {
+        return (await chrome.tabs.get(tabId))?.url || '';
+    } catch {
+        return '';
+    }
+}
+
+function waitForTabLoad(tabId, previousUrl, timeoutMs = 20000) {
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
             chrome.tabs.onUpdated.removeListener(listener);
             reject(new Error('Tab load timed out'));
         }, timeoutMs);
 
-        function listener(updatedTabId, changeInfo) {
-            if (updatedTabId === tabId && changeInfo.status === 'complete') {
-                clearTimeout(timer);
-                chrome.tabs.onUpdated.removeListener(listener);
-                resolve();
+        async function listener(updatedTabId, changeInfo, tab) {
+            if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+            const completedUrl = changeInfo.url || tab?.url || await readTabUrl(tabId);
+            if (completedUrl) {
+                // A completion for the page the tab was already on, or for its initial blank document, is not the requested load.
+                if (completedUrl === BLANK_PAGE_URL || completedUrl === previousUrl) return;
             }
+            clearTimeout(timer);
+            chrome.tabs.onUpdated.removeListener(listener);
+            resolve();
         }
 
         chrome.tabs.onUpdated.addListener(listener);
@@ -94,7 +107,7 @@ async function isCaptchaOrConsentPage(tabId) {
 async function fetchPageSummary(searchTabId, url) {
     console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Fetching page summary:`, url);
     try {
-        const loadPromise = waitForTabLoad(searchTabId);
+        const loadPromise = waitForTabLoad(searchTabId, await readTabUrl(searchTabId));
         await chrome.tabs.update(searchTabId, { url });
         await loadPromise;
         const response = await chrome.tabs.sendMessage(searchTabId, {
@@ -149,7 +162,7 @@ async function searchWeb(query, session) {
     try {
         await throwIfNavigationCancelled(session);
         try {
-            const loadPromise = waitForTabLoad(searchTabId);
+            const loadPromise = waitForTabLoad(searchTabId, await readTabUrl(searchTabId));
             await chrome.tabs.update(searchTabId, { url: serpUrl });
             await loadPromise;
         } catch (err) {

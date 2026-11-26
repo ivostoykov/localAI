@@ -1,5 +1,17 @@
 # Local AI - Changelog
 
+## [1.31.5] - 2026-11-26
+
+### Fixes
+
+- Pages with cross-origin frames no longer report an "Access denied to frame!" extension error for each frame (#124).
+
+## [1.31.4] - 2026-11-26
+
+### Fixes
+
+- Web search waits for the results page and each result page to finish loading, instead of reading the previous or blank page (#123).
+
 ## [1.31.3] - 2026-11-26
 
 ### Fixes
