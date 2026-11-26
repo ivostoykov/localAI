@@ -25,23 +25,43 @@ function loadController() {
         }),
         closeDocument: vi.fn(async () => { open = false; })
     };
+    const windows = {
+        create: vi.fn(async () => ({ id: 80, tabs: [{ id: 81 }] })),
+        update: vi.fn(async () => ({})),
+        remove: vi.fn(async () => {})
+    };
+    const saved = {};
+    const storage = { session: {
+        get: async key => ({ [key]: saved[key] }),
+        set: async entries => Object.assign(saved, entries),
+        remove: async key => { delete saved[key]; }
+    } };
     const tabs = {
-        create: vi.fn(async () => ({})),
+        update: vi.fn(async () => ({})),
         sendMessage: vi.fn(async () => ({ received: true }))
     };
     const debug = vi.fn();
-    const controller = loadSpeechScript(controllerCode, {
+    const createController = loadSpeechScript(controllerCode, {
         console: { debug }, manifest: { name: 'Local AI' }, getLineNumber: () => '42'
-    }, 'createSpeechSessionController')({ runtime, offscreen, tabs }, async sender => sender.confirmed === true);
+    }, 'createSpeechSessionController');
+    const restart = () => createController({ runtime, offscreen, tabs, windows, storage },
+        async sender => sender?.url === runtime.getURL('sidebar.html'));
+    const controller = restart();
 
     const sidebar = (tabId, documentId = 'sidebar-' + tabId) => ({
-        id: runtime.id, tab: { id: tabId }, frameId: 2, documentId, confirmed: true
+        id: runtime.id, url: runtime.getURL('sidebar.html'), tab: { id: tabId, windowId: 30 + tabId }, frameId: 2, documentId
     });
     const host = { id: runtime.id, url: runtime.getURL('speech-host.html') };
     const start = (id, tabId) => controller.handle({ action: 'startSpeech', id, tabId: 99 }, sidebar(tabId));
     const emit = (id, type, fields) => controller.handle({ action: 'speechHostEvent', id, type, ...fields }, host);
 
-    return { controller, runtime, offscreen, tabs, debug, sidebar, host, start, emit };
+    const grantSender = () => ({
+        id: runtime.id, url: windows.create.mock.lastCall[0].url, tab: { id: 81, windowId: 80 }, frameId: 0
+    });
+    const grantResponse = (result = 'granted') => ({
+        action: 'microphoneAccessResult', requestId: new URL(grantSender().url).searchParams.get('requestId'), result
+    });
+    return { controller, restart, runtime, offscreen, tabs, windows, debug, sidebar, host, start, emit, grantSender, grantResponse };
 }
 
 describe('background speech sessions', () => {
@@ -77,16 +97,77 @@ describe('background speech sessions', () => {
     });
 
     it('opens the extension grant page and tells the originating sidebar how to retry', async () => {
-        const { tabs, debug, start, emit, offscreen } = loadController();
+        const { tabs, windows, debug, start, emit, offscreen } = loadController();
         await start('session', 1);
         await emit('session', 'error', { code: 'not-allowed' });
-        expect(tabs.create).toHaveBeenCalledExactlyOnceWith({ url: 'chrome-extension://localai/microphone-access.html' });
+        expect(windows.create).toHaveBeenCalledExactlyOnceWith({
+            url: expect.stringMatching(/^chrome-extension:\/\/localai\/microphone-access\.html\?requestId=.+/),
+            type: 'popup', focused: true, width: 560, height: 360
+        });
         expect(tabs.sendMessage).toHaveBeenCalledExactlyOnceWith(1, {
             action: 'speechUpdate', id: 'session', type: 'error',
             message: expect.stringContaining('Allow microphone access')
         }, { frameId: 0 });
         expect(debug).toHaveBeenCalledWith('>>> Local AI - [42] - Speech recognition failed: not-allowed');
         expect(offscreen.closeDocument).toHaveBeenCalledTimes(1);
+    });
+
+    it('focuses a single popup and retains the first requesting sidebar', async () => {
+        const { controller, tabs, windows, start, emit, grantSender, grantResponse } = loadController();
+        await start('first', 1);
+        await emit('first', 'error', { code: 'not-allowed' });
+        await start('second', 2);
+        await emit('second', 'error', { code: 'not-allowed' });
+        expect(windows.create).toHaveBeenCalledTimes(1);
+        expect(windows.update).toHaveBeenCalledExactlyOnceWith(80, { focused: true });
+
+        tabs.sendMessage.mockClear();
+        expect(await controller.handle(grantResponse(), grantSender())).toEqual({ ok: true });
+        expect(windows.remove).toHaveBeenCalledExactlyOnceWith(80);
+        expect(windows.update).toHaveBeenLastCalledWith(31, { focused: true });
+        expect(tabs.update).toHaveBeenCalledExactlyOnceWith(1, { active: true });
+        expect(tabs.sendMessage).toHaveBeenCalledExactlyOnceWith(1, {
+            action: 'speechUpdate', id: 'first', type: 'access', message: 'Microphone enabled. Click the microphone to dictate.'
+        }, { frameId: 0 });
+        expect(await controller.removeWindow(80)).toBeUndefined();
+        expect(tabs.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects grant results from another page, tab, window, frame or request', async () => {
+        const { controller, windows, tabs, start, emit, grantSender, grantResponse } = loadController();
+        await start('session', 1);
+        await emit('session', 'error', { code: 'not-allowed' });
+        const sender = grantSender();
+        const request = grantResponse();
+        for (const wrongSender of [
+            { ...sender, url: sender.url.replace('microphone-access.html', 'options.html') },
+            { ...sender, tab: { ...sender.tab, id: 82 } },
+            { ...sender, tab: { ...sender.tab, windowId: 82 } },
+            { ...sender, frameId: 2 }
+        ]) {
+            expect(await controller.handle(request, wrongSender)).toMatchObject({ ok: false });
+        }
+        expect(await controller.handle({ ...request, requestId: 'other' }, sender)).toMatchObject({ ok: false });
+        expect(windows.remove).not.toHaveBeenCalled();
+        expect(tabs.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps failed grants open and routes closure only to the originating sidebar after a worker restart', async () => {
+        const { restart, tabs, windows, start, emit, grantSender, grantResponse } = loadController();
+        await start('session', 1);
+        await emit('session', 'error', { code: 'not-allowed' });
+        tabs.sendMessage.mockClear();
+
+        const controller = restart();
+        expect(await controller.handle({ ...grantResponse('failed'), error: 'NotAllowedError' }, grantSender())).toEqual({ ok: true });
+        expect(windows.remove).not.toHaveBeenCalled();
+        await controller.removeWindow(81);
+        expect(tabs.sendMessage).not.toHaveBeenCalled();
+        await controller.removeWindow(80);
+        expect(tabs.sendMessage).toHaveBeenCalledExactlyOnceWith(1, {
+            action: 'speechUpdate', id: 'session', type: 'access', message: 'Microphone access was not granted.'
+        }, { frameId: 0 });
+        expect(tabs.update).not.toHaveBeenCalled();
     });
 
     it('logs start failures and returns the message to the sidebar', async () => {
@@ -98,14 +179,14 @@ describe('background speech sessions', () => {
     });
 
     it('rejects unconfirmed sidebars and host events sent from a tab', async () => {
-        const { controller, offscreen, tabs, start, host } = loadController();
+        const { controller, offscreen, windows, start, host } = loadController();
         expect(await controller.handle({ action: 'startSpeech', id: 'session' }, { tab: { id: 1 } }))
             .toMatchObject({ ok: false });
         expect(offscreen.createDocument).not.toHaveBeenCalled();
         await start('session', 1);
         expect(await controller.handle({ action: 'speechHostEvent', id: 'session', type: 'error', code: 'not-allowed' },
             { ...host, tab: { id: 1 } })).toMatchObject({ ok: false });
-        expect(tabs.create).not.toHaveBeenCalled();
+        expect(windows.create).not.toHaveBeenCalled();
         expect(offscreen.closeDocument).not.toHaveBeenCalled();
     });
 });

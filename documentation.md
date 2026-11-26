@@ -198,7 +198,7 @@ Dictate prompts in English (UK) in Chrome. Click the microphone at the bottom ri
 
 ![Speech Recognition](media/speech_icon.png)
 
-On first use Local AI opens a tab asking for microphone access. Allow it, return to the page and click the microphone again. The permission belongs to Local AI, not to the web page, so dictation also works on sites that block the microphone. Starting dictation in another tab stops the previous one.
+On first use, Local AI opens a pop-up asking for microphone access. Once you grant access, the pop-up closes and Local AI returns you to the original tab. Click the microphone again to start dictating. The permission belongs to Local AI, not to the web page, so dictation also works on sites that block the microphone. Starting dictation in another tab stops the previous one.
 
 > [!IMPORTANT]
 > Chrome's speech service may send audio to an online service for recognition. Firefox has no supported speech recognition, so the microphone is hidden there.
