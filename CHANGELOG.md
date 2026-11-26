@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.7] - 2026-11-26
+
+### Changes
+
+- Microphone access is requested in a small Local AI pop-up window instead of a new tab. After you allow it, the pop-up closes and you return to the original tab (#128).
+
 ## [1.31.6] - 2026-11-26
 
 ### Fixes
