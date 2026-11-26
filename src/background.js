@@ -21,6 +21,8 @@ importBackgroundScript('jslib/tab-state.js');
 importBackgroundScript('jslib/sidebar-frame-registry.js');
 importBackgroundScript('jslib/draft-store.js');
 importBackgroundScript('jslib/sidebar-badge.js');
+importBackgroundScript('jslib/speech-log.js');
+importBackgroundScript('jslib/speech-session.js');
 
 const controllers = new Map(); // Map to manage AbortControllers per tab for concurrent fetchDataAction calls
 const originRequestControllers = new Map(); // every active request per originating tab, so closing the tab can abort them all
@@ -28,6 +30,14 @@ const tabState = new TabStateStore(); // per-tab session binding, background-own
 const liveStreamStates = new Map(); // authoritative in-memory streamState per live requestId (#40)
 const sidebarFrameRegistry = new SidebarFrameRegistry(); // one-shot iframe confirmation per tab (#104)
 const sidebarBadgeApi = chrome.action;
+const speechSession = typeof createSpeechSessionController === 'function'
+    ? createSpeechSessionController(chrome, sender => sidebarFrameRegistry.isConfirmedSender(sender))
+    : null;
+
+chrome.tabs.onRemoved.addListener(tabId => { void speechSession?.removeTab(tabId); });
+chrome.tabs.onUpdated?.addListener((tabId, changeInfo) => {
+    if (changeInfo.status === 'loading') { void speechSession?.removeTab(tabId); }
+});
 
 chrome.runtime.onConnect.addListener(createSidebarPortBroker(sidebarFrameRegistry, chrome.tabs));
 
@@ -139,6 +149,14 @@ async function handleRuntimeMessage(request, sender) {
     }
 
     switch (request.action) {
+        case 'speechAvailability':
+        case 'startSpeech':
+        case 'stopSpeech':
+        case 'speechHostEvent':
+            return speechSession
+                ? await speechSession.handle(request, sender)
+                : { available: false };
+
         case 'getTabId':
             return { tabId: sender?.tab?.id };
 
@@ -266,6 +284,7 @@ async function handleRuntimeMessage(request, sender) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'speechHostCommand') { return; }
     const runtimeUrl = chrome.runtime.getURL('');
     const isFirefoxRuntime = runtimeUrl.startsWith('moz-extension://');
 

@@ -2,14 +2,15 @@
     "manifest_version": 3,
     "name": "Local AI helper",
     "short_name": "localAI",
-    "version": "1.31.5",
+    "version": "1.31.6",
     "options_page": "options.html",
     "permissions": [
         "activeTab",
         "storage",
         "contextMenus",
         "scripting",
-        "tabs"
+        "tabs",
+        "offscreen"
     ],
     "host_permissions": [
         "*://*/*"

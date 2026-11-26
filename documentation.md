@@ -194,12 +194,14 @@ When empty, the field provides a brief overview of the available options.
 
 ### Speech Recognition
 
-A speech-to-text feature is available to dictate prompts in English. This can be activated by clicking the button located at the bottom right corner of the statusbar. Each click toggles the feature on and off. Once activated, the system will attempt to recognize spoken English words until it is deactivated. Transcriptions will appear in the prompt field.
+Dictate prompts in English (UK) in Chrome. Click the microphone at the bottom right of the status bar; click it again to stop. Transcripts are added to the prompt field.
 
 ![Speech Recognition](media/speech_icon.png)
 
+On first use Local AI opens a tab asking for microphone access. Allow it, return to the page and click the microphone again. The permission belongs to Local AI, not to the web page, so dictation also works on sites that block the microphone. Starting dictation in another tab stops the previous one.
+
 > [!IMPORTANT]
-> For speach recognition with Firefox browser look [here](ff.md#speech-recognition-doesnt-work-in-firefox)
+> Chrome's speech service may send audio to an online service for recognition. Firefox has no supported speech recognition, so the microphone is hidden there.
 
 Additional information about which browser and how support it is available <a href="https://caniuse.com/speech-recognition">here</a> (`Ctrl + click` (Windows/Linux) or `Cmd + click` (macOS) to open the link in a new tab manually).
 

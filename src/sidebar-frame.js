@@ -27,6 +27,7 @@ async function applySidebarState(state) {
     sidebar.classList.toggle('active', state.open);
     sidebar.hidden = !state.open;
     if (!state.open) {
+        stopSidebarSpeech();
         userScrolled = false;
         clearChatHistoryUI();
     }
@@ -53,6 +54,7 @@ function processSidebarRequest(action, payload) {
             closeQuickPromptListMenu();
             closeSessionListOnOutsideClick();
             return closeAllDropDownRibbonMenus();
+        case 'speechUpdate': return updateSidebarSpeech(payload);
         case 'catchUp':
             return payload.restore ? restoreTabSessionFromBackground() : catchUpActiveSessionFromStorage();
         case 'streamData':
@@ -140,6 +142,7 @@ function installSidebarListeners() {
     });
 
     window.addEventListener('pagehide', () => {
+        stopSidebarSpeech();
         void sidebarDraft?.flush();
     });
 }
