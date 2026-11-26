@@ -1,92 +1,89 @@
-function createSpeechRecognizer(resultArea) {
-    if (!resultArea) {
-        if (typeof(showMessage) === 'function') {
-            showMessage('Invalid result area for speech recognition', 'error');
-        }
-        return false;
-    }
+let stt = null;
 
-    let recognition;
+function showSpeechError(message) {
+    logSpeechError(message);
+    showMessage(message, 'error');
+}
+
+async function updateSpeechAvailability(micContainer) {
     try {
-        if(typeof(SpeechRecognition) !== 'undefined') {  recognition = new SpeechRecognition();  }
-        else if(typeof(window.SpeechRecognition) !== 'undefined') {  recognition = new window.SpeechRecognition();  }
-        else if(typeof(window.webkitSpeechRecognition) !== 'undefined') {  recognition = new window.webkitSpeechRecognition();  }
-        if(!recognition){
-            if (typeof(showMessage) === 'function') {
-                showMessage('Failed to attach SpeechRecognition', 'error');
-            }
-            return false;
-        }
-    } catch (err) {
-        if (typeof(showMessage) === 'function') {
-            showMessage(`SpeechRecognition error: ${err.message}`, 'error');
-        }
-        return false;
+        const response = await chrome.runtime.sendMessage({ action: 'speechAvailability' });
+        if (typeof response?.available !== 'boolean') { throw new Error('The background did not report speech input availability.'); }
+        micContainer.classList.toggle('invisible', !response.available);
+    } catch (error) {
+        showSpeechError('Could not check speech input availability: ' + error.message);
     }
+}
 
-    let isRunning = false;
-
-    recognition.lang = 'en-GB';
-    recognition.interimResults = false;
-    recognition.continuous = false;
-
-    recognition.onresult = function (event) {
-        const transcript = event.results[0][0].transcript;
-        resultArea.value += `${(resultArea.value?.length || 0) > 0 ? ' ' : ''}${transcript}`;
+function createSpeechRecognizer(resultArea, micContainer) {
+    const id = crypto.randomUUID();
+    const setRecording = recording => {
+        micContainer.classList.toggle('recording', recording);
+        micContainer.querySelector('#mic').classList.toggle('invisible', recording);
+        micContainer.querySelector('#micOff').classList.toggle('invisible', !recording);
+        updateStatusBar(recording ? 'Listening…' : 'Ready.');
     };
 
-    recognition.onerror = function (event) {
-        // Non-recoverable errors that should stop the recognition
-        const fatalErrors = [
-            'not-allowed',         // User denied permission
-            'service-not-allowed', // Browser doesn't allow speech recognition
-            'audio-capture',       // No microphone available
-            'no-speech'            // Optional: might want to keep trying
-        ];
-
-        if (fatalErrors.includes(event.error)) {
-            isRunning = false;  // Prevent automatic restart
+    async function requestSpeech(action) {
+        try {
+            const response = await chrome.runtime.sendMessage({ action, id });
+            if (!response?.ok) { throw new Error(response?.message || 'The background did not accept the speech request.'); }
+        } catch (error) {
+            if (stt?.id !== id) { return; }
+            stt = null;
+            setRecording(false);
+            showSpeechError(error.message);
         }
-
-        if(typeof(showMessage) === 'function'){
-            showMessage(`Error occurred in recognition: ${event.error}`, 'error');
-        }
-    };
-
-    recognition.onend = function () {
-        if (isRunning) {  recognition.start();  }
-    };
+    }
 
     return {
-        start: function () {
-            if (!isRunning) {
-                isRunning = true;
-                recognition.start();
-            }
+        id,
+        stopping: false,
+        start() {
+            setRecording(true);
+            void requestSpeech('startSpeech');
         },
-        stop: function () {
-            if (isRunning) {
-                isRunning = false;
-                recognition.stop();
-            }
+        stop() {
+            if (this.stopping) { return; }
+            this.stopping = true;
+            void requestSpeech('stopSpeech');
         },
-        isRunning: function () {
-            return isRunning;
+        update({ type, transcript, message }) {
+            if (type === 'transcript') {
+                resultArea.value += (resultArea.value ? ' ' : '') + transcript;
+                resultArea.dispatchEvent(new Event('input', { bubbles: true }));
+                return;
+            }
+            stt = null;
+            setRecording(false);
+            if (type === 'error') { showSpeechError(message); }
+            else if (message) { showMessage(message, 'info'); }
         }
     };
 }
 
-let stt = null;
-
-function toggleRecording(resultArea) {
-    if (stt && stt.isRunning()) {
+function toggleRecording(resultArea, micContainer) {
+    if (stt) {
         stt.stop();
-        stt = null;
-        return true;
+        resultArea?.focus();
+        return;
     }
-
-    stt = createSpeechRecognizer(resultArea);
-    if (!stt) { return false; }
+    if (!resultArea || !micContainer) {
+        showSpeechError('The speech input controls are unavailable.');
+        return;
+    }
+    stt = createSpeechRecognizer(resultArea, micContainer);
     stt.start();
-    return true;
+}
+
+function stopSidebarSpeech() {
+    if (!stt) { return; }
+    stt.stop();
+    stt.update({ type: 'end' });
+}
+
+function updateSidebarSpeech(update) {
+    if (update.id !== stt?.id) { return { received: false }; }
+    if (update.type !== 'heartbeat') { stt.update(update); }
+    return { received: true };
 }

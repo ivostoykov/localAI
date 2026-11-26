@@ -57,7 +57,7 @@ const laiMainExports = '; return { laiExtractDataFromResponse, composeStreamingP
 const frameCode = fs.readFileSync('src/sidebar-frame.js', 'utf8');
 const viewCode = frameCode.slice(frameCode.indexOf('async function applySidebarState'), frameCode.indexOf('function showSidebarConnectionFailure'));
 const executeLaiMainCode = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-    tabStateCode + '\nlet userScrolled = false;\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + '\nlet sidebarVisibility; let sidebarDraft;\n' + viewCode + laiMainExports
+    tabStateCode + '\nlet userScrolled = false;\nconst stopSidebarSpeech = () => {};\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' + contentCleanerCode + '\n' + laiMainCode + '\nlet sidebarVisibility; let sidebarDraft;\n' + viewCode + laiMainExports
 );
 
 let laiExtractDataFromResponse, composeStreamingPreviewText, appendStreamChunkToRecipient, resetStreamTracking, clearStreamingRecipient, finaliseStreamRecipient, messageProcessor, setActiveStreamRequestId, getActiveStreamRequestId, isMessagePersistable;
@@ -1565,7 +1565,7 @@ describe('sidebar session catch-up on focus (#61)', () => {
     const renderSessionHistoryMessagesCode = ribbonCode.match(/async function renderSessionHistoryMessages\([\s\S]*?\n}\n/)[0];
 
     const executeCatchUp = new Function('document', 'window', 'manifest', 'chrome', 'getLineNumber', 'isMessagePersistable',
-        tabStateCode + '\nlet userScrolled = false;\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' +
+        tabStateCode + '\nlet userScrolled = false;\nconst stopSidebarSpeech = () => {};\n' + isMessagePersistableCode + '\nconst checkExtensionState = () => true;\n' +
         isRenderableSessionMessageCode + '\n' + renderSessionHistoryMessageCode + '\n' + renderSessionHistoryMessagesCode + '\n' +
         laiMainCode + '\nlet sidebarVisibility, sidebarDraft;\n' + viewCode + '; return { applySidebarState, getUserScrolled: () => userScrolled, restoreTabSessionFromBackground, setUserScrolled: value => userScrolled = value, catchUpActiveSessionFromStorage, renderSessionHistoryMessages, renderUserPromptCard, addInputCardToUIChatHistory, setMarkdownSource, getMarkdownSource, findElementHistoryIndex, setActiveStreamRequestId: value => activeStreamRequestId = value, getActiveStreamRequestId: () => activeStreamRequestId };'
     );

@@ -135,10 +135,12 @@ async function initSidebar(deadline) {
         }
     });
 
-    shadowRoot.querySelectorAll('img.mic').forEach(img => {
-        img.closest('div.mic-container').addEventListener('click', micClicked);
-        laiSetImg(img);
-    });
+    const micContainer = shadowRoot.querySelector('.mic-container');
+    if (micContainer) {
+        micContainer.addEventListener('click', micClicked);
+        micContainer.querySelectorAll('img.mic').forEach(laiSetImg);
+        void updateSpeechAvailability(micContainer);
+    }
 
     shadowRoot.querySelectorAll('.user-input-ribbon img').forEach(img => laiSetImg(img));
 
@@ -2348,54 +2350,12 @@ function resetStatusbar() {
 }
 
 function micClicked(e) {
-    let activeMic = e.target;
-    let micContainer;
-    if (activeMic.tagName === 'DIV' && activeMic.classList.contains('mic-container')) {
-        micContainer = e.target;
-        activeMic = activeMic.querySelector(':not(.invisible) img');
-    } else {
-        micContainer = activeMic.closest('div.mic-container');
-    }
-
-    const sideBar = getSideBar();
-    const userInput = sideBar.querySelector('#laiUserInput');
-    switch (activeMic.getAttribute('data-type') || '') {
-        case 'mic':
-            updateStatusBar('Working...');
-            micContainer.classList.add('recording');
-            break;
-        case 'mic-off':
-            userInput?.focus();
-            updateStatusBar('Completed.');
-            micContainer.classList.remove('recording');
-            setTimeout(() => { resetStatusbar(); }, 1000);
-            break;
-        default:
-            updateStatusBar('Ready.');
-            break;
-    }
-
-    if (typeof (toggleRecording) !== 'function') { return; }
-
-    let status = toggleRecording(userInput)
-    if (!status) {
-        if (!micContainer?.classList?.contains('invisible')) {
-            micContainer?.classList?.add('invisible');
-        }
-        resetStatusbar();
+    if (!stt && !sidebarActionAllowed()) {
+        logSpeechError('Speech input requires a fully visible sidebar.');
         return;
     }
-
-    micContainer.querySelectorAll('img').forEach(img => {
-        if (img.classList.contains('invisible')) {
-            img.classList.remove('invisible');
-        } else {
-            img.classList.add('invisible');
-        }
-    });
+    toggleRecording(getSideBar()?.querySelector('#laiUserInput'), e.currentTarget);
 }
-
-
 
 function dumpInConsole(message = '', obj, consoleAction = 'log') {
     try {

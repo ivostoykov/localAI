@@ -9,7 +9,8 @@
         "storage",
         "contextMenus",
         "scripting",
-        "tabs"
+        "tabs",
+        "offscreen"
     ],
     "host_permissions": [
         "*://*/*"

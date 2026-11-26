@@ -905,7 +905,7 @@ async function mountSidebarFrame(container, retry = true) {
   }
   const frame = document.createElement('iframe');
   frame.title = 'Local AI';
-  frame.allow = 'microphone; clipboard-write';
+  frame.allow = 'clipboard-write';
   frame.src = chrome.runtime.getURL('sidebar.html');
   sidebarFrame = frame;
   container.append(frame);
@@ -1096,6 +1096,10 @@ async function processHostMessage(request) {
     case 'attachCroppedContextMenuImage':
       await setSidebarOpen(true, true, true, true);
       return sendToSidebar(request.action, { base64: request.base64 }, true);
+    case 'speechUpdate':
+      return sidebarReady && getHostState().open
+        ? sendToSidebar(request.action, request)
+        : { received: false };
     case 'streamData':
     case 'streamEnd':
     case 'streamAbort':
