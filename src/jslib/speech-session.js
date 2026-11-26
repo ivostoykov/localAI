@@ -58,8 +58,13 @@ function createSpeechSessionController(browser, isConfirmedSender) {
         const storage = browser.storage.session;
         const pending = (await storage.get(grantKey))[grantKey];
         if (pending) {
-            await browser.windows.update(pending.windowId, { focused: true });
-            return;
+            try {
+                await browser.windows.update(pending.windowId, { focused: true });
+                return;
+            } catch (error) {
+                logSpeechError('Could not focus the previous microphone access window: ' + error.message);
+                await storage.remove(grantKey);
+            }
         }
 
         const requestId = crypto.randomUUID();

@@ -133,6 +133,34 @@ describe('background speech sessions', () => {
         expect(tabs.sendMessage).toHaveBeenCalledTimes(1);
     });
 
+    it('replaces a stale grant window and routes the new grant to the new origin', async () => {
+        const { controller, debug, tabs, windows, start, emit, grantSender, grantResponse } = loadController();
+        await start('first', 1);
+        await emit('first', 'error', { code: 'not-allowed' });
+        const staleSender = grantSender();
+        const staleResponse = grantResponse();
+        windows.update.mockRejectedValueOnce(new Error('No window with id: 80.'));
+        windows.create.mockResolvedValueOnce({ id: 82, tabs: [{ id: 83 }] });
+
+        await start('second', 2);
+        await emit('second', 'error', { code: 'not-allowed' });
+        expect(windows.create).toHaveBeenCalledTimes(2);
+        expect(grantSender().url).not.toBe(staleSender.url);
+        expect(debug).toHaveBeenCalledWith(
+            '>>> Local AI - [42] - Could not focus the previous microphone access window: No window with id: 80.'
+        );
+        await controller.removeWindow(80);
+        expect(await controller.handle(staleResponse, staleSender)).toMatchObject({ ok: false });
+
+        tabs.sendMessage.mockClear();
+        const sender = { ...grantSender(), tab: { id: 83, windowId: 82 } };
+        expect(await controller.handle(grantResponse(), sender)).toEqual({ ok: true });
+        expect(windows.remove).toHaveBeenCalledExactlyOnceWith(82);
+        expect(tabs.sendMessage).toHaveBeenCalledExactlyOnceWith(2, {
+            action: 'speechUpdate', id: 'second', type: 'access', message: 'Microphone enabled. Click the microphone to dictate.'
+        }, { frameId: 0 });
+    });
+
     it('rejects grant results from another page, tab, window, frame or request', async () => {
         const { controller, windows, tabs, start, emit, grantSender, grantResponse } = loadController();
         await start('session', 1);
