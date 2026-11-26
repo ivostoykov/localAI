@@ -1,18 +1,18 @@
 # Local AI - Changelog
 
-## [1.31.3] - unreleased
+## [1.31.3] - 2026-11-26
 
 ### Fixes
 
 - Reconnecting the sidebar keeps your reading position when the current session is already open (#104).
 
-## [1.31.2] - unreleased
+## [1.31.2] - 2026-11-26
 
 ### Fixes
 
 - Includes 1.30.26: a streamed reply no longer pulls the chat back to the bottom after you scroll up (#120).
 
-## [1.31.1] - unreleased
+## [1.31.1] - 2026-11-26
 
 ### Fixes
 
@@ -21,7 +21,7 @@
 - Launcher and ribbon layout adjusted for the framed panel (#104).
 - After the extension is reloaded or updated, tabs that were already open remove their stale panel instead of logging errors; reload the tab to use Local AI again (#104).
 
-## [1.31.0] - unreleased
+## [1.31.0] - 2026-11-26
 
 ### Changes
 
