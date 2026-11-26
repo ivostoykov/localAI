@@ -74,9 +74,65 @@ describe('web-search.js', () => {
             await promise;
         });
 
+        it('ignores the initial about:blank completion', async () => {
+            const promise = waitForTabLoad(7, 'about:blank');
+            let resolved = false;
+            promise.then(() => { resolved = true; });
+
+            await fakeBrowser.tabs.onUpdated.trigger(7, { status: 'complete' }, { id: 7, url: 'about:blank' });
+            await Promise.resolve();
+
+            expect(resolved).toBe(false);
+
+            await fakeBrowser.tabs.onUpdated.trigger(7, { status: 'complete' }, { id: 7, url: 'https://duckduckgo.com/?q=test' });
+            await promise;
+        });
+
+        it('ignores the completion of the page the tab was already on', async () => {
+            const promise = waitForTabLoad(7, 'https://example.com/one');
+            let resolved = false;
+            promise.then(() => { resolved = true; });
+
+            await fakeBrowser.tabs.onUpdated.trigger(7, { status: 'complete' }, { id: 7, url: 'https://example.com/one' });
+            await Promise.resolve();
+
+            expect(resolved).toBe(false);
+
+            await fakeBrowser.tabs.onUpdated.trigger(7, { status: 'complete' }, { id: 7, url: 'https://example.com/two' });
+            await promise;
+        });
+
+        it('falls back to the tab URL when the event has none', async () => {
+            vi.spyOn(chrome.tabs, 'get').mockResolvedValue({ id: 7, url: 'about:blank' });
+            const promise = waitForTabLoad(7, 'about:blank');
+            let resolved = false;
+            promise.then(() => { resolved = true; });
+
+            await fakeBrowser.tabs.onUpdated.trigger(7, { status: 'complete' }, { id: 7 });
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(resolved).toBe(false);
+
+            chrome.tabs.get.mockResolvedValue({ id: 7, url: 'https://example.com/results' });
+            await fakeBrowser.tabs.onUpdated.trigger(7, { status: 'complete' }, { id: 7 });
+            await promise;
+        });
+
+        it('resolves when the tab URL cannot be read', async () => {
+            vi.spyOn(chrome.tabs, 'get').mockRejectedValue(new Error('No tab with id'));
+            const promise = waitForTabLoad(7, 'about:blank');
+            await fakeBrowser.tabs.onUpdated.trigger(7, { status: 'complete' }, { id: 7 });
+            await expect(promise).resolves.toBeUndefined();
+        });
+
+        it('resolves when the navigation redirects to a different final URL', async () => {
+            const promise = waitForTabLoad(7, 'about:blank');
+            await fakeBrowser.tabs.onUpdated.trigger(7, { status: 'complete' }, { id: 7, url: 'https://consent.example.net/accept' });
+            await expect(promise).resolves.toBeUndefined();
+        });
+
         it('rejects after the specified timeout', async () => {
             vi.useFakeTimers();
-            const promise = waitForTabLoad(1, 5000);
+            const promise = waitForTabLoad(1, 'about:blank', 5000);
             const assertion = expect(promise).rejects.toThrow('Tab load timed out');
             await vi.advanceTimersByTimeAsync(5000);
             await assertion;
@@ -212,6 +268,43 @@ describe('web-search.js', () => {
             const { url } = await fetchPageSummary(TAB_ID, 'https://example.com/page');
             expect(url).toBe('https://example.com/page');
         });
+
+        it('does not extract from a completion of the previous page', async () => {
+            vi.useFakeTimers();
+            vi.spyOn(chrome.tabs, 'get').mockResolvedValue({ id: TAB_ID, url: 'https://example.com/one' });
+            chrome.tabs.update.mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'https://example.com/one' });
+            });
+            const promise = fetchPageSummary(TAB_ID, 'https://example.com/two');
+            await vi.advanceTimersByTimeAsync(20000);
+            const { content } = await promise;
+            expect(content).toBe('');
+            expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+        });
+
+        it('does not extract from the completion of a redirected previous page', async () => {
+            vi.useFakeTimers();
+            vi.spyOn(chrome.tabs, 'get').mockResolvedValue({ id: TAB_ID, url: 'https://example.com/landing' });
+            chrome.tabs.update.mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'https://example.com/landing' });
+            });
+            const promise = fetchPageSummary(TAB_ID, 'https://example.com/requested');
+            await vi.advanceTimersByTimeAsync(20000);
+            const { content } = await promise;
+            expect(content).toBe('');
+            expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+        });
+
+        it('extracts after the new page completes', async () => {
+            vi.spyOn(chrome.tabs, 'get').mockResolvedValue({ id: TAB_ID, url: 'https://example.com/one' });
+            chrome.tabs.update.mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'https://example.com/one' });
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'https://example.com/two' });
+            });
+            chrome.tabs.sendMessage.mockResolvedValue({ result: 'second page' });
+            const { content } = await fetchPageSummary(TAB_ID, 'https://example.com/two');
+            expect(content).toBe('second page');
+        });
     });
 
     describe('searchWeb', () => {
@@ -254,6 +347,19 @@ describe('web-search.js', () => {
             vi.spyOn(chrome.tabs, 'update').mockRejectedValue(new Error('navigation failed'));
             expect(await searchWeb('failure')).toContain('could not load results page');
             expect(chrome.tabs.remove).toHaveBeenCalledWith(44);
+        });
+
+        it('does not treat the initial about:blank load as the results page', async () => {
+            vi.useFakeTimers();
+            vi.spyOn(chrome.tabs, 'create').mockResolvedValue({ id: 47 });
+            vi.spyOn(chrome.tabs, 'update').mockImplementation(async tabId => {
+                await fakeBrowser.tabs.onUpdated.trigger(tabId, { status: 'complete' }, { id: tabId, url: 'about:blank' });
+            });
+            vi.spyOn(chrome.scripting, 'executeScript').mockResolvedValue([{ result: [] }]);
+            const promise = searchWeb('test');
+            await vi.advanceTimersByTimeAsync(20000);
+            expect(await promise).toContain('could not load results page');
+            expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
         });
 
         it('keeps captcha tabs open and warns the originating tab', async () => {
