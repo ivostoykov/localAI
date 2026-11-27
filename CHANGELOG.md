@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.8] - 2026-11-27
+
+### Changes
+
+- The active session's title is shown at the bottom centre of the ribbon. A long title is shortened with an ellipsis and the full title is available in its tooltip; it reads `New session` until the session has a stored title (#130).
+
 ## [1.31.7] - 2026-11-26
 
 ### Changes
