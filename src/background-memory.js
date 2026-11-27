@@ -1,6 +1,20 @@
 const DB_NAME = 'LocalAIMemory';
 const DB_VERSION = 2;
 
+// Monotonic per background lifetime: one increment per real indexedDB.open, so startup and retries
+// are distinguishable even when the same caller is repeated.
+let initAttemptCount = 0;
+
+// Init traces go through the debug gate. log.js holds lines written before the stored debug option
+// is read, so the startup attempt is not lost (#118).
+function initTrace(message) {
+  if (typeof debugTrace === 'function') { debugTrace(message); }
+}
+
+function upgradeFailureLine(kind, error, caller, attempt) {
+  return `upgrade transaction ${kind} (name ${error?.name ?? 'UnknownError'}, message ${error?.message ?? 'no message'}, caller ${caller}, attempt ${attempt})`;
+}
+
 const STORES = {
   CONVERSATIONS: 'conversations',
   CONTEXT: 'context',
@@ -58,28 +72,57 @@ class BackgroundMemory {
   constructor() {
     this.db = null;
     this.initPromise = null;
+    this.initAttempt = 0;
+    this.initCaller = null;
   }
 
-  async init() {
+  async init(caller = 'unspecified') {
     if (this.db) return this.db;
-    if (this.initPromise) return this.initPromise;
+    if (this.initPromise) {
+      initTrace(`caller ${caller} joined in-flight attempt ${this.initAttempt} from caller ${this.initCaller}`);
+      return this.initPromise;
+    }
+
+    const callerLabel = caller || 'unspecified';
+    const attempt = ++initAttemptCount;
+    this.initAttempt = attempt;
+    this.initCaller = callerLabel;
+    initTrace(`open requested (db ${DB_NAME}, version ${DB_VERSION}, caller ${callerLabel}, attempt ${attempt})`);
 
     this.initPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
+      request.onblocked = () => {
+        initTrace(`blocked (db ${DB_NAME}, version ${DB_VERSION}, caller ${callerLabel}, attempt ${attempt})`);
+      };
+
       request.onerror = () => {
-        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - IndexedDB error:`, request.error);
+        const error = request.error;
+        initTrace(`error (name ${error?.name ?? 'UnknownError'}, message ${error?.message ?? 'no message'}, caller ${callerLabel}, attempt ${attempt})`);
+        console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - IndexedDB error (db ${DB_NAME}, version ${DB_VERSION}, caller ${callerLabel}, attempt ${attempt}): ${error?.name ?? 'UnknownError'}: ${error?.message ?? 'no message'}`, error);
         this.initPromise = null;
-        reject(request.error);
+        reject(error);
       };
 
       request.onsuccess = () => {
         this.db = request.result;
+        initTrace(`success (version ${this.db.version}, caller ${callerLabel}, attempt ${attempt})`);
+        this.db.onversionchange = (event) => {
+          initTrace(`versionchange requested (oldVersion ${event?.oldVersion ?? 'unknown'}, newVersion ${event?.newVersion ?? 'unknown'}, caller ${callerLabel}, attempt ${attempt})`);
+        };
         resolve(this.db);
       };
 
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
+        const transaction = event.target.transaction;
+        initTrace(`upgrade started (oldVersion ${event.oldVersion ?? 0}, newVersion ${event.newVersion ?? DB_VERSION}, caller ${callerLabel}, attempt ${attempt})`);
+        transaction?.addEventListener('abort', () => {
+          initTrace(upgradeFailureLine('abort', transaction.error, callerLabel, attempt));
+        });
+        transaction?.addEventListener('error', () => {
+          initTrace(upgradeFailureLine('error', transaction.error, callerLabel, attempt));
+        });
 
         if (!db.objectStoreNames.contains(STORES.CONVERSATIONS)) {
           const conversationStore = db.createObjectStore(STORES.CONVERSATIONS, {
@@ -122,7 +165,7 @@ class BackgroundMemory {
   }
 
   async storeTurn(sessionId, turnNumber, userMessage, assistantResponse) {
-    await this.init();
+    await this.init('storeTurn');
 
     const turn = {
       sessionId,
@@ -139,7 +182,7 @@ class BackgroundMemory {
   }
 
   async storeContext(sessionId, pageContent, attachments, pageHash, tabId = null, pageUrl = null) {
-    await this.init();
+    await this.init('storeContext');
 
     if(!sessionId){
       console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - No session ID provided:`, { tabId, pageHash });
@@ -165,7 +208,7 @@ class BackgroundMemory {
   }
 
   async getRecentTurns(sessionId, limit = 3) {
-    await this.init();
+    await this.init('getRecentTurns');
     const turns = await this.query(STORES.CONVERSATIONS, 'sessionId', sessionId);
 
     return turns
@@ -175,12 +218,12 @@ class BackgroundMemory {
   }
 
   async getContext(sessionId) {
-    await this.init();
+    await this.init('getContext');
     return this.get(STORES.CONTEXT, sessionId);
   }
 
   async getTurnSummaries(sessionId, skipRecent = 3) {
-    await this.init();
+    await this.init('getTurnSummaries');
     const turns = await this.query(STORES.CONVERSATIONS, 'sessionId', sessionId);
 
     return turns
@@ -190,7 +233,7 @@ class BackgroundMemory {
   }
 
   async buildOptimisedContext(sessionId, newMessage, turnNumber, systemInstructions, pageContent, attachments, pageHash, toolsEnabled = false, tabId = null) {
-    await this.init();
+    await this.init('buildOptimisedContext');
 
     const context = [];
     const budget = 3200;
@@ -321,7 +364,7 @@ class BackgroundMemory {
   }
 
   async deleteSession(sessionId) {
-    await this.init();
+    await this.init('deleteSession');
 
     const turns = await this.query(STORES.CONVERSATIONS, 'sessionId', sessionId);
     for (const turn of turns) {
@@ -338,7 +381,7 @@ class BackgroundMemory {
   }
 
   async clearAll() {
-    await this.init();
+    await this.init('clearAll');
 
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction(
@@ -561,7 +604,7 @@ class BackgroundMemory {
 
   async storeEmbedding(embeddingData) {
     try {
-      await this.init();
+      await this.init('storeEmbedding');
 
       if (!embeddingData?.embedding || !Array.isArray(embeddingData.embedding) || embeddingData.embedding.length === 0) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Invalid embedding data:`, {
@@ -610,7 +653,7 @@ class BackgroundMemory {
 
   async semanticSearch(query, options = {}) {
     try {
-      await this.init();
+      await this.init('semanticSearch');
 
       const {
         sessionId = null,
