@@ -3,6 +3,8 @@ let activeStreamSeq = 0;
 let streamResyncInFlight = false;
 let sessionCatchUpInFlight = false;
 let lastAutoScrollTop = null;
+let chatStartScrollTop = null;
+const pendingScrollArrowUpdates = new WeakMap();
 const ignoredForeignRequestIds = new Set();
 const rateLinkFirefoxUrl = 'https://addons.mozilla.org/en-GB/firefox/addon/local-ai-helper/';
 const rateLinkChromiumUrl = 'https://chromewebstore.google.com/detail/local-ai-helper/mplpnjanhjddepeecpmjbglbiccdhnfp';
@@ -107,13 +109,21 @@ async function initSidebar(deadline) {
     laiChatMessageList.dataset.watermark = `${manifest?.name ?? ''} - ${manifest.version}`;
     setWatermarkLinkHrefs(shadowRoot, manifest);
     laiChatMessageList.addEventListener('click', hidePopups, false);
+    if (typeof ResizeObserver === 'function') {
+        new ResizeObserver(() => scheduleChatScrollArrows(laiChatMessageList, { measureAll: true })).observe(laiChatMessageList);
+    }
+    laiChatMessageList.addEventListener('renderComplete', e => scheduleChatCardMeasurement(e.target));
     laiChatMessageList.addEventListener('scroll', (e) => {
+        scheduleChatScrollArrows(laiChatMessageList);
         const { scrollHeight, scrollTop, clientHeight } = laiChatMessageList;
         const fromBottom = scrollHeight - scrollTop - clientHeight;
-        if (fromBottom <= 10) {
-            userScrolled = false;
-        } else if (lastAutoScrollTop === null || scrollTop < lastAutoScrollTop - 1) {
-            userScrolled = true;
+        if (scrollTop !== chatStartScrollTop) {
+            chatStartScrollTop = null;
+            if (fromBottom <= 10) {
+                userScrolled = false;
+            } else if (lastAutoScrollTop === null || scrollTop < lastAutoScrollTop - 1) {
+                userScrolled = true;
+            }
         }
         const chatList = e.target;
         const itemRibbon = chatList.querySelector('.lai-action-icons:not(.lai-action-icons-hidden)');
@@ -123,6 +133,7 @@ async function initSidebar(deadline) {
         const elChatHistRect = elChatHist.getBoundingClientRect();
         const chatListRect = chatList.getBoundingClientRect();
         const offset = elChatHistRect.top - chatListRect.top;
+        positionClippedUserRibbon(elChatHist, itemRibbon, offset < 0);
 
         if (offset < 0) {
             itemRibbon.style.position = 'fixed';
@@ -700,6 +711,96 @@ function buildElements(elements) {
     return fragment.childNodes.length === 1 ? fragment.firstChild : fragment;
 }
 
+function scheduleChatCardMeasurement(text) {
+    const card = text.closest('.lai-chat-history');
+    const messageList = card?.closest('#laiChatMessageList');
+    if (messageList) { scheduleChatScrollArrows(messageList, { card }); }
+}
+
+function scheduleChatScrollArrows(messageList, { card, measureAll = false } = {}) {
+    const view = messageList.ownerDocument.defaultView;
+    if (!view?.requestAnimationFrame) { return; }
+
+    let pending = pendingScrollArrowUpdates.get(messageList);
+    if (!pending) {
+        pending = { cards: new Set(), measureAll: false };
+        pendingScrollArrowUpdates.set(messageList, pending);
+        view.requestAnimationFrame(() => {
+            pendingScrollArrowUpdates.delete(messageList);
+            updateChatScrollArrows(messageList, pending);
+        });
+    }
+
+    if (card) { pending.cards.add(card); }
+    pending.measureAll ||= measureAll;
+}
+
+function updateTallChatCards(messageList, cards) {
+    const view = messageList.ownerDocument.defaultView;
+    const buttonSize = parseFloat(view.getComputedStyle(messageList).getPropertyValue('--lai-chat-scroll-button-size'));
+    if (!(buttonSize > 0)) { return; }
+
+    const heights = [];
+    for (const card of cards) {
+        if (card.parentElement !== messageList) { continue; }
+        const textHeight = card.querySelector('.lai-input-text').getBoundingClientRect().height;
+        const authorHeight = card.querySelector('.lai-input-label > span').getBoundingClientRect().height;
+        heights.push({ card, tall: textHeight >= 2 * buttonSize + authorHeight });
+    }
+    for (const { card, tall } of heights) {
+        if (card.classList.contains('lai-chat-tall') === tall) { continue; }
+        card.classList.toggle('lai-chat-tall', tall);
+        const ribbon = card.querySelector('.lai-action-icons');
+        if (ribbon.style.position === 'fixed') { positionClippedUserRibbon(card, ribbon, true); }
+    }
+}
+
+function updateChatScrollArrows(messageList, pending) {
+    const cards = messageList.querySelectorAll(':scope > .lai-chat-history');
+    if (pending.measureAll || pending.cards.size) {
+        updateTallChatCards(messageList, pending.measureAll ? cards : pending.cards);
+    }
+
+    const { scrollHeight, scrollTop, clientHeight } = messageList;
+    const listTop = messageList.getBoundingClientRect().top + messageList.clientTop;
+    // Card tops are ordered, so only measure enough cards to find the clipped prefix.
+    let firstUnclipped = 0;
+    let end = cards.length;
+    while (firstUnclipped < end) {
+        const middle = Math.floor((firstUnclipped + end) / 2);
+        if (cards[middle].getBoundingClientRect().top < listTop) {
+            firstUnclipped = middle + 1;
+        } else {
+            end = middle;
+        }
+    }
+
+    messageList.classList.toggle('lai-chat-can-scroll-down', scrollHeight - scrollTop - clientHeight > 1);
+    cards.forEach((card, index) => {
+        card.classList.toggle('lai-chat-start-clipped', index < firstUnclipped);
+    });
+}
+
+function positionClippedUserRibbon(card, ribbon, clipped) {
+    if (card.classList.contains('lai-user-input')) {
+        ribbon.style.left = clipped && card.classList.contains('lai-chat-tall') ? `${card.querySelector('.lai-input-label').getBoundingClientRect().right}px` : '';
+    }
+}
+
+function buildChatScrollButton(direction, label, onClick) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `lai-chat-scroll-button lai-chat-scroll-${direction}`;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    const icon = document.createElement('img');
+    icon.src = chrome.runtime.getURL(`img/scroll-${direction}.svg`);
+    icon.alt = '';
+    button.appendChild(icon);
+    button.addEventListener('click', onClick);
+    return button;
+}
+
 async function addInputCardToUIChatHistory(inputText, type, index = -1) {
     if (!checkExtensionState()) { return; }
 
@@ -716,10 +817,25 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
             el?.removeAttribute("id");
         });
     }
-    const lastChatlabel = Object.assign(document.createElement('span'), {
-        className: "lai-input-label",
-        innerHTML: `${type === 'ai' ? type.toUpperCase() : type}:&nbsp;`
-    });
+    const lastChatlabel = document.createElement('span');
+    lastChatlabel.className = 'lai-input-label';
+    const author = document.createElement('span');
+    author.textContent = type === 'ai' ? 'AI:\u00a0' : 'User:\u00a0';
+    lastChatlabel.append(
+        buildChatScrollButton('down', 'Scroll to the end', () => {
+            chatStartScrollTop = null;
+            userScrolled = false;
+            scrollChatHistoryContainer();
+        }),
+        author,
+        buildChatScrollButton('up', 'Scroll to the start of this message', () => {
+            userScrolled = true;
+            const listTop = messageList.getBoundingClientRect().top + messageList.clientTop;
+            messageList.scrollTop += lastChatElement.getBoundingClientRect().top - listTop;
+            chatStartScrollTop = messageList.scrollTop;
+            scheduleChatScrollArrows(messageList);
+        })
+    );
     const lastChatText = transformTextInHtml(inputText);
 
     const arrButtons = [
@@ -770,6 +886,7 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
     lastChatElement.appendChild(actionIconsDiv);
     if (messageList && !shadowRoot.getElementById('laiSidebar')?.matches(':not(.active)')) {
         messageList.appendChild(lastChatElement);
+        scheduleChatScrollArrows(messageList, { card: lastChatElement });
     }
 
     if (type === 'ai') {
@@ -788,6 +905,7 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
         const chatListRect = chatList.getBoundingClientRect();
 
         const offset = elChatHistRect.top - chatListRect.top;
+        positionClippedUserRibbon(lastChatElement, el, offset < 0);
 
         el.classList.remove('lai-action-icons-hidden');
 
@@ -824,7 +942,9 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
         if (!hasKeyboardFocus) { hideActionIcons(); }
     });
 
-    lastChatElement.addEventListener('focusin', showActionIcons);
+    lastChatElement.addEventListener('focusin', e => {
+        if (!e.composedPath().includes(lastChatlabel)) { showActionIcons(); }
+    });
 
     lastChatElement.addEventListener('focusout', (e) => {
         if (!lastChatElement.contains(e.relatedTarget)) { hideActionIcons(); }
@@ -850,7 +970,8 @@ async function addInputCardToUIChatHistory(inputText, type, index = -1) {
                     break;
                 case "increase":
                 case "decrease":
-                    adjustFontSize(e.target.closest('.lai-chat-history'), action === 'increase' ? 1 : -1);
+                    adjustFontSize(lastChatElement, action === 'increase' ? 1 : -1);
+                    scheduleChatCardMeasurement(lastChatText);
                     break;
                 default:
                     break;
@@ -1266,6 +1387,7 @@ function appendStreamChunkToRecipient(recipient, response = {}) {
         thinking: accumulatedThinking,
         content: accumulatedContent
     });
+    scheduleChatCardMeasurement(recipient);
 
     return recipient.textContent || '';
 }
@@ -1289,6 +1411,7 @@ function clearStreamingRecipient(recipient, keepRawResponse = true) {
 
     recipient.replaceChildren();
     resetStreamTracking(recipient, keepRawResponse);
+    scheduleChatCardMeasurement(recipient);
 }
 
 function isValidFinalStreamMessage(message) {
@@ -1691,13 +1814,15 @@ function createAbortHandler(controller, abortBtn, rootEl) {
 }
 
 function scrollChatHistoryContainer(e) {
-    if (userScrolled) { return; }
     const shadowRoot = getShadowRoot();
     const laiChatMessageList = shadowRoot?.querySelector('#laiChatMessageList');
     if (!laiChatMessageList) {
         console.error(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - laiChatMessageList not found!`, laiChatMessageList);
         return;
     }
+    scheduleChatScrollArrows(laiChatMessageList);
+    if (userScrolled) { return; }
+    chatStartScrollTop = null;
     laiChatMessageList.scrollTop = laiChatMessageList.scrollHeight;
     lastAutoScrollTop = laiChatMessageList.scrollTop;
 }
@@ -2295,7 +2420,9 @@ function clearChatHistoryUI() {
     if (!shadowRoot) { return; }
     const messageList = shadowRoot.getElementById('laiChatMessageList');
     if (messageList) {
+        chatStartScrollTop = null;
         messageList.innerHTML = '';
+        scheduleChatScrollArrows(messageList);
     }
 }
 

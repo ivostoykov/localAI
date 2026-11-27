@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import fs from 'fs';
 import path from 'path';
@@ -100,23 +100,47 @@ describe('lai-main.js', () => {
     });
 
     describe('stream scroll following', () => {
-        let chatList, recipient, scrollHeight, scrollChatHistoryContainer, getUserScrolled;
+        let chatList, recipient, scrollHeight, clientHeight, scrollChatHistoryContainer, getUserScrolled;
+        let sidebar, sidebarCode, frames, onResize;
+
+        function flushFrame() {
+            for (const callback of frames.splice(0)) { callback(0); }
+        }
+
+        function addCard(text, type, top, height = 90) {
+            return sidebarCode.addInputCardToUIChatHistory(text, type).then(content => {
+                const card = content.parentElement;
+                card.getBoundingClientRect = vi.fn(() => ({ top: 30 + top - chatList.scrollTop }));
+                card.querySelector('.lai-input-text').getBoundingClientRect = vi.fn(() => ({ height }));
+                card.querySelector('.lai-input-label > span').getBoundingClientRect = () => ({ height: 18 });
+                return card;
+            });
+        }
 
         beforeEach(async () => {
-            const sidebar = document.createElement('section').attachShadow({ mode: 'open' });
+            sidebar = document.createElement('section').attachShadow({ mode: 'open' });
+            frames = [];
+            Object.defineProperty(window, 'requestAnimationFrame', {
+                configurable: true,
+                value: callback => frames.push(callback)
+            });
             sidebar.innerHTML = '<div id="feedbackMessage"></div><textarea id="laiUserInput"></textarea>' +
                 '<div class="lai-user-area"></div><div class="lai-resize-handle"></div>' +
                 '<div id="laiChatMessageList"><span></span></div>';
             chatList = sidebar.querySelector('#laiChatMessageList');
             recipient = chatList.firstElementChild;
             scrollHeight = 500;
+            clientHeight = 100;
             let scrollTop = 400;
+            chatList.getBoundingClientRect = () => ({ top: 28 });
+            chatList.style.setProperty('--lai-chat-scroll-button-size', '24px');
+            Object.defineProperty(chatList, 'clientTop', { value: 2 });
             Object.defineProperties(chatList, {
-                clientHeight: { value: 100 },
+                clientHeight: { get: () => clientHeight },
                 scrollHeight: { get: () => scrollHeight },
                 scrollTop: {
                     get: () => scrollTop,
-                    set: value => { scrollTop = Math.min(value, scrollHeight - chatList.clientHeight); }
+                    set: value => { scrollTop = Math.max(0, Math.min(value, scrollHeight - chatList.clientHeight)); }
                 }
             });
 
@@ -126,7 +150,12 @@ describe('lai-main.js', () => {
                 getShadowRoot: () => sidebar,
                 getRibbon: () => sidebar,
                 getLineNumber: () => 'test:1',
-                chrome: { runtime: { id: 'test' } },
+                chrome: { runtime: { id: 'test', getURL: path => path } },
+                checkExtensionState: () => true,
+                ResizeObserver: class {
+                    constructor(callback) { onResize = callback; }
+                    observe() {}
+                },
                 ...Object.fromEntries([
                     'closeAllDropDownRibbonMenus', 'closeQuickPromptListMenu', 'userInputClicked',
                     'userInputBlurred', 'showUserInputRibbon', 'hideUserInputRibbon',
@@ -137,12 +166,16 @@ describe('lai-main.js', () => {
             };
             const loadSidebar = new Function('document', 'manifest', ...Object.keys(stubs),
                 'let userScrolled = false;\n' + laiMainCode +
-                '; return { initSidebar, scrollChatHistoryContainer, getParseAndRenderOptions, getUserScrolled: () => userScrolled };'
+                '; return { initSidebar, scrollChatHistoryContainer, getParseAndRenderOptions, addInputCardToUIChatHistory, appendStreamChunkToRecipient, getUserScrolled: () => userScrolled };'
             );
-            const sidebarCode = loadSidebar(document, global.manifest, ...Object.values(stubs));
+            sidebarCode = loadSidebar(document, global.manifest, ...Object.values(stubs));
             await sidebarCode.initSidebar(Date.now() + 1000);
             sidebarCode.getParseAndRenderOptions(recipient);
             ({ scrollChatHistoryContainer, getUserScrolled } = sidebarCode);
+        });
+
+        afterEach(() => {
+            delete window.requestAnimationFrame;
         });
 
         function userScrollTo(top) {
@@ -180,6 +213,128 @@ describe('lai-main.js', () => {
             scrollHeight = 600;
             scrollChatHistoryContainer();
             expect(chatList.scrollTop).toBe(500);
+        });
+
+        it('coalesces append, scroll and resize updates and marks only clipped cards', async () => {
+            const prompt = await addCard('Question', 'user', 20);
+            const answer = await addCard('Answer', 'ai', 200);
+            const nextPrompt = await addCard('Next question', 'user', 300);
+            userScrollTo(200);
+            onResize();
+
+            expect(frames).toHaveLength(1);
+            flushFrame();
+            expect(chatList.classList.contains('lai-chat-can-scroll-down')).toBe(true);
+            expect(prompt.classList.contains('lai-chat-start-clipped')).toBe(true);
+            expect(answer.classList.contains('lai-chat-start-clipped')).toBe(false);
+            expect(nextPrompt.classList.contains('lai-chat-start-clipped')).toBe(false);
+
+            clientHeight = 300;
+            onResize();
+            flushFrame();
+            expect(chatList.classList.contains('lai-chat-can-scroll-down')).toBe(false);
+
+            sidebarCode.appendStreamChunkToRecipient(answer.querySelector('.lai-input-text'), { contentDelta: 'More text' });
+            scrollHeight += 20;
+            expect(frames).toHaveLength(1);
+            flushFrame();
+            expect(chatList.classList.contains('lai-chat-can-scroll-down')).toBe(true);
+
+            userScrollTo(20);
+            flushFrame();
+            expect(prompt.classList.contains('lai-chat-start-clipped')).toBe(false);
+        });
+
+        it('qualifies cards by text height and remeasures them only when needed', async () => {
+            const short = await addCard('One line', 'user', 20, 28);
+            const tall = await addCard('Long answer', 'ai', 200, 66);
+            const tallText = tall.querySelector('.lai-input-text');
+            flushFrame();
+
+            expect(short.classList.contains('lai-chat-tall')).toBe(false);
+            expect(tall.classList.contains('lai-chat-tall')).toBe(true);
+
+            tallText.getBoundingClientRect.mockClear().mockReturnValue({ height: 65 });
+            userScrollTo(225);
+            flushFrame();
+            expect(tallText.getBoundingClientRect).not.toHaveBeenCalled();
+            expect(tall.classList.contains('lai-chat-tall')).toBe(true);
+            expect(tall.classList.contains('lai-chat-start-clipped')).toBe(true);
+            expect(chatList.classList.contains('lai-chat-can-scroll-down')).toBe(true);
+
+            onResize();
+            flushFrame();
+            expect(tall.classList.contains('lai-chat-tall')).toBe(false);
+        });
+
+        it('updates a streaming card as it grows and when final or restored Markdown renders', async () => {
+            const card = await addCard('One line', 'ai', 200, 28);
+            const text = card.querySelector('.lai-input-text');
+            flushFrame();
+            expect(card.classList.contains('lai-chat-tall')).toBe(false);
+
+            text.getBoundingClientRect.mockReturnValue({ height: 80 });
+            sidebarCode.appendStreamChunkToRecipient(text, { contentDelta: 'More text' });
+            flushFrame();
+            expect(card.classList.contains('lai-chat-tall')).toBe(true);
+
+            text.getBoundingClientRect.mockReturnValue({ height: 28 });
+            text.dispatchEvent(new window.Event('renderComplete', { bubbles: true }));
+            flushFrame();
+            expect(card.classList.contains('lai-chat-tall')).toBe(false);
+
+            text.getBoundingClientRect.mockReturnValue({ height: 80 });
+            text.dispatchEvent(new window.Event('renderComplete', { bubbles: true }));
+            flushFrame();
+            expect(card.classList.contains('lai-chat-tall')).toBe(true);
+        });
+
+        it('scrolls to the selected card and to the end, changing stream follow mode', async () => {
+            const prompt = await addCard('Question', 'user', 50);
+            const answer = await addCard('Answer', 'ai', 395);
+            flushFrame();
+
+            answer.querySelector('.lai-chat-scroll-up img').click();
+            expect(chatList.scrollTop).toBe(395);
+            chatList.dispatchEvent(new window.Event('scroll'));
+            expect(getUserScrolled()).toBe(true);
+            scrollHeight = 600;
+            scrollChatHistoryContainer();
+            expect(chatList.scrollTop).toBe(395);
+
+            prompt.querySelector('.lai-chat-scroll-down').click();
+            expect(chatList.scrollTop).toBe(500);
+            expect(getUserScrolled()).toBe(false);
+            scrollHeight = 650;
+            scrollChatHistoryContainer();
+            expect(chatList.scrollTop).toBe(550);
+            flushFrame();
+            expect(chatList.classList.contains('lai-chat-can-scroll-down')).toBe(false);
+        });
+
+        it('moves only the clipped User toolbar past the label', async () => {
+            const prompt = await addCard('Question', 'user', 20);
+            const answer = await addCard('Answer', 'ai', 35);
+            const promptToolbar = prompt.querySelector('.lai-action-icons');
+            const answerToolbar = answer.querySelector('.lai-action-icons');
+            prompt.querySelector('.lai-input-label').getBoundingClientRect = () => ({ left: 24, right: 71, width: 47 });
+
+            flushFrame();
+            prompt.dispatchEvent(new window.MouseEvent('mouseenter'));
+            userScrollTo(200);
+            expect(promptToolbar.style.position).toBe('fixed');
+            expect(promptToolbar.style.left).toBe('71px');
+            expect(promptToolbar.style.top).toBe('28px');
+
+            userScrollTo(0);
+            expect(promptToolbar.style.position).toBe('absolute');
+            expect(promptToolbar.style.left).toBe('');
+
+            prompt.dispatchEvent(new window.MouseEvent('mouseleave'));
+            answer.dispatchEvent(new window.MouseEvent('mouseenter'));
+            userScrollTo(200);
+            expect(answerToolbar.style.position).toBe('fixed');
+            expect(answerToolbar.style.left).toBe('');
         });
 
         it('keeps the reader’s position when rendering completes', () => {
@@ -822,8 +977,8 @@ Third line of thinking`;
             await addInputCardToUIChatHistory('User request', 'user');
             await addInputCardToUIChatHistory('AI reply', 'ai');
 
-            const userButtons = document.querySelectorAll('.lai-user-input button[type="button"]');
-            const aiButtons = document.querySelectorAll('.lai-ai-input button[type="button"]');
+            const userButtons = document.querySelectorAll('.lai-user-input .lai-action-icons button[type="button"]');
+            const aiButtons = document.querySelectorAll('.lai-ai-input .lai-action-icons button[type="button"]');
 
             expect(userButtons).toHaveLength(5);
             expect(aiButtons).toHaveLength(4);
@@ -833,6 +988,31 @@ Third line of thinking`;
             expect(document.querySelector('[data-type="insert"]')).toBeNull();
             expect([...aiButtons].map(button => button.dataset.type)).toEqual(['copy', 'copy-md', 'increase', 'decrease']);
             expect([...userButtons].map(button => button.dataset.type)).toEqual(['copy', 'increase', 'decrease', 'edit', 'add']);
+        });
+
+        it('removes short-card arrows from layout and shows eligible tall-card arrows', async () => {
+            const stylesheet = document.createElement('style');
+            stylesheet.textContent = fs.readFileSync(path.join(__dirname, '../src/css/sidebar.css'), 'utf-8');
+            document.head.appendChild(stylesheet);
+            try {
+                const list = document.getElementById('laiChatMessageList');
+                list.classList.add('lai-chat-message-list', 'lai-chat-can-scroll-down');
+                const text = await addInputCardToUIChatHistory('AI reply', 'ai');
+                const card = text.parentElement;
+                card.classList.add('lai-chat-start-clipped');
+                const buttons = [...card.querySelectorAll('.lai-chat-scroll-button')];
+
+                expect(buttons.map(button => window.getComputedStyle(button).display)).toEqual(['none', 'none']);
+                card.classList.add('lai-chat-tall');
+                expect(buttons.map(button => window.getComputedStyle(button).display)).toEqual(['grid', 'grid']);
+                expect(buttons.map(button => window.getComputedStyle(button).visibility)).toEqual(['visible', 'visible']);
+
+                list.classList.remove('lai-chat-can-scroll-down');
+                card.classList.remove('lai-chat-start-clipped');
+                expect(buttons.map(button => window.getComputedStyle(button).visibility)).toEqual(['hidden', 'hidden']);
+            } finally {
+                stylesheet.remove();
+            }
         });
 
         it('reveals the toolbar when an action receives focus and hides it after focus leaves the card', async () => {
@@ -885,6 +1065,21 @@ Third line of thinking`;
             expect(writeText).toHaveBeenCalledTimes(2);
             expect(writeText).toHaveBeenNthCalledWith(1, 'AI reply');
             expect(writeText).toHaveBeenNthCalledWith(2, 'AI reply');
+        });
+
+        it('copies only the message content from a card with scroll arrows', async () => {
+            const writeText = vi.fn(async () => undefined);
+            Object.defineProperty(global.navigator, 'clipboard', { value: { writeText }, configurable: true });
+            const text = await addInputCardToUIChatHistory('AI reply', 'ai');
+            Object.defineProperty(text, 'innerText', { value: 'AI reply', configurable: true });
+            setMarkdownSource(text, '**AI reply**');
+            const card = text.parentElement;
+
+            card.querySelector('[data-type="copy"]').click();
+            card.querySelector('[data-type="copy-md"]').click();
+            await Promise.resolve();
+
+            expect(writeText.mock.calls).toEqual([['AI reply'], ['**AI reply**']]);
         });
 
         it('positions the copy hint from the button for keyboard activation', () => {
@@ -1651,6 +1846,19 @@ describe('sidebar session catch-up on focus (#61)', () => {
             expect(messageList().scrollTop).toBe(500);
             expect(scrolledAfterClose).toBe(false);
             expect(getUserScrolled()).toBe(false);
+        });
+
+        it('restores both author labels with named scroll buttons', () => {
+            expect(cards()).toHaveLength(2);
+            expect(cards().map(card => card.querySelector('.lai-input-label').textContent.trim())).toEqual(['User:', 'AI:']);
+            for (const card of cards()) {
+                const buttons = [...card.querySelectorAll('.lai-input-label button[type="button"]')];
+                expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
+                    'Scroll to the end', 'Scroll to the start of this message'
+                ]);
+                expect(buttons.every(button => button.title === button.getAttribute('aria-label'))).toBe(true);
+                expect(buttons.every(button => button.querySelector('img[alt=""]'))).toBe(true);
+            }
         });
 
         it('keeps the existing cards and scroll position for identical turns', async () => {

@@ -57,6 +57,8 @@ In Chrome, Enter and Delete All are blocked while the panel is covered. Firefox 
 
 # AI response actions
 
+When there are more messages below, select the down arrow beside a long message to jump to the end of the conversation and follow new text as it streams. If the start of a long message is above the visible area, select its up arrow to jump to the start and pause automatic scrolling.
+
 Hover over an AI reply or focus it with Tab to show its actions. `Copy` copies the rendered text. `Copy as Markdown` copies the reply's original Markdown, including headings, lists, tables and code fences, without the model's thinking block. It works for new replies and for replies restored from session history, with debug logging on or off. For an aborted reply it copies the part received so far. If no Markdown source is available, for example a reply that contained only thinking, a warning is shown and the clipboard is left unchanged.
 
 # User prompts in chat history
