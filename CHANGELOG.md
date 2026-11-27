@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.10] - 2026-11-27
+
+### Changes
+
+- The background console now traces IndexedDB initialisation while Debug is on: the database name and requested version, the caller (`startup`, `getContext`, ...), an attempt number that tells a retry from the first attempt, blocked opens, the upgrade window with its old and new versions, upgrade aborts and errors, and the resulting version. Lines written at startup are held until the Debug setting has been read. With Debug off, a failed open still writes one line with the error name, message, caller and attempt. The traces contain no prompts, page URLs, session ids or stored records (#118).
+
 ## [1.31.9] - 2026-11-27
 
 ### Changes
