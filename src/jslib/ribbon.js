@@ -210,6 +210,11 @@ function onModelOptionsChanged(changes, areaName) {
     return true;
 }
 
+function onSessionsStorageChanged(changes, areaName) {
+    if (areaName !== 'local' || !changes?.[allSessionsStorageKey]) { return false; }
+    void renderSessionNameLabel();
+    return true;
+}
 
 async function closeAllDropDownRibbonMenus(e) {
     const shadowRoot = getShadowRoot();
@@ -946,6 +951,26 @@ function setModelNameLabel(data) {
     if (!model) { return; }
     modelName.textContent = (/\\|\//.test(model) ? model.split(/\\|\//).pop().split('.').slice(0, -1).join('.') : model) ?? '';
     resetStatusbar();
+}
+
+var laiSessionNameRenderSeq = 0;
+
+// Read-only mirror of the active session title at the bottom centre of the ribbon (#130).
+// The catalogue is read without creating or touching a record, and textContent keeps titles inert.
+async function renderSessionNameLabel() {
+    const label = getShadowRoot()?.getElementById('laiSessionName');
+    if (!label) { return; }
+    const seq = ++laiSessionNameRenderSeq;
+    const sessionId = laiActiveSessionId;
+    let title = '';
+    if (sessionId) {
+        const sessions = await getAllSessions();
+        if (seq !== laiSessionNameRenderSeq) { return; }
+        title = sessions.find(session => session?.id === sessionId)?.title?.trim() ?? '';
+    }
+    const text = title || 'New session';
+    label.textContent = text;
+    label.title = title;
 }
 
 function isPinned() {

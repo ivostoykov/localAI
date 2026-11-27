@@ -126,6 +126,7 @@ async function connectAndSynchronise({ initial }) {
 function installSidebarListeners() {
     chrome.storage.onChanged.addListener(reconcileActiveSessionWithStorage);
     chrome.storage.onChanged.addListener(onModelOptionsChanged);
+    chrome.storage.onChanged.addListener(onSessionsStorageChanged);
 
     document.addEventListener('keydown', event => {
         if (event.key !== 'Escape' || event.defaultPrevented || !sidebarChannel) { return; }
@@ -139,12 +140,15 @@ function installSidebarListeners() {
 
     document.addEventListener('laiActiveSessionChanged', () => {
         void sidebarDraft?.switchSession();
+        void renderSessionNameLabel();
     });
 
     window.addEventListener('pagehide', () => {
         stopSidebarSpeech();
         void sidebarDraft?.flush();
     });
+
+    void renderSessionNameLabel();
 }
 
 async function startSidebarFrame() {
