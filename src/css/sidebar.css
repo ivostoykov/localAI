@@ -209,6 +209,7 @@ local-ai *,
 
 /* Chat */
 .lai-chat-message-list {
+    --lai-chat-scroll-button-size: 24px;
     list-style-type: none;
     padding: 1rem 0;
     display: flex;
@@ -288,10 +289,21 @@ local-ai *,
 
 .lai-input-label {
     font-weight: bold;
-    display: block;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     background-color: #e4e4e4;
     padding: 0 .25rem;
     color: black;
+}
+
+.lai-chat-tall > .lai-input-label {
+    align-self: stretch;
+}
+
+.lai-input-label > span {
+    margin-block: auto;
 }
 
 .lai-input-text {
@@ -306,8 +318,53 @@ local-ai *,
     white-space: pre-wrap;
 }
 
-.lai-input-label::first-letter {
-    text-transform: uppercase;
+.lai-chat-scroll-button {
+    position: sticky;
+    display: none;
+    place-items: center;
+    width: 100%;
+    max-width: var(--lai-chat-scroll-button-size);
+    contain: inline-size;
+    height: var(--lai-chat-scroll-button-size);
+    flex: none;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background-color: #e4e4e4;
+    cursor: pointer;
+    visibility: hidden;
+    user-select: none;
+}
+
+.lai-chat-tall > .lai-input-label > .lai-chat-scroll-button {
+    display: grid;
+}
+
+.lai-chat-scroll-button:hover {
+    background-color: #ccc;
+}
+
+.lai-chat-scroll-button:focus-visible {
+    outline: 2px solid #005fcc;
+    outline-offset: -2px;
+}
+
+.lai-chat-scroll-button img {
+    width: 16px;
+    height: 16px;
+}
+
+.lai-chat-scroll-down {
+    top: 0;
+}
+
+.lai-chat-scroll-up {
+    bottom: 0;
+}
+
+.lai-chat-can-scroll-down .lai-chat-scroll-down,
+.lai-chat-start-clipped .lai-chat-scroll-up {
+    visibility: visible;
 }
 
 .lai-user-input {

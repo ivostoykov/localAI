@@ -742,6 +742,7 @@ describe('ribbon.js session restore', () => {
             setActiveSessionId: vi.fn(async () => undefined),
             reportTabBinding: vi.fn(async () => undefined),
             clearChatHistoryUI: vi.fn(),
+            scheduleChatScrollArrows: vi.fn(),
             addInputCardToUIChatHistory: vi.fn(async () => {
                 const el = doc.createElement('span');
                 cards.push(el);
@@ -757,7 +758,7 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked, getMarkdownSource } = new Function('deps',
-            `with (deps) { ${markdownSourceCode}\n${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\nlet userScrolled = false, lastAutoScrollTop = null;\n${scrollChatHistoryContainerCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
+            `with (deps) { ${markdownSourceCode}\n${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\nlet userScrolled = false, lastAutoScrollTop = null, chatStartScrollTop = null;\n${scrollChatHistoryContainerCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked, getMarkdownSource }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1');
@@ -779,6 +780,7 @@ describe('ribbon.js session restore', () => {
             reportTabBinding: vi.fn(async () => undefined),
             setMarkdownSource: vi.fn(),
             clearChatHistoryUI: vi.fn(),
+            scheduleChatScrollArrows: vi.fn(),
             addInputCardToUIChatHistory: vi.fn(async () => doc.createElement('span')),
             parseAndRender: vi.fn(async () => undefined),
             getShadowRoot: () => doc,
@@ -790,7 +792,7 @@ describe('ribbon.js session restore', () => {
         };
 
         const { restoreHistorySessionClicked } = new Function('deps',
-            `with (deps) { ${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\nlet userScrolled = false, lastAutoScrollTop = null;\n${scrollChatHistoryContainerCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
+            `with (deps) { ${renderUserPromptCardCode}\n${isRenderableSessionMessageCode}\n${renderSessionHistoryMessageCode}\nlet userScrolled = false, lastAutoScrollTop = null, chatStartScrollTop = null;\n${scrollChatHistoryContainerCode}\n${renderSessionHistoryMessagesCode}\n${restoreCode}\n return { restoreHistorySessionClicked }; }`
         )(deps);
 
         await restoreHistorySessionClicked(null, 's1', { silent: true });
