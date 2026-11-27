@@ -110,6 +110,23 @@
     background-color: #FFE;
 }
 
+/* Read-only active session title. Deliberately not a .ribbon-label: no hover box, no menu. */
+.session-label {
+    position: absolute;
+    left: 50%;
+    bottom: 2px;
+    transform: translateX(-50%);
+    max-width: 72%;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    color: #555;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    z-index: 99;
+}
+
 .available-model-list {
     display: block;
     border: 1px solid #999;
