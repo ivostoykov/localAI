@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.9] - 2026-11-27
+
+### Changes
+
+- Use the arrows beside long User and AI messages to jump to the end of the conversation or to the start of a message that is partly out of view. Jumping to the end follows replies as they stream (#131).
+
 ## [1.31.8] - 2026-11-27
 
 ### Changes
