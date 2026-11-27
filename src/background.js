@@ -364,7 +364,7 @@ async function init() {
     }
 
     try {
-        await backgroundMemory.init();
+        await backgroundMemory.init('startup');
 
         if (typeof sessionRepository !== 'undefined') {
             sessionRepository.setIndexedDB(backgroundMemory);
