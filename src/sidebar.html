@@ -153,15 +153,16 @@
             </div>
         </div>
         <div id="laiSessionControls" class="session-controls">
-            <button type="button" id="laiNewSessionBtn" class="session-control" title="New Session"
-                aria-label="New Session"><img src="" alt="" data-type="plus"></button>
+            <button type="button" id="laiNewSessionBtn" class="session-control session-glyph-control" title="New Session"
+                aria-label="New Session">+</button>
             <button type="button" id="laiSessionNameBtn" class="session-control session-name-control"
                 title="Open sessions dialog" aria-label="Open sessions dialog">
                 <span id="laiSessionName" class="session-label"></span>
             </button>
-            <button type="button" id="laiDeleteSessionBtn" class="session-control" title="Delete Current Session"
+            <button type="button" id="laiDeleteSessionBtn"
+                class="session-control session-glyph-control session-bin-control" title="Delete Current Session"
                 aria-label="Delete Current Session" aria-expanded="false" disabled
-                aria-controls="laiSessionDeleteConfirm"><img src="" alt="" data-type="recycle"></button>
+                aria-controls="laiSessionDeleteConfirm">♻︎</button>
             <div id="laiSessionDeleteConfirm" class="session-delete-confirm invisible" role="group"
                 aria-label="Delete the current session?">
                 <span>Delete?</span>

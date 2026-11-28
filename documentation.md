@@ -83,7 +83,7 @@ From left to right there are:
 ### Menu
 Click to toggle the menu
 
-<img src="Chrome/img/cog.svg" height="48" alt="Menu"/>
+<img src="src/img/cog.svg" height="48" alt="Menu"/>
 
 The changes made here are temporary for the session, (until reload) and for the current tab only.
 
@@ -107,11 +107,11 @@ When you hover over the [Ribbon](#ribbon), you'll see the extension's version nu
 ![version](media/version.png)
 
 ### Session
-The active session's title sits at the bottom centre of the ribbon, between `+` and a bin. `+` starts a new session. Clicking the title opens the sessions dialog; type `/session` in the prompt to open it too. Every saved session is listed by last use, newest first, with its state — `current` for this tab's session, `open` for a session bound to another open tab (dimmed rows are `closed`) — and a second line with the domain and page title of its last page when known. Each row has `rename`, `load` and `delete` buttons; clicking the title or `load` loads the session and closes the dialog, and a failed load keeps the dialog and the current session. `delete all` asks for confirmation with `Delete` / `Cancel` before anything is deleted; cancelling deletes nothing, and a successful delete-all closes the dialog — a failed one keeps it open with the confirmation strip hidden. `close`, `Escape` or a click outside dismisses the dialog, and with no saved sessions it says so. Renaming saves with `Enter` and cancels with `Escape`; deleting the current session unbinds the tab.
+The active session's title sits at the bottom centre of the ribbon, between `+` and `♻`. The two characters use the same font and colour as the title and darken on hover. `+` starts a new session. Clicking the title opens the sessions dialog; type `/session` in the prompt to open it too. Every saved session is listed by last use, newest first, with its state — `current` for this tab's session, `open` for a session bound to another open tab (dimmed rows are `closed`) — and a second line with the domain and page title of its last page when known. Each row has `rename`, `load` and `delete` buttons; clicking the title or `load` loads the session and closes the dialog, and a failed load keeps the dialog and the current session. `delete all` asks for confirmation with `Delete` / `Cancel` before anything is deleted; cancelling deletes nothing, and a successful delete-all closes the dialog — a failed one keeps it open with the confirmation strip hidden. `close`, `Escape` or a click outside dismisses the dialog, and with no saved sessions it says so. Renaming saves with `Enter` and cancels with `Escape`; deleting the current session unbinds the tab.
 
-The bin deletes the current session after an inline `Delete? ✓ ✗` confirmation: `✓` deletes it and starts a new session, while `✗`, `Escape` or a click elsewhere cancels. Until the session has a stored record the bin is dimmed with the tooltip `No session to delete`. A long title is shortened with an ellipsis and the full title is available in its tooltip; until the session has a stored title it reads `New session`. The three controls are buttons reachable with `Tab`.
+The `♻` button deletes the current session after an inline `Delete? ✓ ✗` confirmation: `✓` deletes it and starts a new session, while `✗`, `Escape` or a click elsewhere cancels. Until the session has a stored record the `♻` button is dimmed with the tooltip `No session to delete`. A long title is shortened with an ellipsis and the full title is available in its tooltip; until the session has a stored title it reads `New session`. The three controls are buttons reachable with `Tab`.
 
-<img src="Chrome/img/think.svg" height="30" alt="Think"/> - Toggle thinking. When the model [is changed](#changing-ollama-model) the thinking status is adjusted with the model capability.
+<img src="src/img/think.svg" height="30" alt="Think"/> - Toggle thinking. When the model [is changed](#changing-ollama-model) the thinking status is adjusted with the model capability.
 
 <img src="media/temperature.svg" height="30" alt="Modifiers"/> - Show some of the model's [modifiers](#modifiers).
 
@@ -131,7 +131,7 @@ A helping table with short description is available [here](https://github.com/ol
 
 ### Tools
 
-<img src="Chrome/img/tools.svg" height="30" alt="Tools"/> - Enable or disable the tools. Also avaliable in the [Options](#options) page - see [Tools](#functions-tools).
+<img src="src/img/tools.svg" height="30" alt="Tools"/> - Enable or disable the tools. Also avaliable in the [Options](#options) page - see [Tools](#functions-tools).
 
 
 Page-reading tools include `Content scope` and `Coverage` in the metadata sent to the model. Scope identifies the selected main content region or a whole-page fallback. Coverage compares the approximate number of extracted text characters, after hidden content and your filters are removed, with the visible page text. A note flags coverage below 50%, and the model is instructed to explain when its answer relies on partial page content. LinkedIn job adverts report their site-specific scope without a percentage.
@@ -171,19 +171,19 @@ On each web page (where the tab has a valid `http` location), there is a `Local 
 
 # System instructions
 
-<img src="Chrome/img/wrench.svg" height="30" alt="New Session"/> - Edit system instructions. **Only for the session**. Use the [Options](#options) page to set permanent system instructions. The chat uses its own instructions when set and otherwise uses the Options instructions. Page and attachment summaries and condensed conversation history are passed to the model as reference material.
+<img src="src/img/wrench.svg" height="30" alt="New Session"/> - Edit system instructions. **Only for the session**. Use the [Options](#options) page to set permanent system instructions. The chat uses its own instructions when set and otherwise uses the Options instructions. Page and attachment summaries and condensed conversation history are passed to the model as reference material.
 
 <img src="media/instruct.png" height="400" alt="New Session"/>
 
 ## Other
 
-Click <img src="Chrome/img/pushpin.svg" height="30" alt="New Session"/> to pin panel.
+Click <img src="src/img/pushpin.svg" height="30" alt="New Session"/> to pin panel.
 
-Click <img src="Chrome/img/black_pushpin.svg" height="30" alt="New Session"/> to unpin panel.
+Click <img src="src/img/black_pushpin.svg" height="30" alt="New Session"/> to unpin panel.
 
 If the pannel is not pinned (default) then clicking outside the panel will hide it. This behaviour can be changed from the [Options](#options) page.
 
-<img src="Chrome/img/close.svg" height="30" alt="New Session"/> - Hide the panel.
+<img src="src/img/close.svg" height="30" alt="New Session"/> - Hide the panel.
 
 > [!Note]
 > Clicking the hide button will unpin the panel first, then close it. This means it won’t be pinned the next time you open it.
@@ -268,7 +268,7 @@ To list all available commands type `/list` and press `Enter`.
 
 ![alt text](media/list.png)
 
-On the top of the list there are two buttons: `Close` (<img src="Chrome/img/remove-all.svg" height="26" alt="Close"/>) on the right and `New` (<img src="Chrome/img/new.svg" height="26" alt="New"/>) on the left. Custom commands could be imported (<img src="Chrome/img/import.svg" height="26" alt="Close"/>) and exported (<img src="Chrome/img/export.svg" height="26" alt="Close"/>) from here.
+On the top of the list there are two buttons: `Close` (<img src="src/img/remove-all.svg" height="26" alt="Close"/>) on the right and `New` (<img src="src/img/new.svg" height="26" alt="New"/>) on the left. Custom commands could be imported (<img src="src/img/import.svg" height="26" alt="Close"/>) and exported (<img src="src/img/export.svg" height="26" alt="Close"/>) from here.
 
 Following are a few predefined commands which connot be changed, with their descriptions: `/add`, `/list`, `/error` and `/session` (opens the [sessions dialog](#session)).
 
@@ -283,13 +283,13 @@ To use a predefined custom command type its name after a slash `/` and press `En
 
 Pressing `Enter` will execute it as if it has been typed as a prompt text followed by `Enter` key. Buttons above each command give alternative actions related with the command:
 
-<img src="Chrome/img/edit.svg" height="26" alt="Edit"/> - edit command prompt.
+<img src="src/img/edit.svg" height="26" alt="Edit"/> - edit command prompt.
 
-<img src="Chrome/img/execute.svg" height="26" alt="Edit"/> - executed the command.
+<img src="src/img/execute.svg" height="26" alt="Edit"/> - executed the command.
 
-<img src="Chrome/img/paste.svg" height="26" alt="Edit"/> - copy and paste command's content into the prompt area.
+<img src="src/img/paste.svg" height="26" alt="Edit"/> - copy and paste command's content into the prompt area.
 
-<img src="Chrome/img/delete.svg" height="26" alt="Edit"/> - delete this command.
+<img src="src/img/delete.svg" height="26" alt="Edit"/> - delete this command.
 
 > [!Warning]
 > No `Undo` is available,
@@ -304,7 +304,7 @@ summarise @{{page}}
 
 This will send the content of the page from current active tab to the AI with a requiest to generate a summary.
 
-`New` (<img src="Chrome/img/new.svg" height="26" alt="New"/>) and `edit` (<img src="Chrome/img/edit.svg" height="26" alt="Edit"/>) will open a simple editor:
+`New` (<img src="src/img/new.svg" height="26" alt="New"/>) and `edit` (<img src="src/img/edit.svg" height="26" alt="Edit"/>) will open a simple editor:
 
 <img src="media/editor.png" height="500" alt="Editor" title="Editor"/>
 
@@ -354,11 +354,11 @@ Page-state check: when the decision model is enabled in Options, a small auxilia
 
 ### End Points
 
-Add the end point used to query the LLM. Use the buttons to `add` ( <img src="Chrome/img/add.svg" height="25" alt="Add" title="Add"/> ), `delete` ( <img src="Chrome/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), `delete all` ( <img src="Chrome/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ) `sort ascending` ( <img src="Chrome/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or `descending` ( <img src="Chrome/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ), and `copy` ( <img src="Chrome/img/copy.svg" height="25" alt="Copy" title="Copy"/> ).
+Add the end point used to query the LLM. Use the buttons to `add` ( <img src="src/img/add.svg" height="25" alt="Add" title="Add"/> ), `delete` ( <img src="src/img/remove.svg" height="25" alt="Remove" title="Remove"/> ), `delete all` ( <img src="src/img/remove-all.svg" height="25" alt="Remove All" title="Remove All"/> ) `sort ascending` ( <img src="src/img/a-z.svg" height="25" alt="Sort Asc" title="Sort Asc"/> ) or `descending` ( <img src="src/img/z-a.svg" height="25" alt="Sort Desc" title="Sort Desc"/> ), and `copy` ( <img src="src/img/copy.svg" height="25" alt="Copy" title="Copy"/> ).
 
-Check if the provided url is accessible using the `test connection` button ( <img src="Chrome/img/testnet.svg" height="25" alt="test connection" title="test connection"/> )
+Check if the provided url is accessible using the `test connection` button ( <img src="src/img/testnet.svg" height="25" alt="test connection" title="test connection"/> )
 
-The model list, determined by the endpoint, includes an additional reload button ( <img src="Chrome/img/reload.svg" height="25" alt="Reload" title="Reload"/> ). Reloading reads the endpoint currently selected in the End Point list without saving it, so a newly added endpoint can be tried before `Save`. Deleting or adding models is not possible within this interface and depends on the associated tool.
+The model list, determined by the endpoint, includes an additional reload button ( <img src="src/img/reload.svg" height="25" alt="Reload" title="Reload"/> ). Reloading reads the endpoint currently selected in the End Point list without saving it, so a newly added endpoint can be tried before `Save`. Deleting or adding models is not possible within this interface and depends on the associated tool.
 
 #### Models
 

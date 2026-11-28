@@ -141,8 +141,18 @@
     cursor: default;
 }
 
-.session-controls .session-control:disabled img {
-    cursor: default;
+.session-glyph-control {
+    font-size: 0.75rem;
+    line-height: 1.2;
+    color: #555;
+}
+
+.session-glyph-control:hover:not(:disabled) {
+    color: #222;
+}
+
+.session-bin-control {
+    font-size: 0.9rem;
 }
 
 .session-name-control {
