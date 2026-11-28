@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.12] - 2026-11-28
+
+### Changes
+
+- The two SVG icons around the ribbon session title are now text characters: `+` starts a new session and `♻` deletes the current session after the inline confirmation. Both use the title's font and colour and darken on hover, with the disabled state unchanged. The unused plus, recycle and history SVGs are removed, and the documentation image links point to `src/img/` (#137).
+
 ## [1.31.11] - 2026-11-28
 
 ### Changes
