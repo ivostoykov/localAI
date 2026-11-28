@@ -165,20 +165,23 @@ describe('session control wiring (#135)', () => {
         const deleteActiveSession = vi.fn(async () => undefined);
         const reportTabBinding = vi.fn(async () => undefined);
         const showMessage = vi.fn();
+        const clearChatHistoryUI = vi.fn();
         const createNewSessionClicked = vi.fn(async () => undefined);
         const recycleActiveSession = new Function(
-            'deleteActiveSession', 'reportTabBinding', 'showMessage', 'createNewSessionClicked',
+            'deleteActiveSession', 'reportTabBinding', 'showMessage', 'clearChatHistoryUI', 'createNewSessionClicked',
             'getShadowRoot', 'manifest', 'getLineNumber',
             `${recycleCode}
 return recycleActiveSession;`
-        )(deleteActiveSession, reportTabBinding, showMessage, createNewSessionClicked, () => null, { name: 'Local AI helper' }, () => 'test');
+        )(deleteActiveSession, reportTabBinding, showMessage, clearChatHistoryUI, createNewSessionClicked, () => null, { name: 'Local AI helper' }, () => 'test');
         const shadowRoot = {};
 
         await recycleActiveSession({}, shadowRoot);
 
         expect(deleteActiveSession).toHaveBeenCalledOnce();
         expect(reportTabBinding).toHaveBeenCalledWith({ sessionId: null });
+        expect(clearChatHistoryUI).toHaveBeenCalledOnce();
         expect(createNewSessionClicked).toHaveBeenCalledOnce();
         expect(createNewSessionClicked.mock.calls[0][1]).toBe(shadowRoot);
+        expect(clearChatHistoryUI.mock.invocationCallOrder[0]).toBeLessThan(createNewSessionClicked.mock.invocationCallOrder[0]);
     });
 });

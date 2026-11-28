@@ -2842,3 +2842,30 @@ return { setWatermarkLinkHrefs };`)();
         expect(sidebarHtml.indexOf('lai-watermark-links')).toBeLessThan(sidebarHtml.indexOf('id="laiChatMessageList"'));
     });
 });
+
+describe('recycleActiveSession (#135)', () => {
+    it('clears the chat UI before starting a new session', async () => {
+        const recycleCode = laiMainCode.match(/async function recycleActiveSession\([\s\S]*?\n}\n/)[0];
+        const deleteActiveSession = vi.fn(async () => undefined);
+        const reportTabBinding = vi.fn(async () => undefined);
+        const showMessage = vi.fn();
+        const clearChatHistoryUI = vi.fn();
+        const createNewSessionClicked = vi.fn(async () => undefined);
+
+        const recycleActiveSession = new Function(
+            'deleteActiveSession', 'reportTabBinding', 'showMessage', 'clearChatHistoryUI',
+            'createNewSessionClicked', 'getShadowRoot', 'manifest', 'getLineNumber',
+            `${recycleCode}
+return recycleActiveSession;`
+        )(
+            deleteActiveSession, reportTabBinding, showMessage, clearChatHistoryUI,
+            createNewSessionClicked, () => null, global.manifest, () => 'test:1'
+        );
+
+        await recycleActiveSession({}, {});
+
+        expect(clearChatHistoryUI).toHaveBeenCalledOnce();
+        expect(createNewSessionClicked).toHaveBeenCalledOnce();
+        expect(clearChatHistoryUI.mock.invocationCallOrder[0]).toBeLessThan(createNewSessionClicked.mock.invocationCallOrder[0]);
+    });
+});
