@@ -1,5 +1,11 @@
 # Local AI - Changelog
 
+## [1.31.11] - 2026-11-28
+
+### Changes
+
+- The session title at the bottom centre of the ribbon is now the session control: `+` starts a new session, clicking the title opens the sessions dialog, and a bin deletes the current session after an inline `Delete? ✓ ✗` confirmation. The bin is dimmed with the tooltip `No session to delete` until the active session has a stored record. The cog menu's renamed `Delete Current Session` uses the same confirmation. The separate New Session, Session history and Delete Current Session ribbon buttons are removed (#135).
+
 ## [1.31.10] - 2026-11-27
 
 ### Changes

@@ -30,6 +30,7 @@ async function applySidebarState(state) {
         stopSidebarSpeech();
         userScrolled = false;
         clearChatHistoryUI();
+        hideSessionDeleteConfirm();
     }
     await reportTabBinding({ panelOpen: state.open });
     if (state.open && revision === panelViewRevision) {
@@ -139,6 +140,7 @@ function installSidebarListeners() {
     });
 
     document.addEventListener('laiActiveSessionChanged', () => {
+        hideSessionDeleteConfirm();
         void sidebarDraft?.switchSession();
         void renderSessionNameLabel();
     });

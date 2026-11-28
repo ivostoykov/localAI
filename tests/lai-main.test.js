@@ -38,6 +38,7 @@ global.manifest = {
     name: 'Local AI helper',
     version: '1.29.17'
 };
+global.hideSessionDeleteConfirm = vi.fn();
 
 // Mock dependencies
 global.chrome = {
@@ -1787,6 +1788,7 @@ describe('sidebar session catch-up on focus (#61)', () => {
         global.getLineNumber = () => 'test:1';
         global.showMessage = vi.fn();
         global.setModelNameLabel = vi.fn();
+        global.hideSessionDeleteConfirm = vi.fn();
         global.getShadowRoot = vi.fn(() => document);
         global.getSideBar = vi.fn(() => null);
         global.getOptions = vi.fn(async () => ({}));
@@ -1839,6 +1841,7 @@ describe('sidebar session catch-up on focus (#61)', () => {
 
             await applySidebarState({ open: false });
             const scrolledAfterClose = getUserScrolled();
+            expect(global.hideSessionDeleteConfirm).toHaveBeenCalled();
             // JSDOM does not reset the scroll offset when the list is emptied.
             messageList().scrollTop = 0;
             await applySidebarState({ open: true });
@@ -2837,5 +2840,32 @@ return { setWatermarkLinkHrefs };`)();
     it('places the links before the chat list so messages cover them', () => {
         const sidebarHtml = fs.readFileSync(path.join(__dirname, '../src/sidebar.html'), 'utf-8');
         expect(sidebarHtml.indexOf('lai-watermark-links')).toBeLessThan(sidebarHtml.indexOf('id="laiChatMessageList"'));
+    });
+});
+
+describe('recycleActiveSession (#135)', () => {
+    it('clears the chat UI before starting a new session', async () => {
+        const recycleCode = laiMainCode.match(/async function recycleActiveSession\([\s\S]*?\n}\n/)[0];
+        const deleteActiveSession = vi.fn(async () => undefined);
+        const reportTabBinding = vi.fn(async () => undefined);
+        const showMessage = vi.fn();
+        const clearChatHistoryUI = vi.fn();
+        const createNewSessionClicked = vi.fn(async () => undefined);
+
+        const recycleActiveSession = new Function(
+            'deleteActiveSession', 'reportTabBinding', 'showMessage', 'clearChatHistoryUI',
+            'createNewSessionClicked', 'getShadowRoot', 'manifest', 'getLineNumber',
+            `${recycleCode}
+return recycleActiveSession;`
+        )(
+            deleteActiveSession, reportTabBinding, showMessage, clearChatHistoryUI,
+            createNewSessionClicked, () => null, global.manifest, () => 'test:1'
+        );
+
+        await recycleActiveSession({}, {});
+
+        expect(clearChatHistoryUI).toHaveBeenCalledOnce();
+        expect(createNewSessionClicked).toHaveBeenCalledOnce();
+        expect(clearChatHistoryUI.mock.invocationCallOrder[0]).toBeLessThan(createNewSessionClicked.mock.invocationCallOrder[0]);
     });
 });

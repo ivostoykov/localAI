@@ -50,16 +50,13 @@ async function initRibbon() {
         closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
         showHelp();
     });
-    shadowRoot?.querySelector('#createSessionCmdMenu')?.addEventListener('click', e => {
+    shadowRoot?.querySelector('#createSessionCmdMenu')?.addEventListener('click', async e => {
         closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
-        ribbon?.querySelector('#newSession')?.click();
+        await createNewSessionClicked(e, shadowRoot);
     });
     shadowRoot?.querySelector('#delSessionsCmdMenu')?.addEventListener('click', e => {
         closeRibbonMenuElement(shadowRoot.querySelector('#cogBtn'), shadowRoot);
-        const element = shadowRoot?.getElementById('recycleCurrentSessionBtn');
-        if (!element) { return; }
-        const event = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-        element.dispatchEvent(event);
+        openSessionDeleteConfirm(e);
     });
 
     shadowRoot?.querySelector('#mainHelpMenu')?.addEventListener('click', async (e) => {
@@ -111,8 +108,12 @@ async function initRibbon() {
     const toolFunctions = ribbon?.querySelector('#toolFunctions');
     toolFunctions?.addEventListener('click', async e => onToolFunctionsBtnClick(e), false);
     ribbon?.querySelector('#systemIntructions')?.addEventListener('click', laiShowSystemInstructions, false);
-    ribbon?.querySelector('#newSession')?.addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot), false);
-    ribbon?.querySelector('#sessionHistory')?.addEventListener('click', async e => await sessionHistoryClicked(e), false);
+    ribbon?.querySelector('#laiNewSessionBtn')?.addEventListener('click', async e => await createNewSessionClicked(e, shadowRoot), false);
+    ribbon?.querySelector('#laiSessionNameBtn')?.addEventListener('click', async e => await sessionHistoryClicked(e), false);
+    ribbon?.querySelector('#laiDeleteSessionBtn')?.addEventListener('click', e => openSessionDeleteConfirm(e), false);
+    ribbon?.querySelector('#laiSessionDeleteConfirmBtn')?.addEventListener('click', async e => await confirmDeleteActiveSession(e, shadowRoot), false);
+    ribbon?.querySelector('#laiSessionDeleteCancelBtn')?.addEventListener('click', e => cancelSessionDelete(e), false);
+    ribbon?.querySelector('#laiSessionControls')?.addEventListener('keydown', sessionDeleteConfirmKeydown, false);
     ribbon?.querySelector('#apiUrlList')?.addEventListener('change', async e => await selectMenuChanged(e));
     // ribbon?.querySelector('#modelList')?.addEventListener('change', async e => await modelChanged(e), false);
     ribbon?.querySelector('#hookList')?.addEventListener('change', async e => await selectMenuChanged(e), false);
@@ -149,9 +150,10 @@ async function initRibbon() {
     });
     scheduleModelCapabilityRefresh();
 
-    shadowRoot?.getElementById('recycleCurrentSessionBtn')?.addEventListener('click', async e => await recycleActiveSession(e, shadowRoot), false);
-    shadowRoot?.querySelector('#closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
+    shadowRoot?.querySelector('#laiSessionControls')?.querySelectorAll('img').forEach(el => laiSetImg(el));
+    shadowRoot?.addEventListener('click', closeSessionDeleteConfirmOnOutsideClick);
 
+    shadowRoot?.getElementById('closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
     shadowRoot?.getElementById('laiAbort')?.addEventListener('click', async e => await laiAbortRequest(e), false);
 
     shadowRoot?.getElementById('laiSessionHistoryMenu')?.querySelectorAll('img').forEach(el => laiSetImg(el));
@@ -280,7 +282,87 @@ async function sessionHistoryClicked(e) {
     e.stopPropagation();
     closeQuickPromptListMenu();
     await closeAllDropDownRibbonMenus(e);
+    hideSessionDeleteConfirm();
     await popSessionList();
+}
+
+function getSessionDeleteConfirm(shadowRoot = getShadowRoot()) {
+    return shadowRoot?.querySelector('#laiSessionDeleteConfirm') ?? null;
+}
+
+/**
+ * Shows the inline delete confirmation beside the session name. The bin is disabled while the
+ * active session has no stored record, and the cog item takes the same guarded path.
+ */
+function openSessionDeleteConfirm(e = null) {
+    e?.stopPropagation?.();
+    const shadowRoot = getShadowRoot();
+    const button = shadowRoot?.querySelector('#laiDeleteSessionBtn');
+    const confirm = getSessionDeleteConfirm(shadowRoot);
+    if (!button || !confirm) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Session controls: the delete controls are not available.`);
+        showMessage('The session controls are not available.', 'error');
+        return false;
+    }
+    if (button.disabled) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Session controls: no stored session to delete.`);
+        showMessage('No session to delete.');
+        return false;
+    }
+    confirm.classList.remove('invisible');
+    button.setAttribute('aria-expanded', 'true');
+    confirm.querySelector('#laiSessionDeleteConfirmBtn')?.focus();
+    return true;
+}
+
+function hideSessionDeleteConfirm(shadowRoot = getShadowRoot()) {
+    const confirm = getSessionDeleteConfirm(shadowRoot);
+    if (!confirm || confirm.classList.contains('invisible')) { return false; }
+    confirm.classList.add('invisible');
+    shadowRoot?.querySelector('#laiDeleteSessionBtn')?.setAttribute('aria-expanded', 'false');
+    return true;
+}
+
+function cancelSessionDelete(e = null) {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const shadowRoot = getShadowRoot();
+    if (!hideSessionDeleteConfirm(shadowRoot)) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Session controls: no delete confirmation is open.`);
+        return;
+    }
+    shadowRoot?.querySelector('#laiDeleteSessionBtn')?.focus();
+}
+
+async function confirmDeleteActiveSession(e = null, shadowRoot = getShadowRoot()) {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const confirm = getSessionDeleteConfirm(shadowRoot);
+    if (!confirm || confirm.classList.contains('invisible')) {
+        console.debug(`>>> ${manifest?.name ?? ''} - [${getLineNumber()}] - Session controls: no delete confirmation is open.`);
+        showMessage('No session deletion is waiting for confirmation.');
+        return;
+    }
+    hideSessionDeleteConfirm(shadowRoot);
+    await recycleActiveSession(e, shadowRoot);
+}
+
+function sessionDeleteConfirmKeydown(e) {
+    if (e?.key !== 'Escape') { return; }
+    const confirm = getSessionDeleteConfirm();
+    if (!confirm || confirm.classList.contains('invisible')) { return; }
+    e.preventDefault();
+    e.stopPropagation();
+    cancelSessionDelete(e);
+}
+
+function closeSessionDeleteConfirmOnOutsideClick(e) {
+    const shadowRoot = getShadowRoot();
+    const confirm = getSessionDeleteConfirm(shadowRoot);
+    if (!confirm || confirm.classList.contains('invisible')) { return; }
+    const path = e?.composedPath?.() || [];
+    if (path.some(node => node?.id === 'laiSessionControls' || node?.id === 'delSessionsCmdMenu')) { return; }
+    hideSessionDeleteConfirm(shadowRoot);
 }
 
 /**
@@ -498,7 +580,7 @@ function sessionListKeydown(e) {
 function closeSessionListOnOutsideClick(e) {
     const dialog = getShadowRoot()?.querySelector('#sessionListContainer');
     const path = e?.composedPath?.() || [];
-    const isDialogOrTrigger = path.some(node => node?.id === 'sessionListContainer' || node?.id === 'sessionHistory');
+    const isDialogOrTrigger = path.some(node => node?.id === 'sessionListContainer' || node?.id === 'laiSessionNameBtn');
     if (dialog && !dialog.classList.contains('invisible') && !isDialogOrTrigger) {
         closeSessionListDialog(dialog);
     }
@@ -955,22 +1037,36 @@ function setModelNameLabel(data) {
 
 var laiSessionNameRenderSeq = 0;
 
-// Read-only mirror of the active session title at the bottom centre of the ribbon (#130).
-// The catalogue is read without creating or touching a record, and textContent keeps titles inert.
+// Mirrors the active session title at the bottom centre of the ribbon (#130) and enables the
+// bin only while the active session has a stored record. textContent keeps titles inert.
 async function renderSessionNameLabel() {
-    const label = getShadowRoot()?.getElementById('laiSessionName');
-    if (!label) { return; }
+    const shadowRoot = getShadowRoot();
+    const label = shadowRoot?.getElementById('laiSessionName');
+    const nameButton = shadowRoot?.getElementById('laiSessionNameBtn');
+    const deleteButton = shadowRoot?.getElementById('laiDeleteSessionBtn');
+    if (!label && !nameButton && !deleteButton) { return; }
     const seq = ++laiSessionNameRenderSeq;
     const sessionId = laiActiveSessionId;
-    let title = '';
+    let storedSession = null;
     if (sessionId) {
         const sessions = await getAllSessions();
         if (seq !== laiSessionNameRenderSeq) { return; }
-        title = sessions.find(session => session?.id === sessionId)?.title?.trim() ?? '';
+        storedSession = sessions.find(session => session?.id === sessionId) ?? null;
     }
-    const text = title || 'New session';
-    label.textContent = text;
-    label.title = title;
+    const title = storedSession?.title?.trim() ?? '';
+    if (label) {
+        label.textContent = title || 'New session';
+        label.title = title;
+    }
+    if (nameButton) {
+        nameButton.setAttribute('aria-label', title ? `Open sessions dialog: ${title}` : 'Open sessions dialog');
+    }
+    if (deleteButton) {
+        deleteButton.disabled = !storedSession;
+        const accessibleName = storedSession ? 'Delete Current Session' : 'No session to delete';
+        deleteButton.title = accessibleName;
+        deleteButton.setAttribute('aria-label', accessibleName);
+    }
 }
 
 function isPinned() {

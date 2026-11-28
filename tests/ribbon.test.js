@@ -378,6 +378,7 @@ return { sessionHistoryClicked, popSessionList, sessionListBlockClicked, loadSes
 
     const buildDom = () => new JSDOM(`<!DOCTYPE html>
 <div id="sidebar">
+    <button id="laiSessionNameBtn" type="button"><span id="laiSessionName"></span></button>
     <div id="sessionListContainer" class="invisible session-list">
         <div class="session-list-ribbon">
             <button id="sessionListDeleteAll" type="button">delete all</button>
@@ -437,6 +438,7 @@ return { sessionHistoryClicked, popSessionList, sessionListBlockClicked, loadSes
             showMessage,
             closeAllDropDownRibbonMenus: vi.fn(async () => undefined),
             closeQuickPromptListMenu: vi.fn(),
+            hideSessionDeleteConfirm: vi.fn(),
             manifest: { name: 'Local AI helper' },
             getLineNumber: () => 'test',
             chrome: { runtime: { getURL: path => `chrome-extension://test/${path}` } }
@@ -669,6 +671,11 @@ return { sessionHistoryClicked, popSessionList, sessionListBlockClicked, loadSes
 
         exports.closeSessionListOnOutsideClick({
             composedPath: () => [dialog().querySelector('.session-list-block'), dialog(), doc]
+        });
+        expect(dialog().classList.contains('invisible')).toBe(false);
+
+        exports.closeSessionListOnOutsideClick({
+            composedPath: () => [doc.getElementById('laiSessionName'), doc.getElementById('laiSessionNameBtn'), doc]
         });
         expect(dialog().classList.contains('invisible')).toBe(false);
     });

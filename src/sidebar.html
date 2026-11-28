@@ -79,7 +79,7 @@
                     <div id="listSysCmdMenu" class="cog-menu-item">List system commands</div>
                     <hr>
                     <div id="createSessionCmdMenu" class="cog-menu-item">New Session</div>
-                    <div id="delSessionsCmdMenu" class="cog-menu-item">Delete Session History</div>
+                    <div id="delSessionsCmdMenu" class="cog-menu-item">Delete Current Session</div>
                     <hr>
                     <div id="optionsMenu" class="cog-menu-item">Options</div>
                     <hr>
@@ -89,11 +89,7 @@
                     data-type="error">
             </div>
 
-            <div id="laiSessionHistoryMenu" class="rib-section center" title="Session history">
-                <img src="" id="newSession" alt="New Session" title="New Session" data-type="plus">
-                <img src="" id="sessionHistory" alt="Session history" title="Session history" data-type="history">
-                <img src="" id="recycleCurrentSessionBtn" alt="Delete Current Session" title="Delete Current Session"
-                    data-type="recycle" />
+            <div id="laiSessionHistoryMenu" class="rib-section center">
                 <img src="" id="modelThinking" alt="Thinking" title="Toggle thinking" data-type="think">
                 <div id="modifiers" class="temp-range-wrapper">
                     <div class="session-menu invisible">
@@ -156,7 +152,25 @@
                 <img src="" id="closeSidebarBtn" alt="Close" title="Close" data-type="close">
             </div>
         </div>
-        <div id="laiSessionName" class="session-label"></div>
+        <div id="laiSessionControls" class="session-controls">
+            <button type="button" id="laiNewSessionBtn" class="session-control" title="New Session"
+                aria-label="New Session"><img src="" alt="" data-type="plus"></button>
+            <button type="button" id="laiSessionNameBtn" class="session-control session-name-control"
+                title="Open sessions dialog" aria-label="Open sessions dialog">
+                <span id="laiSessionName" class="session-label"></span>
+            </button>
+            <button type="button" id="laiDeleteSessionBtn" class="session-control" title="Delete Current Session"
+                aria-label="Delete Current Session" aria-expanded="false" disabled
+                aria-controls="laiSessionDeleteConfirm"><img src="" alt="" data-type="recycle"></button>
+            <div id="laiSessionDeleteConfirm" class="session-delete-confirm invisible" role="group"
+                aria-label="Delete the current session?">
+                <span>Delete?</span>
+                <button type="button" id="laiSessionDeleteConfirmBtn" title="Delete session"
+                    aria-label="Confirm delete session">✓</button>
+                <button type="button" id="laiSessionDeleteCancelBtn" title="Cancel"
+                    aria-label="Cancel delete session">✗</button>
+            </div>
+        </div>
     </div>
 </header>
 
