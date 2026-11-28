@@ -154,6 +154,20 @@ describe('session control wiring (#135)', () => {
         expect(sidebarHtml).not.toContain('Delete Session History');
     });
 
+    it('renders the session buttons as text characters without images', () => {
+        const doc = new JSDOM(sidebarHtml).window.document;
+        const plus = doc.getElementById('laiNewSessionBtn');
+        const bin = doc.getElementById('laiDeleteSessionBtn');
+
+        expect(plus.textContent.trim()).toBe('+');
+        expect(bin.textContent.trim()).toBe('♻︎');
+        expect([...bin.textContent.trim()].map(character => character.codePointAt(0))).toEqual([0x267B, 0xFE0E]);
+        expect(plus.querySelector('img')).toBeNull();
+        expect(bin.querySelector('img')).toBeNull();
+        expect(plus.getAttribute('aria-label')).toBe('New Session');
+        expect(bin.getAttribute('aria-label')).toBe('Delete Current Session');
+    });
+
     it('calls the session functions directly from the cog menu', () => {
         expect(ribbonCode).not.toMatch(/#newSession|#sessionHistory\b|#recycleCurrentSessionBtn/);
         expect(ribbonCode).toMatch(/createSessionCmdMenu[\s\S]{0,200}createNewSessionClicked\(e, shadowRoot\)/);

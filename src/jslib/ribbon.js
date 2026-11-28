@@ -150,7 +150,6 @@ async function initRibbon() {
     });
     scheduleModelCapabilityRefresh();
 
-    shadowRoot?.querySelector('#laiSessionControls')?.querySelectorAll('img').forEach(el => laiSetImg(el));
     shadowRoot?.addEventListener('click', closeSessionDeleteConfirmOnOutsideClick);
 
     shadowRoot?.getElementById('closeSidebarBtn')?.addEventListener('click', async e => await onCloseSidebarClick(e, shadowRoot), false);
