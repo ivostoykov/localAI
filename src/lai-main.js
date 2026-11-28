@@ -214,9 +214,7 @@ async function recycleActiveSession(e, shadowRoot) {
     await deleteActiveSession();
     await reportTabBinding({ sessionId: null });
     showMessage("Active session deleted.", "success");
-    clearChatHistoryUI();
-    const newSessionBtn = shadowRoot.querySelector('#newSession');
-    newSessionBtn?.click();
+    await createNewSessionClicked(e, shadowRoot);
 }
 
 async function recycleAllSessions(e, shadowRoot) {

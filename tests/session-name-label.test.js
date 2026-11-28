@@ -24,7 +24,6 @@ return {
 };
 `
 )(getShadowRoot, getAllSessions);
-
 const loadStorageHandler = renderSessionNameLabel => new Function(
     'allSessionsStorageKey',
     'renderSessionNameLabel',
@@ -35,12 +34,16 @@ return onSessionsStorageChanged;`
 describe('session name label (#130)', () => {
     let dom;
     let label;
+    let deleteButton;
+    let nameButton;
     let sessions;
     let getShadowRoot;
 
     beforeEach(() => {
-        dom = new JSDOM('<!DOCTYPE html><html><body><div id="laiSessionName" class="session-label"></div></body></html>');
+        dom = new JSDOM('<!DOCTYPE html><html><body><span id="laiSessionName" class="session-label"></span><button id="laiSessionNameBtn"></button><button id="laiDeleteSessionBtn"></button></body></html>');
         label = dom.window.document.getElementById('laiSessionName');
+        deleteButton = dom.window.document.getElementById('laiDeleteSessionBtn');
+        nameButton = dom.window.document.getElementById('laiSessionNameBtn');
         sessions = [];
         getShadowRoot = vi.fn(() => dom.window.document);
     });
@@ -56,15 +59,21 @@ describe('session name label (#130)', () => {
 
         expect(label.textContent).toBe('Discussed migration plan');
         expect(label.title).toBe('Discussed migration plan');
+        expect(deleteButton.disabled).toBe(false);
+        expect(deleteButton.title).toBe('Delete Current Session');
+        expect(nameButton.getAttribute('aria-label')).toBe('Open sessions dialog: Discussed migration plan');
     });
 
-    it('shows New session without an active session', async () => {
+    it('shows New session without an active session and disables the bin', async () => {
         const { renderSessionNameLabel } = makeLabel();
 
         await renderSessionNameLabel();
 
         expect(label.textContent).toBe('New session');
         expect(label.title).toBe('');
+        expect(deleteButton.disabled).toBe(true);
+        expect(deleteButton.title).toBe('No session to delete');
+        expect(deleteButton.getAttribute('aria-label')).toBe('No session to delete');
     });
 
     it('shows New session when the active record is not stored yet', async () => {
@@ -75,6 +84,18 @@ describe('session name label (#130)', () => {
         await renderSessionNameLabel();
 
         expect(label.textContent).toBe('New session');
+        expect(deleteButton.disabled).toBe(true);
+    });
+
+    it('keeps the bin enabled for a stored record with an empty title', async () => {
+        sessions = [{ id: 's1', title: '   ' }];
+        const { renderSessionNameLabel, setActiveId } = makeLabel();
+        setActiveId('s1');
+
+        await renderSessionNameLabel();
+
+        expect(label.textContent).toBe('New session');
+        expect(deleteButton.disabled).toBe(false);
     });
 
     it('follows a session switch', async () => {
@@ -148,10 +169,11 @@ describe('session name label (#130)', () => {
     it('registers the storage handler and re-renders on active session changes', () => {
         const storageListeners = [];
         const renderSessionNameLabel = vi.fn();
+        const hideSessionDeleteConfirm = vi.fn();
         const installListeners = new Function(
             'chrome', 'document', 'window', 'sidebarChannel', 'sidebarDraft', 'stopSidebarSpeech',
             'reconcileActiveSessionWithStorage', 'onModelOptionsChanged', 'onSessionsStorageChanged',
-            'renderSessionNameLabel',
+            'renderSessionNameLabel', 'hideSessionDeleteConfirm',
             `${installListenersCode}
 return installSidebarListeners;`
         )(
@@ -164,7 +186,8 @@ return installSidebarListeners;`
             vi.fn(),
             vi.fn(),
             loadStorageHandler(renderSessionNameLabel),
-            renderSessionNameLabel
+            renderSessionNameLabel,
+            hideSessionDeleteConfirm
         );
 
         installListeners();
@@ -176,5 +199,6 @@ return installSidebarListeners;`
 
         dom.window.document.dispatchEvent(new dom.window.Event('laiActiveSessionChanged'));
         expect(renderSessionNameLabel).toHaveBeenCalledTimes(3);
+        expect(hideSessionDeleteConfirm).toHaveBeenCalledOnce();
     });
 });

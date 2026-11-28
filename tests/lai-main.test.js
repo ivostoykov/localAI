@@ -38,6 +38,7 @@ global.manifest = {
     name: 'Local AI helper',
     version: '1.29.17'
 };
+global.hideSessionDeleteConfirm = vi.fn();
 
 // Mock dependencies
 global.chrome = {
@@ -1787,6 +1788,7 @@ describe('sidebar session catch-up on focus (#61)', () => {
         global.getLineNumber = () => 'test:1';
         global.showMessage = vi.fn();
         global.setModelNameLabel = vi.fn();
+        global.hideSessionDeleteConfirm = vi.fn();
         global.getShadowRoot = vi.fn(() => document);
         global.getSideBar = vi.fn(() => null);
         global.getOptions = vi.fn(async () => ({}));
@@ -1839,6 +1841,7 @@ describe('sidebar session catch-up on focus (#61)', () => {
 
             await applySidebarState({ open: false });
             const scrolledAfterClose = getUserScrolled();
+            expect(global.hideSessionDeleteConfirm).toHaveBeenCalled();
             // JSDOM does not reset the scroll offset when the list is emptied.
             messageList().scrollTop = 0;
             await applySidebarState({ open: true });

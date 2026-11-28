@@ -110,21 +110,85 @@
     background-color: #FFE;
 }
 
-/* Read-only active session title. Deliberately not a .ribbon-label: no hover box, no menu. */
-.session-label {
+/* Active session controls. The container takes the bottom-centre slot; only the name shrinks. */
+.session-controls {
     position: absolute;
     left: 50%;
     bottom: 2px;
     transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: clamp(2px, 1cqi, 6px);
     max-width: 72%;
-    padding: 0 0.5rem;
+    z-index: 99;
+}
+
+.session-control {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+}
+
+.session-control:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+.session-controls .session-control:disabled img {
+    cursor: default;
+}
+
+.session-name-control {
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 0 0.25rem;
+}
+
+.session-name-control:hover .session-label {
+    text-decoration: underline;
+}
+
+.session-label {
+    display: block;
+    min-width: 0;
     font-size: 0.75rem;
     line-height: 1.2;
     color: #555;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    z-index: 99;
+}
+
+.session-delete-confirm {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: clamp(2px, 1cqi, 6px);
+    font-size: 0.75rem;
+    line-height: 1.2;
+    color: #555;
+    white-space: nowrap;
+}
+
+.session-delete-confirm.invisible {
+    display: none;
+}
+
+.session-delete-confirm button {
+    padding: 0 0.2rem;
+    border: 1px solid #999;
+    border-radius: 2px;
+    background: #fff;
+    font: inherit;
+    line-height: 1.2;
+    cursor: pointer;
 }
 
 .available-model-list {
